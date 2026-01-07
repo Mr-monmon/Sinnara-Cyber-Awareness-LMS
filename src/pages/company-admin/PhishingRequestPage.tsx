@@ -584,7 +584,7 @@ export const PhishingRequestPage: React.FC = () => {
 
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="font-bold text-slate-900 mb-4">Gophish-style Campaign Elements</h3>
+            <h3 className="font-bold text-slate-900 mb-4">style Campaign Elements</h3>
             <div className="space-y-3 text-sm">
               <div className="flex items-start gap-2">
                 <div className={`w-2 h-2 rounded-full mt-1.5 ${formData.campaign_name ? 'bg-green-500' : 'bg-slate-300'}`} />
@@ -656,7 +656,7 @@ export const PhishingRequestPage: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-medium text-slate-900">Review & Setup</h4>
-                  <p className="text-sm text-slate-600">Team configures Gophish campaign</p>
+                  <p className="text-sm text-slate-600">Team configures campaign</p>
                 </div>
               </div>
               <div className="flex gap-3">
