@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardCheck, Plus, Edit2, Trash2, List } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Exam, ExamQuestion } from '../../types';
+import { Exam, ExamQuestion } from '../../lib/types';
 
 export const ExamsPage: React.FC = () => {
   const [exams, setExams] = useState<Exam[]>([]);

@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Hero } from '../components/landing/Hero';
-import { Features } from '../components/landing/Features';
-import { PartnersCarousel } from '../components/landing/PartnersCarousel';
-import { HowItWorks } from '../components/landing/HowItWorks';
-import { RequestDemoModal } from '../components/landing/RequestDemoModal';
-import { supabase } from '../lib/supabase';
-import { ArrowRight, Mail, Phone } from 'lucide-react';
-
-interface LandingPageProps {
-  onNavigate: (page: string) => void;
-}
+import { useState, useEffect } from "react";
+import { Hero } from "../components/landing/Hero";
+import { Features } from "../components/landing/Features";
+import { PartnersCarousel } from "../components/landing/PartnersCarousel";
+import { HowItWorks } from "../components/landing/HowItWorks";
+import { RequestDemoModal } from "../components/landing/RequestDemoModal";
+import { supabase } from "../lib/supabase";
+import { ArrowRight, Mail, Phone } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface CTASettings {
   headline: string;
@@ -25,19 +22,21 @@ interface FooterSettings {
   copyright: string;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
+export const LandingPage = () => {
   const [showDemoModal, setShowDemoModal] = useState(false);
+  const navigate = useNavigate();
   const [ctaSettings, setCTASettings] = useState<CTASettings>({
-    headline: 'Start Building a Culture of Cybersecurity Awareness',
-    subheadline: 'Protect your organization by empowering your team today.',
-    primary_button: 'Request Demo',
-    secondary_button: 'Free Assessment'
+    headline: "Start Building a Culture of Cybersecurity Awareness",
+    subheadline: "Protect your organization by empowering your team today.",
+    primary_button: "Request Demo",
+    secondary_button: "Free Assessment",
   });
   const [footerSettings, setFooterSettings] = useState<FooterSettings>({
-    tagline: 'a smarter way to build, measure, and manage cybersecurity awareness.',
-    email: 'info@sinnara.com',
-    phone: '+966 XX XXX XXXX',
-    copyright: '© 2025 Sinnara. All rights reserved.'
+    tagline:
+      "a smarter way to build, measure, and manage cybersecurity awareness.",
+    email: "info@sinnara.com",
+    phone: "+966 XX XXX XXXX",
+    copyright: "© 2025 Sinnara. All rights reserved.",
   });
 
   useEffect(() => {
@@ -46,15 +45,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
   const loadSettings = async () => {
     const { data: ctaData } = await supabase
-      .from('homepage_settings')
-      .select('setting_value')
-      .eq('setting_key', 'cta_section')
+      .from("homepage_settings")
+      .select("setting_value")
+      .eq("setting_key", "cta_section")
       .maybeSingle();
 
     const { data: footerData } = await supabase
-      .from('homepage_settings')
-      .select('setting_value')
-      .eq('setting_key', 'footer')
+      .from("homepage_settings")
+      .select("setting_value")
+      .eq("setting_key", "footer")
       .maybeSingle();
 
     if (ctaData?.setting_value) {
@@ -69,10 +68,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   return (
     <div className="min-h-screen">
       <Hero
-        onTakeTest={() => onNavigate('public-assessment')}
+        onTakeTest={() => navigate("/assessment")}
         onRequestDemo={() => setShowDemoModal(true)}
-        onLogin={() => onNavigate('login')}
-        onFraudAlerts={() => onNavigate('fraud-alerts')}
+        onLogin={() => navigate("/login")}
+        onFraudAlerts={() => navigate("/fraud")}
       />
 
       <Features />
@@ -103,7 +102,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <button
-              onClick={() => onNavigate('public-assessment')}
+              onClick={() => navigate("/assessment")}
               className="px-10 py-5 bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white rounded-xl font-bold text-lg transition-all duration-300 hover:border-white/50"
             >
               {ctaSettings.secondary_button}
@@ -125,11 +124,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-white mb-4">Quick Links</h4>
+              <h4 className="text-lg font-semibold text-white mb-4">
+                Quick Links
+              </h4>
               <ul className="space-y-3">
                 <li>
                   <button
-                    onClick={() => onNavigate('public-assessment')}
+                    onClick={() => navigate("/assessment")}
                     className="text-slate-400 hover:text-blue-400 transition-colors"
                   >
                     Free Assessment
@@ -137,7 +138,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 </li>
                 <li>
                   <button
-                    onClick={() => onNavigate('fraud-alerts')}
+                    onClick={() => navigate("/fraud")}
                     className="text-slate-400 hover:text-blue-400 transition-colors"
                   >
                     Fraud Alerts
@@ -154,7 +155,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 </li>
                 <li>
                   <button
-                    onClick={() => onNavigate('login')}
+                    onClick={() => navigate("/login")}
                     className="text-slate-400 hover:text-blue-400 transition-colors"
                   >
                     Login
@@ -164,7 +165,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-white mb-4">Contact Us</h4>
+              <h4 className="text-lg font-semibold text-white mb-4">
+                Contact Us
+              </h4>
               <ul className="space-y-3">
                 <li className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
@@ -182,7 +185,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     <Phone className="h-4 w-4 text-blue-400" />
                   </div>
                   <a
-                    href={`tel:${footerSettings.phone.replace(/\s/g, '')}`}
+                    href={`tel:${footerSettings.phone.replace(/\s/g, "")}`}
                     className="text-slate-400 hover:text-blue-400 transition-colors"
                   >
                     {footerSettings.phone}
@@ -193,9 +196,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </div>
 
           <div className="pt-8 border-t border-slate-800 text-center">
-            <p className="text-slate-500">
-              {footerSettings.copyright}
-            </p>
+            <p className="text-slate-500">{footerSettings.copyright}</p>
           </div>
         </div>
       </footer>

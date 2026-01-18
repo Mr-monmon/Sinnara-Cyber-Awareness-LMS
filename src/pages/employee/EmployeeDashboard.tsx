@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BookOpen, ClipboardCheck, Award } from 'lucide-react';
 import { DashboardLayout } from '../../components/layouts/DashboardLayout';
 import { MyCoursesPage } from './MyCoursesPage';
@@ -9,11 +9,7 @@ import { FraudAlertWidget } from '../../components/FraudAlertWidget';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-interface EmployeeDashboardProps {
-  onNavigate: (page: string) => void;
-}
-
-export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate }) => {
+export const EmployeeDashboard = () => {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState('dashboard');
   const [stats, setStats] = useState({

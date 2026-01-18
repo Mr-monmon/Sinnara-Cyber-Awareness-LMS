@@ -1,11 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { ExamQuestion } from '../types';
-
-interface PublicAssessmentProps {
-  onNavigate: (page: string) => void;
-}
+import React, { useState, useEffect } from "react";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { supabase } from "../lib/supabase";
+import { ExamQuestion } from "../lib/types";
+import { useNavigate } from "react-router-dom";
 
 interface VisitorInfo {
   full_name: string;
@@ -15,14 +12,15 @@ interface VisitorInfo {
   job_title: string;
 }
 
-export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }) => {
-  const [step, setStep] = useState<'info' | 'test' | 'results'>('info');
+export const PublicAssessment = () => {
+  const [step, setStep] = useState<"info" | "test" | "results">("info");
+  const navigate = useNavigate();
   const [visitorInfo, setVisitorInfo] = useState<VisitorInfo>({
-    full_name: '',
-    email: '',
-    phone: '',
-    company_name: '',
-    job_title: ''
+    full_name: "",
+    email: "",
+    phone: "",
+    company_name: "",
+    job_title: "",
   });
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -38,17 +36,17 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
   const loadQuestions = async () => {
     try {
       const { data: examData } = await supabase
-        .from('exams')
-        .select('id')
-        .eq('exam_type', 'GENERAL')
+        .from("exams")
+        .select("id")
+        .eq("exam_type", "GENERAL")
         .maybeSingle();
 
       if (examData) {
         const { data: questionsData } = await supabase
-          .from('exam_questions')
-          .select('*')
-          .eq('exam_id', examData.id)
-          .order('order_index');
+          .from("exam_questions")
+          .select("*")
+          .eq("exam_id", examData.id)
+          .order("order_index");
 
         if (questionsData) {
           setQuestions(questionsData);
@@ -56,7 +54,7 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
         }
       }
     } catch (error) {
-      console.error('Error loading questions:', error);
+      console.error("Error loading questions:", error);
     } finally {
       setLoading(false);
     }
@@ -64,7 +62,7 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
 
   const handleInfoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('test');
+    setStep("test");
   };
 
   const handleAnswerSelect = (answer: string) => {
@@ -85,39 +83,48 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
 
   const handleSubmit = async () => {
     let correctCount = 0;
-    const detailedAnswers = questions.map(q => {
+    const detailedAnswers = questions.map((q) => {
       const isCorrect = answers[q.id] === q.correct_answer;
       if (isCorrect) correctCount++;
       return {
         question: q.question,
-        selected_answer: answers[q.id] || 'Not answered',
+        selected_answer: answers[q.id] || "Not answered",
         correct_answer: q.correct_answer,
-        is_correct: isCorrect
+        is_correct: isCorrect,
       };
     });
 
     setScore(correctCount);
 
     try {
-      await supabase.from('public_assessments').insert([{
-        ...visitorInfo,
-        score: correctCount,
-        total_questions: questions.length,
-        answers: detailedAnswers
-      }]);
+      await supabase.from("public_assessments").insert([
+        {
+          ...visitorInfo,
+          score: correctCount,
+          total_questions: questions.length,
+          answers: detailedAnswers,
+        },
+      ]);
     } catch (error) {
-      console.error('Error saving assessment:', error);
+      console.error("Error saving assessment:", error);
     }
 
-    setStep('results');
+    setStep("results");
   };
 
   const getPerformanceLevel = () => {
     const percentage = (score / totalQuestions) * 100;
-    if (percentage >= 90) return { level: 'Excellent', color: 'text-green-600', bg: 'bg-green-50' };
-    if (percentage >= 70) return { level: 'Good', color: 'text-blue-600', bg: 'bg-blue-50' };
-    if (percentage >= 50) return { level: 'Fair', color: 'text-yellow-600', bg: 'bg-yellow-50' };
-    return { level: 'Needs Improvement', color: 'text-red-600', bg: 'bg-red-50' };
+    if (percentage >= 90)
+      return { level: "Excellent", color: "text-green-600", bg: "bg-green-50" };
+    if (percentage >= 70)
+      return { level: "Good", color: "text-blue-600", bg: "bg-blue-50" };
+    if (percentage >= 50)
+      return { level: "Fair", color: "text-yellow-600", bg: "bg-yellow-50" };
+    return {
+      level: "Needs Improvement",
+      color: "text-red-600",
+      bg: "bg-red-50",
+    };
   };
 
   if (loading) {
@@ -131,12 +138,12 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
     );
   }
 
-  if (step === 'info') {
+  if (step === "info") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4">
         <div className="max-w-2xl mx-auto">
           <button
-            onClick={() => onNavigate('landing')}
+            onClick={() => navigate("/")}
             className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -148,7 +155,9 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
               Free Cybersecurity Awareness Test
             </h1>
             <p className="text-lg text-slate-600 mb-8">
-              Discover your current level of cybersecurity awareness. This quick assessment will help you understand your strengths and areas for improvement.
+              Discover your current level of cybersecurity awareness. This quick
+              assessment will help you understand your strengths and areas for
+              improvement.
             </p>
 
             <form onSubmit={handleInfoSubmit} className="space-y-6">
@@ -160,7 +169,12 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                   type="text"
                   required
                   value={visitorInfo.full_name}
-                  onChange={(e) => setVisitorInfo({ ...visitorInfo, full_name: e.target.value })}
+                  onChange={(e) =>
+                    setVisitorInfo({
+                      ...visitorInfo,
+                      full_name: e.target.value,
+                    })
+                  }
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -173,7 +187,9 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                   type="email"
                   required
                   value={visitorInfo.email}
-                  onChange={(e) => setVisitorInfo({ ...visitorInfo, email: e.target.value })}
+                  onChange={(e) =>
+                    setVisitorInfo({ ...visitorInfo, email: e.target.value })
+                  }
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -185,7 +201,9 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                 <input
                   type="tel"
                   value={visitorInfo.phone}
-                  onChange={(e) => setVisitorInfo({ ...visitorInfo, phone: e.target.value })}
+                  onChange={(e) =>
+                    setVisitorInfo({ ...visitorInfo, phone: e.target.value })
+                  }
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -197,7 +215,12 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                 <input
                   type="text"
                   value={visitorInfo.company_name}
-                  onChange={(e) => setVisitorInfo({ ...visitorInfo, company_name: e.target.value })}
+                  onChange={(e) =>
+                    setVisitorInfo({
+                      ...visitorInfo,
+                      company_name: e.target.value,
+                    })
+                  }
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -209,7 +232,12 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                 <input
                   type="text"
                   value={visitorInfo.job_title}
-                  onChange={(e) => setVisitorInfo({ ...visitorInfo, job_title: e.target.value })}
+                  onChange={(e) =>
+                    setVisitorInfo({
+                      ...visitorInfo,
+                      job_title: e.target.value,
+                    })
+                  }
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -227,7 +255,7 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
     );
   }
 
-  if (step === 'test' && questions.length > 0) {
+  if (step === "test" && questions.length > 0) {
     const question = questions[currentQuestion];
     const progress = ((currentQuestion + 1) / questions.length) * 100;
 
@@ -236,7 +264,9 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
         <div className="max-w-3xl mx-auto">
           <div className="mb-6">
             <div className="flex justify-between text-sm text-slate-600 mb-2">
-              <span>Question {currentQuestion + 1} of {questions.length}</span>
+              <span>
+                Question {currentQuestion + 1} of {questions.length}
+              </span>
               <span>{Math.round(progress)}% Complete</span>
             </div>
             <div className="w-full bg-slate-200 rounded-full h-2">
@@ -259,16 +289,18 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
                   onClick={() => handleAnswerSelect(option)}
                   className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
                     answers[question.id] === option
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      ? "border-blue-600 bg-blue-50"
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                      answers[question.id] === option
-                        ? 'border-blue-600 bg-blue-600'
-                        : 'border-slate-300'
-                    }`}>
+                    <div
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                        answers[question.id] === option
+                          ? "border-blue-600 bg-blue-600"
+                          : "border-slate-300"
+                      }`}
+                    >
                       {answers[question.id] === option && (
                         <Check className="h-4 w-4 text-white" />
                       )}
@@ -314,7 +346,7 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
     );
   }
 
-  if (step === 'results') {
+  if (step === "results") {
     const performance = getPerformanceLevel();
     const percentage = Math.round((score / totalQuestions) * 100);
 
@@ -339,32 +371,44 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
               </div>
             </div>
 
-            <div className={`inline-block px-6 py-3 rounded-full ${performance.bg} mb-8`}>
+            <div
+              className={`inline-block px-6 py-3 rounded-full ${performance.bg} mb-8`}
+            >
               <span className={`text-lg font-semibold ${performance.color}`}>
                 {performance.level}
               </span>
             </div>
 
             <div className="bg-slate-50 rounded-xl p-6 mb-8 text-left">
-              <h3 className="font-semibold text-slate-900 mb-3">Recommendations:</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">
+                Recommendations:
+              </h3>
               <ul className="space-y-2 text-slate-600">
                 {percentage < 70 && (
                   <>
-                    <li>• Consider enrolling in comprehensive cybersecurity training</li>
+                    <li>
+                      • Consider enrolling in comprehensive cybersecurity
+                      training
+                    </li>
                     <li>• Review basic security concepts and best practices</li>
                     <li>• Stay updated on latest security threats</li>
                   </>
                 )}
                 {percentage >= 70 && percentage < 90 && (
                   <>
-                    <li>• Good foundation! Consider advanced training modules</li>
+                    <li>
+                      • Good foundation! Consider advanced training modules
+                    </li>
                     <li>• Focus on emerging threats and trends</li>
                     <li>• Practice identifying phishing attempts</li>
                   </>
                 )}
                 {percentage >= 90 && (
                   <>
-                    <li>• Excellent knowledge! Help train others in your organization</li>
+                    <li>
+                      • Excellent knowledge! Help train others in your
+                      organization
+                    </li>
                     <li>• Stay current with evolving security landscape</li>
                     <li>• Consider specialized security certifications</li>
                   </>
@@ -374,13 +418,13 @@ export const PublicAssessment: React.FC<PublicAssessmentProps> = ({ onNavigate }
 
             <div className="space-y-4">
               <button
-                onClick={() => onNavigate('landing')}
+                onClick={() => navigate('/')}
                 className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-lg transition-all duration-300"
               >
                 Request a Demo to Improve Your Skills
               </button>
               <button
-                onClick={() => onNavigate('landing')}
+                onClick={() => navigate('/')}
                 className="w-full py-4 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
               >
                 Back to Home

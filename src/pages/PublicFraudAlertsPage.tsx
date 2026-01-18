@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle, Shield, ChevronRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 interface FraudAlert {
   id: string;
@@ -12,15 +13,11 @@ interface FraudAlert {
   video_url?: string;
 }
 
-interface PublicFraudAlertsPageProps {
-  onNavigate: (page: string) => void;
-}
-
-export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ onNavigate }) => {
+export const PublicFraudAlertsPage = () => {
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<FraudAlert | null>(null);
-
+  const navigate = useNavigate();
   useEffect(() => {
     const fetchAlerts = async () => {
       const { data, error } = await supabase
@@ -137,7 +134,7 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
 
             <div className="mt-8 pt-6 border-t border-gray-200">
               <button
-                onClick={() => onNavigate('login')}
+                onClick={() => navigate('/login')}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
               >
                 Login to See Employee Guidelines
@@ -153,7 +150,7 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800">
       <div className="max-w-6xl mx-auto px-4 py-12">
         <button
-          onClick={() => onNavigate('landing')}
+          onClick={() => navigate('/')}
           className="inline-flex items-center gap-2 text-white hover:text-gray-300 mb-6 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
