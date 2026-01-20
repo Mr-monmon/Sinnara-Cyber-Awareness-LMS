@@ -1,14 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, Save, Plus, X } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
-
-interface Course {
-  id: string;
-  title: string;
-  description: string;
-  department_ids: string[] | null;
-}
+import React, { useState, useEffect } from "react";
+import { BookOpen, Plus, X } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
+import { supabase } from "../../lib/supabase";
+import { Course } from "../../lib/types";
 
 interface Department {
   id: string;
@@ -31,63 +25,68 @@ export const CourseAssignmentPage: React.FC = () => {
 
     try {
       const [coursesRes, deptsRes] = await Promise.all([
-        supabase.from('courses').select('*').order('order_index'),
+        supabase.from("courses").select("*").order("order_index"),
         supabase
-          .from('departments')
-          .select('id, name')
-          .eq('company_id', user.company_id)
-          .order('name')
+          .from("departments")
+          .select("id, name")
+          .eq("company_id", user.company_id)
+          .order("name"),
       ]);
 
       if (coursesRes.data) setCourses(coursesRes.data);
       if (deptsRes.data) setDepartments(deptsRes.data);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const toggleDepartment = async (courseId: string, deptId: string) => {
-    const course = courses.find(c => c.id === courseId);
+    const course = courses.find((c) => c.id === courseId);
     if (!course) return;
 
     if (saving === courseId) return;
 
     setSaving(courseId);
 
-    const isAssignedToAll = !course.department_ids || course.department_ids.length === 0;
+    const isAssignedToAll =
+      !course.department_ids || course.department_ids.length === 0;
 
     let newDepts: string[];
 
     if (isAssignedToAll) {
-      newDepts = departments.map(d => d.id).filter(id => id !== deptId);
+      newDepts = departments.map((d) => d.id).filter((id) => id !== deptId);
     } else {
       const currentDepts = course.department_ids || [];
       const isRemoving = currentDepts.includes(deptId);
       newDepts = isRemoving
-        ? currentDepts.filter(id => id !== deptId)
+        ? currentDepts.filter((id) => id !== deptId)
         : [...currentDepts, deptId];
     }
 
     try {
       const { error } = await supabase
-        .from('courses')
+        .from("courses")
         .update({ department_ids: newDepts.length > 0 ? newDepts : null })
-        .eq('id', courseId);
+        .eq("id", courseId);
 
       if (error) {
-        console.error('Supabase error:', error);
+        console.error("Supabase error:", error);
         throw error;
       }
 
-      setCourses(courses.map(c =>
-        c.id === courseId ? { ...c, department_ids: newDepts.length > 0 ? newDepts : null } : c
-      ));
+      setCourses(
+        courses.map((c) =>
+          c.id === courseId
+            ? { ...c, department_ids: newDepts.length > 0 ? newDepts : null }
+            : c
+        )
+      );
 
       await loadData();
     } catch (error) {
-      console.error('Error updating course departments:', error);
+      console.error("Error updating course departments:", error);
       alert(`Failed to update department assignment. Please try again.`);
     } finally {
       setSaving(null);
@@ -99,18 +98,20 @@ export const CourseAssignmentPage: React.FC = () => {
 
     try {
       const { error } = await supabase
-        .from('courses')
+        .from("courses")
         .update({ department_ids: null })
-        .eq('id', courseId);
+        .eq("id", courseId);
 
       if (error) throw error;
 
-      setCourses(courses.map(c =>
-        c.id === courseId ? { ...c, department_ids: null } : c
-      ));
+      setCourses(
+        courses.map((c) =>
+          c.id === courseId ? { ...c, department_ids: null } : c
+        )
+      );
     } catch (error) {
-      console.error('Error updating course:', error);
-      alert('Failed to assign course to all departments');
+      console.error("Error updating course:", error);
+      alert("Failed to assign course to all departments");
     } finally {
       setSaving(null);
     }
@@ -127,9 +128,12 @@ export const CourseAssignmentPage: React.FC = () => {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Course Assignment by Department</h1>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          Course Assignment by Department
+        </h1>
         <p className="text-slate-600">
-          Control which departments have access to each course. Leave empty to make available to all departments.
+          Control which departments have access to each course. Leave empty to
+          make available to all departments.
         </p>
       </div>
 
@@ -143,7 +147,8 @@ export const CourseAssignmentPage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {courses.map((course) => {
-            const isAssignedToAll = !course.department_ids || course.department_ids.length === 0;
+            const isAssignedToAll =
+              !course.department_ids || course.department_ids.length === 0;
             const assignedDepts = course.department_ids || [];
 
             return (
@@ -157,35 +162,44 @@ export const CourseAssignmentPage: React.FC = () => {
                       <BookOpen className="h-5 w-5 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-bold text-slate-900 mb-1">{course.title}</h3>
-                      <p className="text-sm text-slate-600 line-clamp-2">{course.description}</p>
+                      <h3 className="font-bold text-slate-900 mb-1">
+                        {course.title}
+                      </h3>
+                      <p className="text-sm text-slate-600 line-clamp-2">
+                        {course.description}
+                      </p>
                     </div>
                   </div>
 
                   {saving === course.id && (
-                    <div className="text-sm text-blue-600 font-medium">Saving...</div>
+                    <div className="text-sm text-blue-600 font-medium">
+                      Saving...
+                    </div>
                   )}
                 </div>
 
                 <div className="border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-slate-700">Assigned Departments:</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      Assigned Departments:
+                    </span>
                     <button
                       onClick={() => assignToAll(course.id)}
                       disabled={saving === course.id}
                       className={`text-sm px-3 py-1 rounded-lg transition-colors ${
                         isAssignedToAll
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          ? "bg-green-100 text-green-700"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {isAssignedToAll ? '✓ All Departments' : 'Assign to All'}
+                      {isAssignedToAll ? "✓ All Departments" : "Assign to All"}
                     </button>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     {departments.map((dept) => {
-                      const isAssigned = isAssignedToAll || assignedDepts.includes(dept.id);
+                      const isAssigned =
+                        isAssignedToAll || assignedDepts.includes(dept.id);
 
                       return (
                         <button
@@ -194,11 +208,9 @@ export const CourseAssignmentPage: React.FC = () => {
                           disabled={saving === course.id}
                           className={`px-4 py-2 rounded-lg border-2 transition-all font-medium text-sm flex items-center gap-2 ${
                             isAssigned
-                              ? 'border-blue-500 bg-blue-50 text-blue-700 hover:border-red-500 hover:bg-red-50 hover:text-red-700'
-                              : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50'
-                          } ${
-                            saving === course.id ? 'opacity-50' : ''
-                          }`}
+                              ? "border-blue-500 bg-blue-50 text-blue-700 hover:border-red-500 hover:bg-red-50 hover:text-red-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
+                          } ${saving === course.id ? "opacity-50" : ""}`}
                         >
                           {isAssigned ? (
                             <>
@@ -218,7 +230,8 @@ export const CourseAssignmentPage: React.FC = () => {
 
                   {!isAssignedToAll && assignedDepts.length > 0 && (
                     <div className="mt-3 text-xs text-slate-500">
-                      Course available to {assignedDepts.length} department{assignedDepts.length !== 1 ? 's' : ''}
+                      Course available to {assignedDepts.length} department
+                      {assignedDepts.length !== 1 ? "s" : ""}
                     </div>
                   )}
                 </div>
@@ -233,7 +246,8 @@ export const CourseAssignmentPage: React.FC = () => {
           <BookOpen className="h-16 w-16 text-slate-300 mx-auto mb-4" />
           <p className="text-slate-600 font-medium">No courses available</p>
           <p className="text-sm text-slate-500 mt-2">
-            Courses will appear here once they are created by the platform admin.
+            Courses will appear here once they are created by the platform
+            admin.
           </p>
         </div>
       )}
