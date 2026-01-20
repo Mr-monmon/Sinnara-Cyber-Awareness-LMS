@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CheckCircle, Circle, PlayCircle, FileText, ClipboardCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import ArticlePreview from './ArticlePreview';
 
 interface CourseSection {
   id: string;
@@ -455,11 +456,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
 
               {currentSection.section_type === 'ARTICLE' && (
                 <div>
-                  <div className="prose max-w-none mb-6">
-                    <div className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-                      {currentSection.content}
-                    </div>
-                  </div>
+                  <ArticlePreview html={currentSection.content} />
 
                   {!isSectionCompleted(currentSection.id) && (
                     <button

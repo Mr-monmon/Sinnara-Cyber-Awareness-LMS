@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
+import Quill from 'quill';
 import { supabase } from '../../lib/supabase';
 import { Course } from '../../lib/types';
 
@@ -55,6 +56,9 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     correct_answer: string;
   }>>([]);
   const [currentQuestion, setCurrentQuestion] = useState(defaultQuestion);
+  const [articlePlainText, setArticlePlainText] = useState('');
+  const quillContainerRef = useRef<HTMLDivElement | null>(null);
+  const quillInstanceRef = useRef<Quill | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -79,6 +83,53 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     setCurrentQuestion(defaultQuestion);
   }, [editingSection, open]);
 
+  useEffect(() => {
+    if (!open || formData.section_type !== 'ARTICLE') return;
+    if (!quillContainerRef.current) return;
+
+    if (!quillInstanceRef.current) {
+      quillInstanceRef.current = new Quill(quillContainerRef.current, {
+        theme: 'snow',
+        placeholder: 'اكتب محتوى المقال هنا...',
+        modules: {
+          toolbar: [
+            [{ header: [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link', 'blockquote', 'code-block'],
+            ['clean']
+          ]
+        }
+      });
+
+      quillInstanceRef.current.on('text-change', () => {
+        const quill = quillInstanceRef.current;
+        if (!quill) return;
+        const html = quill.root.innerHTML;
+        const plainText = quill.getText().trim();
+        setFormData((prev) => (prev.content === html ? prev : { ...prev, content: html }));
+        setArticlePlainText(plainText);
+      });
+    }
+
+    const quill = quillInstanceRef.current;
+    if (!quill) return;
+
+    const incomingHtml = formData.content || '';
+    const currentHtml = quill.root.innerHTML;
+
+    if (incomingHtml && incomingHtml !== currentHtml) {
+      quill.clipboard.dangerouslyPasteHTML(incomingHtml);
+      setArticlePlainText(quill.getText().trim());
+      return;
+    }
+
+    if (!incomingHtml && currentHtml !== '<p><br></p>') {
+      quill.setText('');
+      setArticlePlainText('');
+    }
+  }, [formData.content, formData.section_type, open]);
+
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,6 +137,11 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
     try {
       let contentData = {};
+
+      if (formData.section_type === 'ARTICLE' && articlePlainText.trim().length === 0) {
+        alert('يجب كتابة محتوى المقال');
+        return;
+      }
 
       if (formData.section_type === 'QUIZ') {
         if (quizQuestions.length === 0) {
@@ -236,14 +292,9 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 محتوى المقال *
               </label>
-              <textarea
-                required
-                rows={10}
-                value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder="اكتب محتوى المقال هنا..."
-              />
+              <div className="w-full border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+                <div ref={quillContainerRef} className="min-h-[240px] [&_.ql-editor]:min-h-[200px]" />
+              </div>
             </div>
           )}
 
