@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   LogOut,
   Menu,
@@ -12,7 +12,6 @@ import {
   CreditCard,
   History,
   Award,
-  Layout,
   FolderTree,
   Send,
   ChevronDown,
@@ -20,9 +19,9 @@ import {
   Shield,
   Mail,
   AlertCircle,
-} from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { NotificationBell } from '../NotificationBell';
+} from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
+import { NotificationBell } from "../NotificationBell";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -50,156 +49,152 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   /* 🔹 فتح القائمة الأم تلقائياً عند الدخول لصفحة فرعية */
   useEffect(() => {
     const parentMenus: Record<string, string> = {
-      companies: 'company-management',
-      users: 'company-management',
-      subscriptions: 'company-management',
+      companies: "company-management",
+      users: "company-management",
+      subscriptions: "company-management",
 
-      courses: 'content-management',
-      exams: 'content-management',
-      certificates: 'content-management',
+      courses: "content-management",
+      exams: "content-management",
+      certificates: "content-management",
 
-      'phishing-management': 'phishing-campaigns',
-      'phishing-templates': 'phishing-campaigns',
-      'phishing-results': 'phishing-campaigns',
+      "phishing-management": "phishing-campaigns",
+      "phishing-templates": "phishing-campaigns",
+      "phishing-results": "phishing-campaigns",
     };
 
     const parent = parentMenus[activePage];
 
     if (parent && !expandedMenus.includes(parent)) {
-      setExpandedMenus(prev => [...prev, parent]);
+      setExpandedMenus((prev) => [...prev, parent]);
     }
   }, [activePage]);
 
   const toggleMenu = (menuId: string) => {
-    setExpandedMenus(prev =>
+    setExpandedMenus((prev) =>
       prev.includes(menuId)
-        ? prev.filter(id => id !== menuId)
+        ? prev.filter((id) => id !== menuId)
         : [...prev, menuId]
     );
   };
 
   const getMenuItems = (): MenuItem[] => {
-    if (user?.role === 'PLATFORM_ADMIN') {
+    if (user?.role === "PLATFORM_ADMIN") {
       return [
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+        { id: "dashboard", label: "Dashboard", icon: BarChart3 },
         {
-          id: 'company-management',
-          label: 'Company Management',
+          id: "company-management",
+          label: "Company Management",
           icon: Building2,
           children: [
-            { id: 'companies', label: 'Companies', icon: Building2 },
-            { id: 'users', label: 'Users', icon: Users },
+            { id: "companies", label: "Companies", icon: Building2 },
+            { id: "users", label: "Users", icon: Users },
             {
-              id: 'subscriptions',
-              label: 'Subscriptions & Bills',
+              id: "subscriptions",
+              label: "Subscriptions & Bills",
               icon: CreditCard,
             },
           ],
         },
         {
-          id: 'content-management',
-          label: 'Training Content',
+          id: "content-management",
+          label: "Training Content",
           icon: BookOpen,
           children: [
-            { id: 'courses', label: 'Courses', icon: BookOpen },
-            { id: 'exams', label: 'Tests', icon: ClipboardCheck },
+            { id: "courses", label: "Courses", icon: BookOpen },
+            { id: "exams", label: "Tests", icon: ClipboardCheck },
             {
-              id: 'certificates',
-              label: 'Certificate Templates',
+              id: "certificates",
+              label: "Certificate Templates",
               icon: Award,
             },
           ],
         },
         {
-          id: 'phishing-campaigns',
-          label: 'Phishing Campaigns',
+          id: "phishing-campaigns",
+          label: "Phishing Campaigns",
           icon: Shield,
           children: [
             {
-              id: 'phishing-management',
-              label: 'Campaign Requests',
+              id: "phishing-management",
+              label: "Campaign Requests",
               icon: Shield,
             },
             {
-              id: 'phishing-templates',
-              label: 'Email Templates',
+              id: "phishing-templates",
+              label: "Email Templates",
               icon: Mail,
             },
             {
-              id: 'phishing-results',
-              label: 'Campaign Results',
+              id: "phishing-results",
+              label: "Campaign Results",
               icon: Mail,
             },
           ],
         },
-        { id: 'analytics', label: 'Analysis & Reports', icon: BarChart3 },
+        { id: "analytics", label: "Analysis & Reports", icon: BarChart3 },
         {
-          id: 'fraud-alerts-management',
-          label: 'Fraud Alerts Management',
+          id: "fraud-alerts-management",
+          label: "Fraud Alerts Management",
           icon: AlertCircle,
         },
         {
-          id: 'partners-management',
-          label: 'Partners Management',
+          id: "partners-management",
+          label: "Partners Management",
           icon: Building2,
         },
+
+        { id: "audit-logs", label: "Activity Log", icon: History },
+        { id: "demo-requests", label: "Demo Requests", icon: Users },
         {
-          id: 'homepage-content',
-          label: 'Content Management',
-          icon: Layout,
-        },
-        { id: 'audit-logs', label: 'Activity Log', icon: History },
-        { id: 'demo-requests', label: 'Demo Requests', icon: Users },
-        {
-          id: 'public-submissions',
-          label: 'Public Submissions',
+          id: "public-submissions",
+          label: "Public Submissions",
           icon: FileText,
         },
       ];
     }
 
-    if (user?.role === 'COMPANY_ADMIN') {
+    if (user?.role === "COMPANY_ADMIN") {
       return [
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-        { id: 'employees', label: 'Employees', icon: Users },
-        { id: 'departments', label: 'Departments', icon: FolderTree },
+        { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+        { id: "employees", label: "Employees", icon: Users },
+        { id: "departments", label: "Departments", icon: FolderTree },
         {
-          id: 'course-assignment',
-          label: 'Course Assignment',
+          id: "course-assignment",
+          label: "Course Assignment",
           icon: BookOpen,
         },
         {
-          id: 'exam-assignment',
-          label: 'Test Assignments',
+          id: "exam-assignment",
+          label: "Test Assignments",
           icon: Send,
         },
         {
-          id: 'phishing-campaigns',
-          label: 'Phishing Campaigns',
+          id: "phishing-campaigns",
+          label: "Phishing Campaigns",
           icon: Shield,
           children: [
             {
-              id: 'phishing-dashboard',
-              label: 'Campaign Board',
+              id: "phishing-dashboard",
+              label: "Campaign Board",
               icon: Shield,
             },
             {
-              id: 'phishing-request',
-              label: 'Request Campaign',
+              id: "phishing-request",
+              label: "Request Campaign",
               icon: Send,
             },
           ],
         },
-        { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+        { id: "analytics", label: "Analytics", icon: BarChart3 },
       ];
     }
 
     return [
-      { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-      { id: 'my-courses', label: 'My Courses', icon: BookOpen },
-      { id: 'my-exams', label: 'Assessments', icon: ClipboardCheck },
-      { id: 'fraud-alerts', label: 'Fraud Alerts', icon: AlertCircle },
-      { id: 'certificates', label: 'Certificates', icon: FileText },
+      { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+      { id: "my-courses", label: "My Courses", icon: BookOpen },
+      { id: "my-exams", label: "Assessments", icon: ClipboardCheck },
+      { id: "fraud-alerts", label: "Fraud Alerts", icon: AlertCircle },
+      { id: "certificates", label: "Certificates", icon: FileText },
     ];
   };
 
@@ -208,10 +203,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     const isExpanded = expandedMenus.includes(item.id);
     const isActive =
       activePage === item.id ||
-      item.children?.some(child => child.id === activePage);
+      item.children?.some((child) => child.id === activePage);
 
     const baseClasses =
-      'w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-all';
+      "w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-all";
 
     if (hasChildren) {
       return (
@@ -220,8 +215,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onClick={() => toggleMenu(item.id)}
             className={`${baseClasses} ${
               isActive
-                ? 'bg-slate-800 text-white'
-                : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
+                ? "bg-slate-800 text-white"
+                : "text-slate-400 hover:bg-slate-800/60 hover:text-white"
             }`}
           >
             <item.icon className="h-4 w-4 opacity-80" />
@@ -238,7 +233,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
           {sidebarOpen && isExpanded && (
             <div className="ml-6 pl-3 border-l border-slate-700 space-y-1">
-              {item.children?.map(child => renderMenuItem(child))}
+              {item.children?.map((child) => renderMenuItem(child))}
             </div>
           )}
         </div>
@@ -251,8 +246,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         onClick={() => onNavigate(item.id)}
         className={`${baseClasses} ${
           activePage === item.id
-            ? 'bg-blue-500/10 text-blue-400 border-l-2 border-blue-500'
-            : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
+            ? "bg-blue-500/10 text-blue-400 border-l-2 border-blue-500"
+            : "text-slate-400 hover:bg-slate-800/60 hover:text-white"
         }`}
       >
         <item.icon className="h-4 w-4 opacity-80" />
@@ -267,7 +262,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     <div className="min-h-screen flex bg-slate-50">
       <aside
         className={`${
-          sidebarOpen ? 'w-64' : 'w-20'
+          sidebarOpen ? "w-64" : "w-20"
         } bg-slate-900 text-white transition-all duration-300 flex flex-col`}
       >
         <div className="p-5 flex items-center justify-between border-b border-slate-800">
@@ -290,7 +285,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {menuItems.map(item => renderMenuItem(item))}
+          {menuItems.map((item) => renderMenuItem(item))}
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-3">
@@ -299,7 +294,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <div className="text-slate-400 text-xs mb-1">Signed in as</div>
               <div className="font-medium truncate">{user?.full_name}</div>
               <div className="text-xs text-slate-400">
-                {user?.role.replace('_', ' ')}
+                {user?.role.replace("_", " ")}
               </div>
             </div>
           )}
@@ -316,11 +311,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <main className="flex-1 overflow-auto">
         <div className="bg-white border-b border-slate-200 sticky top-0 z-30 px-8 py-4 flex items-center justify-between">
           <div className="text-sm text-slate-600">
-            {user?.role === 'EMPLOYEE'
-              ? 'Employee Portal'
-              : user?.role === 'COMPANY_ADMIN'
-              ? 'Company Admin Panel'
-              : 'Platform Admin Panel'}
+            {user?.role === "EMPLOYEE"
+              ? "Employee Portal"
+              : user?.role === "COMPANY_ADMIN"
+              ? "Company Admin Panel"
+              : "Platform Admin Panel"}
           </div>
           <NotificationBell onNavigate={onNavigate} />
         </div>
