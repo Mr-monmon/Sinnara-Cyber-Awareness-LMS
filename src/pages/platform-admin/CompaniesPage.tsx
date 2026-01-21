@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Building2, Settings, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Company, Course, Exam } from '../../types';
+import { Company, Course, Exam } from '../../lib/types';
 import { CompanyFormModal } from '../../components/platform-admin/CompanyFormModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CompanyWithQuota extends Company {
   annual_quota?: number;
@@ -10,6 +11,7 @@ interface CompanyWithQuota extends Company {
 }
 
 export const CompaniesPage: React.FC = () => {
+  const { user } = useAuth();
   const [companies, setCompanies] = useState<CompanyWithQuota[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -17,7 +19,7 @@ export const CompaniesPage: React.FC = () => {
   const [assigningCompany, setAssigningCompany] = useState<Company | null>(null);
   const [editingQuota, setEditingQuota] = useState<string | null>(null);
   const [quotaValue, setQuotaValue] = useState<number>(4);
-
+  
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
@@ -127,6 +129,7 @@ export const CompaniesPage: React.FC = () => {
         if (userError) throw userError;
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'UPDATE_COMPANY',
           entity_type: 'COMPANY',
           entity_id: editingCompany.id,
@@ -166,6 +169,7 @@ export const CompaniesPage: React.FC = () => {
         }]);
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'CREATE_COMPANY',
           entity_type: 'COMPANY',
           entity_id: newCompany.id,

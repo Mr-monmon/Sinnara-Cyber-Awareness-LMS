@@ -1,18 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Edit2, Trash2, Upload, Download, Shield, Building2, Plus, Key } from 'lucide-react';
+import { Users, Search, Trash2, Upload, Download, Building2, Plus, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-
-interface User {
-  id: string;
-  email: string;
-  full_name: string;
-  phone?: string;
-  employee_id?: string;
-  role: 'PLATFORM_ADMIN' | 'COMPANY_ADMIN' | 'EMPLOYEE';
-  company_id?: string;
-  department?: string;
-  created_at: string;
-}
+import { User } from '../../lib/types';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Company {
   id: string;
@@ -20,6 +10,7 @@ interface Company {
 }
 
 export const UsersManagementPage: React.FC = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +105,7 @@ export const UsersManagementPage: React.FC = () => {
       if (error) throw error;
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'CREATE_USER',
         entity_type: 'USER',
         description: `Created user: ${newUserData.email}`,
@@ -153,6 +145,7 @@ export const UsersManagementPage: React.FC = () => {
       if (error) throw error;
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'RESET_PASSWORD',
         entity_type: 'USER',
         entity_id: userId,
@@ -180,6 +173,7 @@ export const UsersManagementPage: React.FC = () => {
       if (error) throw error;
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'ROLE_CHANGE',
         entity_type: 'USER',
         entity_id: userId,
@@ -209,6 +203,7 @@ export const UsersManagementPage: React.FC = () => {
       if (error) throw error;
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'DELETE_USER',
         entity_type: 'USER',
         entity_id: userId,
@@ -291,6 +286,7 @@ export const UsersManagementPage: React.FC = () => {
         if (error) throw error;
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'UPLOAD_EMPLOYEES',
           entity_type: 'EMPLOYEE',
           description: `Uploaded ${employees.length} employees from Excel`,
