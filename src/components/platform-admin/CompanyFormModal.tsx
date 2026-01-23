@@ -30,7 +30,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
         admin_name: (company as any).admin_name || '',
         admin_email: (company as any).admin_email || '',
         admin_phone: (company as any).admin_phone || '',
-        package_type: company.package_type || 'TYPE_A',
+        package_type: company.package_type === 'TYPE_B' ? 'TYPE_B' : 'TYPE_A',
         license_limit: company.license_limit || 10,
         subscription_type: (company as any).subscription_type || 'POC_3M',
         subscription_start: (company as any).subscription_start?.split('T')[0] || new Date().toISOString().split('T')[0],

@@ -11,7 +11,10 @@ export interface Exam {
   id: string;
   title: string;
   description: string;
+  exam_type: 'PRE_ASSESSMENT' | 'POST_ASSESSMENT' | 'GENERAL';
   passing_score: number;
+  time_limit_minutes: number | null;
+  created_at: string;
 }
 
 export interface User {
@@ -31,6 +34,11 @@ export interface Course {
   title: string;
   description: string;
   department_ids: string[] | null;
+  content_type: 'VIDEO' | 'SLIDES' | 'TEXT';
+  content_url: string | null;
+  duration_minutes: number;
+  order_index: number;
+  created_at: string;
 }
 
 export interface CourseSection {
@@ -94,6 +102,9 @@ export interface Company {
   is_active?: boolean;
   reminder_sent?: boolean;
   reminder_sent_at?: string;
+  package_type?: string;
+  license_limit?: number;
+  created_at?: Date;
 }
 
 export interface Invoice {
@@ -110,4 +121,17 @@ export interface Invoice {
   payment_date?: string;
   payment_method?: string;
   notes?: string;
+}
+
+export interface PublicAssessment {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  company_name: string | null;
+  job_title: string | null;
+  score: number;
+  total_questions: number;
+  answers: Record<string, string>;
+  completed_at: string;
 }

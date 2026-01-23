@@ -362,7 +362,7 @@ export const CompaniesPage: React.FC = () => {
                   )}
                 </td>
                 <td className="px-6 py-4 text-slate-600">
-                  {new Date(company.created_at).toLocaleDateString()}
+                  {company.created_at ? new Date(company.created_at).toLocaleDateString() : 'N/A'}
                 </td>
                 <td className="px-6 py-4 text-left">
                   <div className="flex items-center justify-start gap-2">

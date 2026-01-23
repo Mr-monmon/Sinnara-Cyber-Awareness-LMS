@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { PublicAssessment } from '../../types';
+import { PublicAssessment } from '../../lib/types';
 
 export const PublicSubmissionsPage: React.FC = () => {
   const [submissions, setSubmissions] = useState<PublicAssessment[]>([]);
