@@ -469,7 +469,7 @@ export const AuditLogsPage: React.FC = () => {
                     Date and Time
                   </label>
                   <div className="text-slate-900">
-                    {new Date(selectedLog.created_at).toLocaleString("ar-SA")}
+                    {new Date(selectedLog.created_at).toLocaleString("en-US")}
                   </div>
                 </div>
 

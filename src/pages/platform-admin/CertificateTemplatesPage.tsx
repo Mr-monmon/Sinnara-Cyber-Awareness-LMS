@@ -154,8 +154,8 @@ export const CertificateTemplatesPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">قوالب الشهادات</h1>
-          <p className="text-slate-600 mt-2">تخصيص تصميم الشهادات الصادرة</p>
+          <h1 className="text-3xl font-bold text-slate-900">Certificate Templates</h1>
+          <p className="text-slate-600 mt-2">Customize the design of the certificates issued</p>
         </div>
         <button
           onClick={() => {
@@ -166,7 +166,7 @@ export const CertificateTemplatesPage: React.FC = () => {
           className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-5 w-5" />
-          قالب جديد
+          New Template
         </button>
       </div>
 
@@ -216,7 +216,7 @@ export const CertificateTemplatesPage: React.FC = () => {
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
                 >
                   <Eye className="h-4 w-4" />
-                  معاينة
+                  Preview
                 </button>
                 <button
                   onClick={() => handleEdit(template)}
@@ -253,14 +253,14 @@ export const CertificateTemplatesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-6 my-8">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              {selectedTemplate ? 'تعديل القالب' : 'قالب شهادة جديد'}
+              {selectedTemplate ? 'Edit Template' : 'Certificate Template'}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    اسم القالب *
+                    Template Name *
                   </label>
                   <input
                     type="text"
@@ -273,14 +273,14 @@ export const CertificateTemplatesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    الدورة (اختياري)
+                    Course (optional)
                   </label>
                   <select
                     value={formData.course_id}
                     onChange={(e) => setFormData({ ...formData, course_id: e.target.value })}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">عام لجميع الدورات</option>
+                    <option value="">General for all courses</option>
                     {courses.map(course => (
                       <option key={course.id} value={course.id}>{course.title}</option>
                     ))}
@@ -290,7 +290,7 @@ export const CertificateTemplatesPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  تصميم الشهادة (HTML) *
+                  Certificate Design (HTML) *
                 </label>
                 <textarea
                   value={formData.template_html}
@@ -300,14 +300,14 @@ export const CertificateTemplatesPage: React.FC = () => {
                   required
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  المتغيرات المتاحة: {'{'}{'employee_name}'}, {'{'}{'course_name}'}, {'{'}{'completion_date}'}, {'{'}{'score}'}
+                  Available Variables: {'{'}{'employee_name}'}, {'{'}{'course_name}'}, {'{'}{'completion_date}'}, {'{'}{'score}'}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    رابط صورة الخلفية
+                    Background Image URL
                   </label>
                   <input
                     type="url"
@@ -320,7 +320,7 @@ export const CertificateTemplatesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    رابط الشعار
+                    Logo URL
                   </label>
                   <input
                     type="url"
@@ -333,7 +333,7 @@ export const CertificateTemplatesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    رابط التوقيع
+                    Signature Image URL
                   </label>
                   <input
                     type="url"
@@ -346,7 +346,7 @@ export const CertificateTemplatesPage: React.FC = () => {
               </div>
 
               <div className="bg-slate-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">معاينة:</h3>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Preview:</h3>
                 <div
                   dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
                   className="bg-white rounded-lg overflow-hidden"
@@ -359,7 +359,7 @@ export const CertificateTemplatesPage: React.FC = () => {
                   type="submit"
                   className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                 >
-                  حفظ القالب
+                  Save Template
                 </button>
                 <button
                   type="button"
@@ -369,7 +369,7 @@ export const CertificateTemplatesPage: React.FC = () => {
                   }}
                   className="flex-1 px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-medium"
                 >
-                  إلغاء
+                  Cancel
                 </button>
               </div>
             </form>
@@ -381,12 +381,12 @@ export const CertificateTemplatesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-slate-900">معاينة الشهادة</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Certificate Preview</h2>
               <button
                 onClick={() => setShowPreview(false)}
                 className="text-slate-500 hover:text-slate-700 text-2xl"
               >
-                ×
+                Close
               </button>
             </div>
             <div

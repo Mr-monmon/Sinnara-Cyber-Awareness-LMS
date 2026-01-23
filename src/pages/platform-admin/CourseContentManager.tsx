@@ -57,7 +57,7 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذا القسم؟")) return;
+    if (!confirm("Are you sure you want to delete this section?")) return;
 
     try {
       const { error } = await supabase
@@ -68,7 +68,7 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
       await loadSections();
     } catch (error) {
       console.error("Error deleting section:", error);
-      alert("فشل حذف القسم");
+      alert("Failed to delete section");
     }
   };
 
@@ -88,11 +88,11 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
   const getSectionTypeLabel = (type: string) => {
     switch (type) {
       case "VIDEO":
-        return "فيديو";
+        return "Video";
       case "ARTICLE":
-        return "مقال";
+        return "Article";
       case "QUIZ":
-        return "اختبار";
+        return "Quiz";
       default:
         return type;
     }
@@ -185,7 +185,7 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
       setHasOrderChanged(false);
     } catch (error) {
       console.error("Error updating section order:", error);
-      alert("فشل تحديث ترتيب الأقسام");
+      alert("Failed to update section order");
     } finally {
       setIsUpdatingOrder(false);
     }
@@ -198,13 +198,13 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
         className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
       >
         <ArrowLeft className="h-5 w-5" />
-        العودة للدورات
+        Return to Courses
       </button>
 
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            إدارة محتوى الدورة
+            Course Content Management
           </h1>
           <p className="text-slate-600">{course.title}</p>
         </div>
@@ -228,7 +228,7 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
             <Plus className="h-5 w-5" />
-            إضافة قسم
+            Add Section
           </button>
         </div>
       </div>
@@ -279,11 +279,11 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
                       </span>
                     </div>
                     <div className="text-sm text-slate-600">
-                      {section.duration_minutes} دقيقة
+                      {section.duration_minutes} minutes
                       {section.section_type === "QUIZ" &&
                         section.content_data?.questions && (
                           <span className="mr-3">
-                            • {section.content_data.questions.length} سؤال
+                            • {section.content_data.questions.length} question
                           </span>
                         )}
                     </div>
@@ -307,7 +307,7 @@ export const CourseContentManager: React.FC<CourseContentManagerProps> = ({
 
               {section.section_type === "VIDEO" && section.content && (
                 <div className="mt-4 text-sm text-slate-600">
-                  <span className="font-medium">رابط الفيديو:</span>{" "}
+                  <span className="font-medium">Video Link:</span>{" "}
                   {section.content}
                 </div>
               )}

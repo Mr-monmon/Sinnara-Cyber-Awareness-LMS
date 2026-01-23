@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, BookOpen, Settings } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Course } from '../../types';
+import { Course } from '../../lib/types';
 import { CourseContentManager } from './CourseContentManager';
 
 export const CoursesPage: React.FC = () => {
@@ -55,7 +55,7 @@ export const CoursesPage: React.FC = () => {
       await loadCourses();
     } catch (error) {
       console.error('Error saving course:', error);
-      alert('فشل حفظ الدورة');
+      alert('Failed to save course');
     }
   };
 
@@ -72,7 +72,7 @@ export const CoursesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الدورة؟')) return;
+    if (!confirm('Are you sure you want to delete this course?')) return;
 
     try {
       const { error } = await supabase.from('courses').delete().eq('id', id);
@@ -80,7 +80,7 @@ export const CoursesPage: React.FC = () => {
       await loadCourses();
     } catch (error) {
       console.error('Error deleting course:', error);
-      alert('فشل حذف الدورة');
+      alert('Failed to delete course');
     }
   };
 
@@ -92,8 +92,8 @@ export const CoursesPage: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">الدورات التدريبية</h1>
-          <p className="text-slate-600">إدارة مكتبة المحتوى التدريبي</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Training Courses</h1>
+          <p className="text-slate-600">Training Content Management</p>
         </div>
         <button
           onClick={() => {
@@ -104,7 +104,7 @@ export const CoursesPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
         >
           <Plus className="h-5 w-5" />
-          إضافة دورة
+          Add Course
         </button>
       </div>
 
@@ -119,7 +119,7 @@ export const CoursesPage: React.FC = () => {
                 <button
                   onClick={() => setManagingCourse(course)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                  title="إدارة المحتوى"
+                  title="Content Management"
                 >
                   <Settings className="h-4 w-4" />
                 </button>
@@ -143,9 +143,9 @@ export const CoursesPage: React.FC = () => {
 
             <div className="flex items-center justify-between text-sm">
               <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full">
-                {course.content_type === 'VIDEO' ? 'فيديو' : course.content_type === 'SLIDES' ? 'عرض تقديمي' : 'نص'}
+                {course.content_type === 'VIDEO' ? 'Video' : course.content_type === 'SLIDES' ? 'Slides' : 'Text'}
               </span>
-              <span className="text-slate-600">{course.duration_minutes} دقيقة</span>
+              <span className="text-slate-600">{course.duration_minutes} minutes</span>
             </div>
           </div>
         ))}
@@ -161,13 +161,13 @@ export const CoursesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              {editingCourse ? 'تعديل الدورة' : 'إضافة دورة جديدة'}
+              {editingCourse ? 'Edit Course' : 'Add New Course'}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  عنوان الدورة *
+                  Course Title *
                 </label>
                 <input
                   type="text"
@@ -180,7 +180,7 @@ export const CoursesPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  الوصف *
+                  Description *
                 </label>
                 <textarea
                   required
@@ -193,22 +193,22 @@ export const CoursesPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  نوع المحتوى *
+                  Content Type *
                 </label>
                 <select
                   value={formData.content_type}
                   onChange={(e) => setFormData({ ...formData, content_type: e.target.value as 'VIDEO' | 'SLIDES' | 'TEXT' })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="TEXT">نصي</option>
-                  <option value="VIDEO">فيديو</option>
-                  <option value="SLIDES">عرض تقديمي</option>
+                  <option value="TEXT">Text</option>
+                  <option value="VIDEO">Video</option>
+                  <option value="SLIDES">Slides</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  المدة (دقائق) *
+                  Duration (minutes) *
                 </label>
                 <input
                   type="number"
@@ -221,7 +221,7 @@ export const CoursesPage: React.FC = () => {
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-                <strong>ملاحظة:</strong> بعد إنشاء الدورة، استخدم زر "إدارة المحتوى" لإضافة الأقسام (فيديوهات، مقالات، اختبارات).
+                <strong>Note:</strong> After creating the course, use the "Content Management" button to add sections (videos, articles, quizzes).
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -233,13 +233,13 @@ export const CoursesPage: React.FC = () => {
                   }}
                   className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  إلغاء
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                 >
-                  {editingCourse ? 'تحديث' : 'إنشاء'}
+                  {editingCourse ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

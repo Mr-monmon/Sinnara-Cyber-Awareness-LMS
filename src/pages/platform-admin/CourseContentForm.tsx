@@ -90,7 +90,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     if (!quillInstanceRef.current) {
       quillInstanceRef.current = new Quill(quillContainerRef.current, {
         theme: 'snow',
-        placeholder: 'اكتب محتوى المقال هنا...',
+        placeholder: 'Write article content here...',
         modules: {
           toolbar: [
             [{ header: [1, 2, 3, false] }],
@@ -139,13 +139,13 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       let contentData = {};
 
       if (formData.section_type === 'ARTICLE' && articlePlainText.trim().length === 0) {
-        alert('يجب كتابة محتوى المقال');
+        alert('Article content is required');
         return;
       }
 
       if (formData.section_type === 'QUIZ') {
         if (quizQuestions.length === 0) {
-          alert('يجب إضافة سؤال واحد على الأقل للاختبار');
+          alert('At least one question is required for the quiz');
           return;
         }
         contentData = { questions: quizQuestions };
@@ -177,7 +177,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       onSaved();
     } catch (error) {
       console.error('Error saving section:', error);
-      alert('فشل حفظ القسم');
+      alert('Failed to save section');
     }
   };
 
@@ -190,17 +190,17 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     ].filter(o => o.trim());
 
     if (options.length < 2) {
-      alert('يجب إضافة خيارين على الأقل');
+      alert('At least two options are required');
       return;
     }
 
     if (!currentQuestion.question.trim()) {
-      alert('يجب كتابة السؤال');
+      alert('Question is required');
       return;
     }
 
     if (!options.includes(currentQuestion.correct_answer)) {
-      alert('الإجابة الصحيحة يجب أن تكون من ضمن الخيارات');
+      alert('The correct answer must be one of the options');
       return;
     }
 
@@ -221,13 +221,13 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-slate-900 mb-6">
-          {editingSection ? 'تعديل القسم' : 'إضافة قسم جديد'}
+          {editingSection ? 'Edit Section' : 'Add New Section'}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              عنوان القسم *
+              Section Title *
             </label>
             <input
               type="text"
@@ -235,13 +235,13 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="مثال: مقدمة في الأمن السيبراني"
+              placeholder="Example: Introduction to Cybersecurity"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              نوع القسم *
+              Section Type *
             </label>
             <select
               value={formData.section_type}
@@ -251,15 +251,15 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               }}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="VIDEO">فيديو</option>
-              <option value="ARTICLE">مقال</option>
-              <option value="QUIZ">اختبار</option>
+              <option value="VIDEO">Video</option>
+              <option value="ARTICLE">Article</option>
+              <option value="QUIZ">Quiz</option>
             </select>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              المدة (دقائق) *
+              Duration (minutes) *
             </label>
             <input
               type="number"
@@ -274,7 +274,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
           {formData.section_type === 'VIDEO' && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                رابط الفيديو (YouTube, Vimeo, etc.) *
+                Video Link (YouTube, Vimeo, etc.) *
               </label>
               <input
                 type="url"
@@ -290,7 +290,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
           {formData.section_type === 'ARTICLE' && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                محتوى المقال *
+                Article Content *
               </label>
               <div className="w-full border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
                 <div ref={quillContainerRef} className="min-h-[240px] [&_.ql-editor]:min-h-[200px]" />
@@ -301,11 +301,11 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
           {formData.section_type === 'QUIZ' && (
             <div className="space-y-6">
               <div className="bg-slate-50 rounded-xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">إضافة سؤال</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Add Question</h3>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    السؤال *
+                    Question *
                   </label>
                   <textarea
                     rows={2}
@@ -318,7 +318,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 1 *
+                      Option 1 *
                     </label>
                     <input
                       type="text"
@@ -330,7 +330,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 2 *
+                      Option 2 *
                     </label>
                     <input
                       type="text"
@@ -342,7 +342,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 3
+                      Option 3
                     </label>
                     <input
                       type="text"
@@ -354,7 +354,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 4
+                      Option 4
                     </label>
                     <input
                       type="text"
@@ -367,14 +367,14 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    الإجابة الصحيحة *
+                    Correct Answer *
                   </label>
                   <input
                     type="text"
                     value={currentQuestion.correct_answer}
                     onChange={(e) => setCurrentQuestion({ ...currentQuestion, correct_answer: e.target.value })}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    placeholder="يجب أن تطابق أحد الخيارات"
+                    placeholder="The correct answer must match one of the options"
                   />
                 </div>
 
@@ -383,14 +383,14 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
                   onClick={handleAddQuestion}
                   className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
                 >
-                  إضافة السؤال للقائمة
+                  Add Question to List
                 </button>
               </div>
 
               {quizQuestions.length > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-3">
-                    الأسئلة المضافة ({quizQuestions.length})
+                    Added Questions ({quizQuestions.length})
                   </h3>
                   <div className="space-y-3">
                     {quizQuestions.map((q, index) => (
@@ -435,13 +435,13 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               onClick={onClose}
               className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
             >
-              إلغاء
+              Cancel
             </button>
             <button
               type="submit"
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
-              {editingSection ? 'تحديث القسم' : 'حفظ القسم'}
+              {editingSection ? 'Update Section' : 'Save Section'}
             </button>
           </div>
         </form>

@@ -6,7 +6,7 @@ import {
   FileText,
   BarChart3,
   CreditCard,
-  History
+  History,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { CompaniesPage } from "./CompaniesPage";
@@ -182,11 +182,11 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <Building2 className="h-4 w-4 text-blue-600" />
                       <div className="font-medium text-blue-900">
-                        إدارة الشركات
+                        Manage Companies
                       </div>
                     </div>
                     <div className="text-xs text-blue-700">
-                      إضافة وتعديل الشركات
+                      Add or edit companies
                     </div>
                   </button>
                   <button
@@ -196,11 +196,11 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <Users className="h-4 w-4 text-green-600" />
                       <div className="font-medium text-green-900">
-                        إدارة المستخدمين
+                        Manage Users
                       </div>
                     </div>
                     <div className="text-xs text-green-700">
-                      المستخدمين والصلاحيات
+                      Manage users and permissions
                     </div>
                   </button>
                   <button
@@ -210,11 +210,11 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-4 w-4 text-purple-600" />
                       <div className="font-medium text-purple-900">
-                        الاشتراكات والفواتير
+                        Manage Subscriptions and Invoices
                       </div>
                     </div>
                     <div className="text-xs text-purple-700">
-                      إدارة المدفوعات
+                      Manage Payments
                     </div>
                   </button>
                   <button
@@ -224,11 +224,11 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <BarChart3 className="h-4 w-4 text-orange-600" />
                       <div className="font-medium text-orange-900">
-                        التحليلات والتقارير
+                        Analytics and Reports
                       </div>
                     </div>
                     <div className="text-xs text-orange-700">
-                      إحصائيات المنصة
+                      Platform Statistics
                     </div>
                   </button>
                   <button
@@ -238,11 +238,11 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <BookOpen className="h-4 w-4 text-cyan-600" />
                       <div className="font-medium text-cyan-900">
-                        إدارة الدورات
+                        Manage Courses
                       </div>
                     </div>
                     <div className="text-xs text-cyan-700">
-                      المحتوى التدريبي
+                      Training Content
                     </div>
                   </button>
                   <button
@@ -252,10 +252,10 @@ export const PlatformDashboard = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <History className="h-4 w-4 text-red-600" />
                       <div className="font-medium text-red-900">
-                        سجل الأنشطة
+                        Activity Log
                       </div>
                     </div>
-                    <div className="text-xs text-red-700">تتبع العمليات</div>
+                    <div className="text-xs text-red-700">Track Activities</div>
                   </button>
                 </div>
               </div>

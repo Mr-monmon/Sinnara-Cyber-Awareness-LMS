@@ -134,7 +134,7 @@ export const CompaniesPage: React.FC = () => {
           entity_type: 'COMPANY',
           entity_id: editingCompany.id,
           entity_name: formData.name,
-          description: `تحديث شركة: ${formData.name}`,
+          description: `Update company: ${formData.name}`,
           new_value: formData
         }]);
       } else {
@@ -174,7 +174,7 @@ export const CompaniesPage: React.FC = () => {
           entity_type: 'COMPANY',
           entity_id: newCompany.id,
           entity_name: formData.name,
-          description: `إنشاء شركة جديدة: ${formData.name}`,
+          description: `Create new company: ${formData.name}`,
           new_value: formData
         }]);
       }
@@ -182,10 +182,10 @@ export const CompaniesPage: React.FC = () => {
       setShowModal(false);
       setEditingCompany(null);
       await loadCompanies();
-      alert(editingCompany ? 'تم تحديث الشركة بنجاح' : 'تم إنشاء الشركة وحساب المدير بنجاح!\nالبريد: ' + formData.admin_email + '\nكلمة المرور: Admin123!');
+      alert(editingCompany ? 'Company updated successfully' : 'Company created successfully!\nEmail: ' + formData.admin_email + '\nPassword: Admin123!');
     } catch (error) {
       console.error('Error saving company:', error);
-      alert('فشل حفظ الشركة: ' + (error as any).message);
+      alert('Failed to save company: ' + (error as any).message);
     }
   };
 
@@ -195,7 +195,7 @@ export const CompaniesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الشركة؟ سيتم حذف جميع المستخدمين المرتبطين بها.')) {
+    if (!confirm('Are you sure you want to delete this company? All associated users will be deleted.')) {
       return;
     }
 
@@ -205,7 +205,7 @@ export const CompaniesPage: React.FC = () => {
       await loadCompanies();
     } catch (error) {
       console.error('Error deleting company:', error);
-      alert('فشل حذف الشركة');
+      alert('Failed to delete company');
     }
   };
 
@@ -249,10 +249,10 @@ export const CompaniesPage: React.FC = () => {
 
       setShowAssignModal(false);
       setAssigningCompany(null);
-      alert('تم حفظ التخصيصات بنجاح');
+      alert('Assignments saved successfully');
     } catch (error) {
       console.error('Error saving assignments:', error);
-      alert('فشل حفظ التخصيصات');
+      alert('Failed to save assignments');
     }
   };
 
@@ -260,8 +260,8 @@ export const CompaniesPage: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">الشركات</h1>
-          <p className="text-slate-600">إدارة حسابات الشركات والباقات</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Companies</h1>
+          <p className="text-slate-600">Manage company accounts and packages</p>
         </div>
         <button
           onClick={() => {
@@ -271,7 +271,7 @@ export const CompaniesPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg transition-all font-medium"
         >
           <Plus className="h-5 w-5" />
-          إضافة شركة جديدة
+          Add New Company
         </button>
       </div>
 
@@ -279,19 +279,19 @@ export const CompaniesPage: React.FC = () => {
         <table className="w-full">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Company Name
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Package
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 License Limit
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Campaign Quota
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              </th> 
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Created
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -369,7 +369,7 @@ export const CompaniesPage: React.FC = () => {
                     <button
                       onClick={() => handleAssignContent(company)}
                       className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                      title="تخصيص المحتوى"
+                      title="Assign Content"
                     >
                       <Settings className="h-4 w-4" />
                     </button>
@@ -414,12 +414,12 @@ export const CompaniesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-4">
-              تخصيص المحتوى - {assigningCompany.name}
+              Assign Content - {assigningCompany.name}
             </h2>
 
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">الدورات التدريبية</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Training Courses</h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {allCourses.map(course => (
                     <label key={course.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
@@ -442,7 +442,7 @@ export const CompaniesPage: React.FC = () => {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">الاختبارات</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Exams</h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {allExams.map(exam => (
                     <label key={exam.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
@@ -473,13 +473,13 @@ export const CompaniesPage: React.FC = () => {
                 }}
                 className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
               >
-                إلغاء
+                Cancel
               </button>
               <button
                 onClick={handleSaveAssignments}
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
               >
-                حفظ التخصيصات
+                Save Assignments
               </button>
             </div>
           </div>

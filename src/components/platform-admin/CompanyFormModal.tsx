@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
-import { Company } from '../../types';
+import { Company } from '../../lib/types';
 
 interface CompanyFormModalProps {
   company: Company | null;
@@ -89,11 +89,11 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-3">معلومات الشركة</h3>
+            <h3 className="font-semibold text-blue-900 mb-3">Company Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  اسم الشركة *
+                  Company Name *
                 </label>
                 <input
                   type="text"
@@ -101,13 +101,13 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="مثال: شركة التقنية المتقدمة"
+                  placeholder="Example: Advanced Technology Company"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  نوع الباقة *
+                  Package Type *
                 </label>
                 <select
                   required
@@ -115,14 +115,14 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   onChange={(e) => setFormData({ ...formData, package_type: e.target.value as any })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="TYPE_A">باقة A - أساسية</option>
-                  <option value="TYPE_B">باقة B - متقدمة</option>
+                  <option value="TYPE_A">Package A - Basic</option>
+                  <option value="TYPE_B">Package B - Advanced</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  عدد الرخص *
+                  License Limit *
                 </label>
                 <input
                   type="number"
@@ -136,7 +136,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  الحالة *
+                  Status *
                 </label>
                 <select
                   required
@@ -144,21 +144,21 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="ACTIVE">نشطة</option>
-                  <option value="SUSPENDED">معلقة</option>
-                  <option value="EXPIRED">منتهية</option>
-                  <option value="CANCELLED">ملغاة</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="SUSPENDED">Suspended</option>
+                  <option value="EXPIRED">Expired</option>
+                  <option value="CANCELLED">Cancelled</option>
                 </select>
               </div>
             </div>
           </div>
 
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-semibold text-green-900 mb-3">معلومات مدير الشركة</h3>
+            <h3 className="font-semibold text-green-900 mb-3">Company Manager Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  اسم المدير *
+                  Manager Name *
                 </label>
                 <input
                   type="text"
@@ -166,13 +166,13 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   value={formData.admin_name}
                   onChange={(e) => setFormData({ ...formData, admin_name: e.target.value })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="محمد أحمد"
+                  placeholder="Ahmed Mohammed"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  البريد الإلكتروني *
+                  Email *
                 </label>
                 <input
                   type="email"
@@ -186,7 +186,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  رقم الجوال *
+                  Phone Number *
                 </label>
                 <input
                   type="tel"
@@ -201,11 +201,11 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
           </div>
 
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <h3 className="font-semibold text-purple-900 mb-3">معلومات الاشتراك</h3>
+            <h3 className="font-semibold text-purple-900 mb-3">Subscription Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  نوع الاشتراك *
+                  Subscription Type *
                 </label>
                 <select
                   required
@@ -213,11 +213,11 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   onChange={(e) => setFormData({ ...formData, subscription_type: e.target.value })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 >
-                  <option value="POC_3M">تجريبي 3 أشهر (POC)</option>
-                  <option value="MONTHLY_6">6 أشهر</option>
-                  <option value="YEARLY_1">سنة واحدة</option>
-                  <option value="YEARLY_2">سنتين</option>
-                  <option value="CUSTOM">مخصص</option>
+                  <option value="POC_3M">POC 3 Months (Trial)</option>
+                  <option value="MONTHLY_6">6 Months</option>
+                  <option value="YEARLY_1">1 Year</option>
+                  <option value="YEARLY_2">2 Years</option>
+                  <option value="CUSTOM">Custom</option>
                 </select>
               </div>
 
@@ -229,13 +229,13 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                   />
-                  <span className="text-sm font-medium text-slate-700">الاشتراك نشط</span>
+                  <span className="text-sm font-medium text-slate-700">Active Subscription</span>
                 </label>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  تاريخ البداية *
+                  Start Date *
                 </label>
                 <input
                   type="date"
@@ -248,7 +248,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  تاريخ النهاية *
+                  End Date *
                 </label>
                 <input
                   type="date"
@@ -266,7 +266,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                 <div className="flex items-center gap-2 text-sm text-purple-900">
                   <Calendar className="h-4 w-4" />
                   <span className="font-medium">
-                    المدة: {Math.ceil((new Date(formData.subscription_end).getTime() - new Date(formData.subscription_start).getTime()) / (1000 * 60 * 60 * 24))} يوم
+                    Duration: {Math.ceil((new Date(formData.subscription_end).getTime() - new Date(formData.subscription_start).getTime()) / (1000 * 60 * 60 * 24))} days
                   </span>
                 </div>
               </div>
@@ -278,14 +278,14 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
               type="submit"
               className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-lg transition-all duration-300"
             >
-              {company ? 'حفظ التعديلات' : 'إضافة الشركة'}
+              {company ? 'Save Changes' : 'Add Company'}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="px-6 py-3 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors font-medium"
             >
-              إلغاء
+              Cancel
             </button>
           </div>
         </form>
