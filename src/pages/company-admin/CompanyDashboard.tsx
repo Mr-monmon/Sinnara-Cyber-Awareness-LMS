@@ -24,6 +24,15 @@ export const CompanyDashboard = () => {
     averageScore: 0,
     pendingAssessments: 0,
   });
+  const [topEmployees, setTopEmployees] = useState<
+    {
+      id: string;
+      name: string;
+      email: string;
+      averageScore: number;
+      examsTaken: number;
+    }[]
+  >([]);
 
   useEffect(() => {
     loadStats();
@@ -35,10 +44,11 @@ export const CompanyDashboard = () => {
     try {
       const { data: employees } = await supabase
         .from("users")
-        .select("id")
+        .select("id, full_name, email")
         .eq("company_id", user.company_id)
         .eq("role", "EMPLOYEE");
 
+      console.log(employees);
       const employeeIds = employees?.map((e) => e.id) || [];
 
       if (employeeIds.length === 0) {
@@ -90,6 +100,49 @@ export const CompanyDashboard = () => {
         averageScore: avgScore,
         pendingAssessments: (employees?.length || 0) - totalCompleted,
       });
+
+      if (resultsRes.data && employees) {
+        const employeeDirectory = new Map(
+          employees.map((employee) => [
+            employee.id,
+            {
+              name: employee.full_name || "Employee",
+              email: employee.email || "",
+            },
+          ])
+        );
+
+        const scoreMap = new Map<string, { total: number; count: number }>();
+        resultsRes.data.forEach((result) => {
+          const current = scoreMap.get(result.employee_id) || {
+            total: 0,
+            count: 0,
+          };
+          scoreMap.set(result.employee_id, {
+            total: current.total + result.percentage,
+            count: current.count + 1,
+          });
+        });
+
+        const rankedEmployees = Array.from(scoreMap.entries())
+          .map(([employeeId, score]) => {
+            const directoryEntry = employeeDirectory.get(employeeId);
+            const averageScore = Math.round(score.total / score.count);
+            return {
+              id: employeeId,
+              name: directoryEntry?.name || "Employee",
+              email: directoryEntry?.email || "",
+              averageScore,
+              examsTaken: score.count,
+            };
+          })
+          .sort((a, b) => b.averageScore - a.averageScore)
+          .slice(0, 3);
+
+        setTopEmployees(rankedEmployees);
+      } else {
+        setTopEmployees([]);
+      }
     } catch (error) {
       console.error("Error loading stats:", error);
     }
@@ -131,180 +184,412 @@ export const CompanyDashboard = () => {
       case "phishing-request":
         return <PhishingRequestPage />;
       default:
+        const completionRate =
+          stats.totalEmployees > 0
+            ? Math.round((stats.completedTraining / stats.totalEmployees) * 100)
+            : 0;
+        const pendingRate = stats.totalEmployees > 0 ? 100 - completionRate : 0;
+
+        const toneStyles = {
+          blue: {
+            bar: "from-blue-500/70 via-blue-500 to-blue-600",
+            iconBg: "bg-blue-50",
+            icon: "text-blue-600",
+          },
+          green: {
+            bar: "from-green-500/70 via-green-500 to-green-600",
+            iconBg: "bg-green-50",
+            icon: "text-green-600",
+          },
+          indigo: {
+            bar: "from-indigo-500/70 via-indigo-500 to-indigo-600",
+            iconBg: "bg-indigo-50",
+            icon: "text-indigo-600",
+          },
+          orange: {
+            bar: "from-orange-500/70 via-orange-500 to-orange-600",
+            iconBg: "bg-orange-50",
+            icon: "text-orange-600",
+          },
+        } as const;
+
+        const statCards = [
+          {
+            label: "Total Employees",
+            value: stats.totalEmployees,
+            icon: Users,
+            tone: "blue",
+            subtext: "Active accounts",
+          },
+          {
+            label: "Completed Training",
+            value: stats.completedTraining,
+            icon: Award,
+            tone: "green",
+            subtext: "Certified or passed",
+          },
+          {
+            label: "Average Score",
+            value: `${stats.averageScore}%`,
+            icon: TrendingUp,
+            tone: "indigo",
+            subtext: "Across assessments",
+          },
+          {
+            label: "Pending Assessments",
+            value: stats.pendingAssessments,
+            icon: AlertCircle,
+            tone: "orange",
+            subtext: "Needs attention",
+          },
+        ] as const;
+
         return (
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              Company Dashboard
-            </h1>
-            <p className="text-slate-600 mb-8">
-              Overview of your organization's training progress
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <Users className="h-6 w-6 text-blue-600" />
+          <div className="space-y-8">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100/70 p-6 shadow-sm md:p-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold text-slate-900">
+                    Company Dashboard
+                  </h1>
+                  <p className="text-slate-600">
+                    Overview of your organization&apos;s training progress
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <div className="rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Completion
+                    </div>
+                    <div className="text-lg font-bold text-slate-900">
+                      {completionRate}%
+                    </div>
                   </div>
-                  <span className="text-3xl font-bold text-slate-900">
-                    {stats.totalEmployees}
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-slate-600">
-                  Total Employees
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <Award className="h-6 w-6 text-green-600" />
+                  <div className="rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Avg. Score
+                    </div>
+                    <div className="text-lg font-bold text-slate-900">
+                      {stats.averageScore}%
+                    </div>
                   </div>
-                  <span className="text-3xl font-bold text-slate-900">
-                    {stats.completedTraining}
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-slate-600">
-                  Completed Training
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <TrendingUp className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <span className="text-3xl font-bold text-slate-900">
-                    {stats.averageScore}%
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-slate-600">
-                  Average Score
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-orange-50 rounded-lg">
-                    <AlertCircle className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <span className="text-3xl font-bold text-slate-900">
-                    {stats.pendingAssessments}
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-slate-600">
-                  Pending Assessments
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                  Quick Actions
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+              {statCards.map((card) => {
+                const Icon = card.icon;
+                const tone = toneStyles[card.tone];
+                return (
+                  <div
+                    key={card.label}
+                    className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div
+                      className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.bar}`}
+                    />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-600">
+                          {card.label}
+                        </div>
+                        <div className="text-3xl font-bold text-slate-900">
+                          {card.value}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {card.subtext}
+                        </div>
+                      </div>
+                      <div
+                        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tone.iconBg}`}
+                      >
+                        <Icon className={`h-6 w-6 ${tone.icon}`} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Completion Mix
+                  </h3>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Last 30 days
+                  </span>
+                </div>
+                <div className="mt-6 grid grid-cols-1 items-center gap-6 2xl:grid-cols-[180px_1fr]">
+                  <div className="flex items-center justify-center">
+                    <div className="relative h-36 w-36">
+                      <div
+                        className="h-full w-full rounded-full"
+                        style={{
+                          background: `conic-gradient(#22c55e 0deg ${
+                            completionRate * 3.6
+                          }deg, #f97316 ${completionRate * 3.6}deg 360deg)`,
+                        }}
+                      />
+                      <div className="absolute inset-4 rounded-full bg-white shadow-[inset_0_0_18px_rgba(15,23,42,0.08)]" />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-2xl font-bold text-slate-900">
+                          {completionRate}%
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          Completed
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                        <div>
+                          <div className="text-xs font-semibold text-emerald-800">
+                            Completed Training
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {stats.completedTraining} employees
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                        <div>
+                          <div className="text-xs font-semibold text-orange-800">
+                            Pending Assessments
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {stats.pendingAssessments} employees
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="text-xs text-slate-500">
+                        Overall Progress
+                      </div>
+                      <div className="text-lg font-semibold text-slate-900">
+                        {pendingRate}% remaining
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Assessment Breakdown
+                  </h3>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Snapshot
+                  </span>
+                </div>
+                <div className="mt-6 space-y-5">
+                  <div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">Completed</span>
+                      <span className="font-semibold text-slate-900">
+                        {stats.completedTraining}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-2 rounded-full bg-emerald-500"
+                        style={{ width: `${completionRate}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">Pending</span>
+                      <span className="font-semibold text-slate-900">
+                        {stats.pendingAssessments}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-2 rounded-full bg-orange-500"
+                        style={{ width: `${pendingRate}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-4">
+                    <div className="text-xs text-slate-500">Average Score</div>
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="text-2xl font-bold text-slate-900">
+                        {stats.averageScore}%
+                      </div>
+                      <div className="h-2 flex-1 rounded-full bg-slate-200">
+                        <div
+                          className="h-2 rounded-full bg-blue-600"
+                          style={{ width: `${stats.averageScore}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Top Performers
                 </h3>
-                <div className="space-y-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Highest scores
+                </span>
+              </div>
+              <div className="mt-6 space-y-3">
+                {topEmployees.length > 0 ? (
+                  topEmployees.map((employee, index) => (
+                    <div
+                      key={employee.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {employee.name}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {employee.email || "No email on file"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="text-slate-500">
+                          Exams:{" "}
+                          <span className="font-semibold text-slate-900">
+                            {employee.examsTaken}
+                          </span>
+                        </div>
+                        <div className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                          {employee.averageScore}%
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    No assessment results yet. Once employees complete exams,
+                    top scores will appear here.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Quick Actions
+                  </h3>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Manage
+                  </span>
+                </div>
+                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <button
                     onClick={() => setActivePage("employees")}
-                    className="w-full text-left px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    className="group text-left rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 transition-all hover:border-blue-200 hover:bg-blue-100"
                   >
-                    <div className="font-medium text-blue-900">
+                    <div className="font-semibold text-blue-900">
                       Manage Employees
                     </div>
-                    <div className="text-sm text-blue-700">
+                    <div className="text-xs text-blue-700">
                       Add or edit employee accounts
                     </div>
                   </button>
                   <button
-                    onClick={() => setActivePage("analytics")}
-                    className="w-full text-left px-4 py-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                    onClick={() => setActivePage("course-assignment")}
+                    className="group text-left rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 transition-all hover:border-emerald-200 hover:bg-emerald-100"
                   >
-                    <div className="font-medium text-purple-900">
+                    <div className="font-semibold text-emerald-900">
+                      Assign Courses
+                    </div>
+                    <div className="text-xs text-emerald-700">
+                      Launch new training plans
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setActivePage("exam-assignment")}
+                    className="group text-left rounded-xl border border-amber-100 bg-amber-50/70 px-4 py-3 transition-all hover:border-amber-200 hover:bg-amber-100"
+                  >
+                    <div className="font-semibold text-amber-900">
+                      Assign Exams
+                    </div>
+                    <div className="text-xs text-amber-700">
+                      Schedule assessments
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setActivePage("analytics")}
+                    className="group text-left rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 transition-all hover:border-indigo-200 hover:bg-indigo-100"
+                  >
+                    <div className="font-semibold text-indigo-900">
                       View Analytics
                     </div>
-                    <div className="text-sm text-purple-700">
+                    <div className="text-xs text-indigo-700">
                       Detailed performance reports
                     </div>
                   </button>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-6">
-                  Training Overview
-                </h3>
-                <div className="space-y-6">
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-sky-600 to-cyan-600 p-6 text-white shadow-lg">
+                <div className="absolute -left-16 -top-20 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute bottom-0 right-0 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+                <div className="relative space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Training Overview</h3>
+                    <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                      Live
+                    </span>
+                  </div>
                   <div>
-                    <div className="flex justify-between text-sm mb-3">
-                      <span className="text-slate-600">Completion Rate</span>
-                      <span className="font-bold text-slate-900">
-                        {stats.totalEmployees > 0
-                          ? Math.round(
-                              (stats.completedTraining / stats.totalEmployees) *
-                                100
-                            )
-                          : 0}
-                        %
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-white/80">Completion Rate</span>
+                      <span className="text-2xl font-semibold">
+                        {completionRate}%
                       </span>
                     </div>
-                    <div className="flex items-end gap-1 h-32">
+                    <div className="mt-3 h-2 w-full rounded-full bg-white/20">
                       <div
-                        className="flex-1 bg-green-500 rounded-t-lg hover:bg-green-600 transition-all relative group"
-                        style={{
-                          height: `${
-                            stats.totalEmployees > 0
-                              ? (stats.completedTraining /
-                                  stats.totalEmployees) *
-                                100
-                              : 0
-                          }%`,
-                        }}
-                      >
-                        <div className="absolute inset-x-0 -top-8 text-center">
-                          <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {stats.completedTraining} Completed
-                          </span>
-                        </div>
-                      </div>
-                      <div
-                        className="flex-1 bg-orange-400 rounded-t-lg hover:bg-orange-500 transition-all relative group"
-                        style={{
-                          height: `${
-                            stats.totalEmployees > 0
-                              ? (stats.pendingAssessments /
-                                  stats.totalEmployees) *
-                                100
-                              : 0
-                          }%`,
-                        }}
-                      >
-                        <div className="absolute inset-x-0 -top-8 text-center">
-                          <span className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {stats.pendingAssessments} Pending
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-between text-xs text-slate-500 mt-2">
-                      <span>Completed</span>
-                      <span>Pending</span>
+                        className="h-2 rounded-full bg-white transition-all"
+                        style={{ width: `${completionRate}%` }}
+                      />
                     </div>
                   </div>
-
-                  <div className="pt-4 border-t border-slate-200">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-slate-600">
-                        Average Score
-                      </span>
-                      <span className="text-2xl font-bold text-blue-600">
-                        {stats.averageScore}%
+                  <div className="grid grid-cols-2 gap-4 border-t border-white/20 pt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-white/80">Completed</span>
+                      <span className="text-lg font-semibold">
+                        {stats.completedTraining}
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-3">
-                      <div
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all"
-                        style={{ width: `${stats.averageScore}%` }}
-                      />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-white/80">Pending</span>
+                      <span className="text-lg font-semibold">
+                        {stats.pendingAssessments}
+                      </span>
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between">
+                      <span className="text-sm text-white/80">
+                        Average Score
+                      </span>
+                      <span className="text-xl font-semibold">
+                        {stats.averageScore}%
+                      </span>
                     </div>
                   </div>
                 </div>
