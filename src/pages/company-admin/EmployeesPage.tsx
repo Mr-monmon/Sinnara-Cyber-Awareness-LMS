@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, User, Eye, Key } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { User as UserType } from '../../types';
+import { User as UserType } from '../../lib/types';
 
 interface EmployeesPageProps {
   onViewEmployee?: (employeeId: string) => void;
@@ -38,7 +38,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onViewEmployee }) 
 
     const { data } = await supabase
       .from('users')
-      .select('*')
+      .select('* , department:departments!users_department_id_fkey ( name )')
       .eq('company_id', currentUser.company_id)
       .eq('role', 'EMPLOYEE')
       .order('created_at', { ascending: false });
@@ -161,6 +161,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onViewEmployee }) 
                 Email
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Department
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Employee ID
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -183,6 +186,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onViewEmployee }) 
                   </div>
                 </td>
                 <td className="px-6 py-4 text-slate-600">{employee.email}</td>
+                <td className="px-6 py-4 text-slate-600">{employee.department?.name || '-'}</td>
                 <td className="px-6 py-4 text-slate-600">{employee.employee_id || '-'}</td>
                 <td className="px-6 py-4 text-slate-600">{employee.phone || '-'}</td>
                 <td className="px-6 py-4 text-right">

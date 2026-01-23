@@ -48,7 +48,6 @@ export const CompanyDashboard = () => {
         .eq("company_id", user.company_id)
         .eq("role", "EMPLOYEE");
 
-      console.log(employees);
       const employeeIds = employees?.map((e) => e.id) || [];
 
       if (employeeIds.length === 0) {

@@ -27,6 +27,7 @@ export interface User {
   company_id?: string;
   department?: string;
   created_at: string;
+  department_id?: string;
 }
 
 export interface Course {
@@ -134,4 +135,20 @@ export interface PublicAssessment {
   total_questions: number;
   answers: Record<string, string>;
   completed_at: string;
+}
+
+export interface Employee {
+  id: string;
+  full_name: string;
+  email: string;
+  department_id?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  description: string;
+  parent_department_id: string | null;
+  employee_count?: number;
+  users?: Employee[];
 }
