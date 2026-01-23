@@ -29,6 +29,8 @@ export const AuditLogsPage: React.FC = () => {
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     loadLogs();
@@ -90,6 +92,7 @@ export const AuditLogsPage: React.FC = () => {
     }
 
     setFilteredLogs(filtered);
+    setCurrentPage(1);
   };
 
   const getActionBadge = (action: string) => {
@@ -197,6 +200,11 @@ export const AuditLogsPage: React.FC = () => {
   const entityTypes = Array.from(
     new Set(logs.map((l) => l.entity_type).filter(Boolean))
   ).sort();
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const pagedLogs = filteredLogs.slice(startIndex, startIndex + pageSize);
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   if (loading) {
     return (
@@ -340,7 +348,7 @@ export const AuditLogsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filteredLogs.map((log) => (
+              {pagedLogs.map((log) => (
                 <tr
                   key={log.id}
                   className="hover:bg-slate-50 transition-colors"
@@ -394,6 +402,52 @@ export const AuditLogsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {filteredLogs.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-slate-600">
+            Showing {startIndex + 1}-
+            {Math.min(startIndex + pageSize, filteredLogs.length)} of{" "}
+            {filteredLogs.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={safePage === 1}
+              className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              aria-label="Previous page"
+            >
+              Prev
+            </button>
+            <div className="flex items-center gap-1">
+              {pageNumbers.map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-3 py-1 text-sm rounded border ${
+                    page === safePage
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                  }`}
+                  aria-current={page === safePage ? "page" : undefined}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+              disabled={safePage === totalPages}
+              className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              aria-label="Next page"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
