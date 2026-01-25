@@ -102,13 +102,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({
       if (error) throw error;
 
       if (data) {
-        setEmployee({
-          ...data,
-          departments:
-            data.employee_departments
-              ?.map((ed: any) => ed.departments)
-              .filter(Boolean) || [],
-        });
+        setEmployee(data);
       }
     } catch (error) {
       console.error("Error loading employee:", error);
