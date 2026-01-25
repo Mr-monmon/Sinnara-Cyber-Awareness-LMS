@@ -18,6 +18,7 @@ export const CompanyDashboard = () => {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
     null
   );
+
   const [stats, setStats] = useState({
     totalEmployees: 0,
     completedTraining: 0,
@@ -85,13 +86,13 @@ export const CompanyDashboard = () => {
         ...employeesWithPassedExams,
       ]).size;
 
-      const avgScore =
-        resultsRes.data && resultsRes.data.length > 0
-          ? Math.round(
-              resultsRes.data.reduce((sum, r) => sum + r.percentage, 0) /
-                resultsRes.data.length
-            )
-          : 0;
+      const { data: topEmployeesData } =
+        await supabase.functions.invoke("get_top_performance", {
+          method: "POST",
+          body: { company_id: user.company_id },
+        });
+
+      const { avgScore, rankedEmployees } = topEmployeesData;
 
       setStats({
         totalEmployees: employees?.length || 0,
@@ -100,48 +101,7 @@ export const CompanyDashboard = () => {
         pendingAssessments: (employees?.length || 0) - totalCompleted,
       });
 
-      if (resultsRes.data && employees) {
-        const employeeDirectory = new Map(
-          employees.map((employee) => [
-            employee.id,
-            {
-              name: employee.full_name || "Employee",
-              email: employee.email || "",
-            },
-          ])
-        );
-
-        const scoreMap = new Map<string, { total: number; count: number }>();
-        resultsRes.data.forEach((result) => {
-          const current = scoreMap.get(result.employee_id) || {
-            total: 0,
-            count: 0,
-          };
-          scoreMap.set(result.employee_id, {
-            total: current.total + result.percentage,
-            count: current.count + 1,
-          });
-        });
-
-        const rankedEmployees = Array.from(scoreMap.entries())
-          .map(([employeeId, score]) => {
-            const directoryEntry = employeeDirectory.get(employeeId);
-            const averageScore = Math.round(score.total / score.count);
-            return {
-              id: employeeId,
-              name: directoryEntry?.name || "Employee",
-              email: directoryEntry?.email || "",
-              averageScore,
-              examsTaken: score.count,
-            };
-          })
-          .sort((a, b) => b.averageScore - a.averageScore)
-          .slice(0, 3);
-
-        setTopEmployees(rankedEmployees);
-      } else {
-        setTopEmployees([]);
-      }
+      setTopEmployees(rankedEmployees || []);
     } catch (error) {
       console.error("Error loading stats:", error);
     }
