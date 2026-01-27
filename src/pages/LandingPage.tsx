@@ -6,6 +6,7 @@ import { HowItWorks } from '../components/landing/HowItWorks';
 import { RequestDemoModal } from '../components/landing/RequestDemoModal';
 import { supabase } from '../lib/supabase';
 import { ArrowRight, Mail, Phone } from 'lucide-react';
+import { BlogSection } from '../components/landing/BlogSection';
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
@@ -45,11 +46,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   }, []);
 
   const loadSettings = async () => {
+  try {
     const { data: ctaData } = await supabase
       .from('homepage_settings')
       .select('setting_value')
       .eq('setting_key', 'cta_section')
       .maybeSingle();
+
+    if (ctaData?.setting_value) {
+      setCTASettings(ctaData.setting_value as CTASettings);
+    }
 
     const { data: footerData } = await supabase
       .from('homepage_settings')
@@ -57,14 +63,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       .eq('setting_key', 'footer')
       .maybeSingle();
 
-    if (ctaData?.setting_value) {
-      setCTASettings(ctaData.setting_value as any);
-    }
-
     if (footerData?.setting_value) {
-      setFooterSettings(footerData.setting_value as any);
+      setFooterSettings(footerData.setting_value as FooterSettings);
     }
-  };
+  } catch (err) {
+    console.error('Failed to load homepage settings', err);
+  }
+};
 
   return (
     <div className="min-h-screen">
@@ -81,6 +86,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
       <HowItWorks />
 
+      <BlogSection />
+      
       <div className="relative bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600 py-20 overflow-hidden">
         <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:30px_30px]" />
 
@@ -141,6 +148,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     className="text-slate-400 hover:text-blue-400 transition-colors"
                   >
                     Fraud Alerts
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => onNavigate('resources')}
+                    className="text-slate-400 hover:text-blue-400 transition-colors"
+                  >
+                    Security Resources
                   </button>
                 </li>
 
