@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LandingPage } from './pages/LandingPage';
 import { PublicAssessment } from './pages/PublicAssessment';
 import { PublicFraudAlertsPage } from './pages/PublicFraudAlertsPage';
+import { PublicResourcesPage } from './pages/PublicResourcesPage';
 import { LoginPage } from './pages/LoginPage';
 import { PlatformDashboard } from './pages/platform-admin/PlatformDashboard';
 import { CompanyDashboard } from './pages/company-admin/CompanyDashboard';
@@ -53,6 +54,8 @@ const AppContent: React.FC = () => {
       return <PublicAssessment onNavigate={handleNavigate} />;
     case 'fraud-alerts':
       return <PublicFraudAlertsPage onNavigate={handleNavigate} />;
+    case 'resources':
+      return <PublicResourcesPage onNavigate={handleNavigate} />; 
     case 'login':
       return <LoginPage onNavigate={handleNavigate} />;
     case 'landing':
