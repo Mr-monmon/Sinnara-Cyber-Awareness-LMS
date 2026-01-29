@@ -75,7 +75,7 @@ export const AnalyticsPage: React.FC = () => {
       const completedCourses = employeeCourses.filter(ec => ec.status === 'COMPLETED').length;
       const passedExams = examResults.filter(er => er.passed).length;
       const avgScore = examResults.length > 0
-        ? examResults.reduce((sum, er) => sum + (er.score || 0), 0) / examResults.length
+        ? examResults.reduce((sum, er) => sum + (er.percentage || 0), 0) / examResults.length
         : 0;
 
       setAnalytics({
@@ -129,7 +129,7 @@ export const AnalyticsPage: React.FC = () => {
           if (!companyExamScores.has(employee.company_id)) {
             companyExamScores.set(employee.company_id, []);
           }
-          companyExamScores.get(employee.company_id)!.push(er.score || 0);
+          companyExamScores.get(employee.company_id)!.push(er.percentage || 0);
         }
       });
 
