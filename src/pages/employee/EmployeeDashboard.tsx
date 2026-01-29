@@ -143,7 +143,7 @@ export const EmployeeDashboard = () => {
   const renderContent = () => {
     switch (activePage) {
       case "my-courses":
-        return <MyCoursesPage />;
+        return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
       case "my-exams":
         return <MyExamsPage />;
       case "fraud-alerts":
