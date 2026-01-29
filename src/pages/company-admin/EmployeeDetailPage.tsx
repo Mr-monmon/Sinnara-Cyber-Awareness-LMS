@@ -64,8 +64,6 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
 
-  console.log(employee);
-
   useEffect(() => {
     loadAllData();
   }, [employeeId]);

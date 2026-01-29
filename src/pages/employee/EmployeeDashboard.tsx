@@ -8,10 +8,15 @@ import { FraudAlertsPage } from "./FraudAlertsPage";
 import { FraudAlertWidget } from "../../components/FraudAlertWidget";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { Company } from "../../lib/types";
+import LoadingScreen from "../../components/LoadingScreen";
+import InactivatedSubscription from "../../components/InactivatedSubscription";
 
 export const EmployeeDashboard = () => {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState("dashboard");
+  const [isLoading, setIsLoading] = useState(true);
+  const [company, setCompany] = useState<Company | null>(null);
   const [stats, setStats] = useState({
     assignedCourses: 0,
     completedCourses: 0,
@@ -22,8 +27,25 @@ export const EmployeeDashboard = () => {
   const [userRank, setUserRank] = useState(0);
 
   useEffect(() => {
+    loadCompany();
     loadStats();
   }, [user]);
+
+  const loadCompany = async () => {
+    if (!user?.company_id) return;
+    setIsLoading(true);
+    try { 
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id , name, is_active")
+        .eq("id", user.company_id)
+        .single();
+      setCompany(company);
+    } catch (error) {
+      console.error("Error loading company:", error);
+      setIsLoading(false);
+    }
+  };
 
   const loadStats = async () => {
     if (!user?.id) return;
@@ -111,8 +133,10 @@ export const EmployeeDashboard = () => {
         pendingExams: pendingExamsCount,
         certificates: certificates?.length || 0,
       });
+      setIsLoading(false);
     } catch (error) {
       console.error("Error loading stats:", error);
+      setIsLoading(false);
     }
   };
 
@@ -310,8 +334,17 @@ export const EmployeeDashboard = () => {
   };
 
   return (
-    <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
-      {renderContent()}
-    </DashboardLayout>
+    <>
+      {isLoading ? (
+        <LoadingScreen />
+      ) : company?.is_active ? (
+        <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
+          {renderContent()}
+        </DashboardLayout>
+      ) : (
+        <InactivatedSubscription />
+      )}
+    </>
   );
 };
+  

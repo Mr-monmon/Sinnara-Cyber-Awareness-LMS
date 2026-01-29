@@ -11,10 +11,15 @@ import { PhishingRequestPage } from "./PhishingRequestPage";
 import { CourseAssignmentPage } from "./CourseAssignmentPage";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { Company } from "../../lib/types";
+import LoadingScreen from "../../components/LoadingScreen";
+import InactivatedSubscription from "../../components/InactivatedSubscription";
 
 export const CompanyDashboard = () => {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState("dashboard");
+  const [company, setCompany] = useState<Company | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
     null
   );
@@ -36,6 +41,7 @@ export const CompanyDashboard = () => {
   >([]);
 
   useEffect(() => {
+    loadCompany();
     loadStats();
   }, [user]);
 
@@ -86,11 +92,13 @@ export const CompanyDashboard = () => {
         ...employeesWithPassedExams,
       ]).size;
 
-      const { data: topEmployeesData } =
-        await supabase.functions.invoke("get_top_performance", {
+      const { data: topEmployeesData } = await supabase.functions.invoke(
+        "get_top_performance",
+        {
           method: "POST",
           body: { company_id: user.company_id },
-        });
+        }
+      );
 
       const { avgScore, rankedEmployees } = topEmployeesData;
 
@@ -102,8 +110,26 @@ export const CompanyDashboard = () => {
       });
 
       setTopEmployees(rankedEmployees || []);
+      setIsLoading(false);
     } catch (error) {
       console.error("Error loading stats:", error);
+      setIsLoading(false);
+    }
+  };
+
+  const loadCompany = async () => {
+    setIsLoading(true);
+    if (!user?.company_id) return;
+    try {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id , name, is_active")
+        .eq("id", user.company_id)
+        .single();
+      setCompany(company);
+    } catch (error) {
+      console.error("Error loading company:", error);
+      setIsLoading(false);
     }
   };
 
@@ -560,8 +586,16 @@ export const CompanyDashboard = () => {
   };
 
   return (
-    <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
-      {renderContent()}
-    </DashboardLayout>
+    <>
+      {isLoading ? (
+        <LoadingScreen />
+      ) : company?.is_active ? (
+        <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
+          {renderContent()}
+        </DashboardLayout>
+      ) : (
+        <InactivatedSubscription />
+      )}
+    </>
   );
 };
