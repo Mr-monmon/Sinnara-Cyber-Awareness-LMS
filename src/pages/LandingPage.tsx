@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RequestDemoModal } from '../components/landing/RequestDemoModal';
+import { PartnersCarousel } from '../components/landing/PartnersCarousel';
 import { supabase } from '../lib/supabase';
 import {
   ArrowRight,
@@ -508,21 +509,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
         {/* ═══════════════════════════════════
             PARTNERS
         ═══════════════════════════════════ */}
-        <section className="aw-section" style={{ background: 'rgba(255,255,255,0.05)' }}>
-          <div className="aw-container">
-            <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: T.textMuted, letterSpacing: '2.8px', textTransform: 'uppercase', lineHeight: '20px', marginBottom: 48 }}>
-              Trusted by Leading Organizations
-            </p>
-            <div className="aw-partners-grid" style={{ opacity: 0.50, filter: 'saturate(0)', alignItems: 'center' }}>
-              {PARTNERS.map((src, i) => (
-                <div key={i} className="aw-partner-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-                  <img src={src} alt={`Partner ${i + 1}`} style={{ width: '100%', maxWidth: 144, height: 'auto', objectFit: 'contain' }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
+ <PartnersCarousel />
         {/* ═══════════════════════════════════
             FEATURES
         ═══════════════════════════════════ */}
