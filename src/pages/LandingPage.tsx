@@ -167,7 +167,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   });
   const [footerSettings, setFooterSettings] = useState<FooterSettings>({
     tagline:   'Empowering organizations to build a resilient security culture through localized, data-driven training and simulation.',
-    email:     'hello@awareone.sa',
+    email:     'support@awareone.net',
     phone:     '+966 11 234 5678',
     copyright: '© 2025 AwareOne. All rights reserved.',
   });
