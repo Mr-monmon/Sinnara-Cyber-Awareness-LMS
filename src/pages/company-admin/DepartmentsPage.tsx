@@ -7,7 +7,7 @@ import {
   FolderTree,
   UserPlus,
   Eye,
-  EyeOff,
+  X,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -27,11 +27,9 @@ export const DepartmentsPage: React.FC = () => {
   );
   const [showDepartmentModal, setShowDepartmentModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showEmployeesModal, setShowEmployeesModal] = useState(false);
   const [selectedDepartment, setSelectedDepartment] =
     useState<Department | null>(null);
-  const [departmentEmployeesVisible, setDepartmentEmployeesVisible] = useState<
-    Record<string, boolean>
-  >({});
 
   useEffect(() => {
     loadDepartments();
@@ -63,6 +61,10 @@ export const DepartmentsPage: React.FC = () => {
         employee_count: dept.users?.length || 0,
       }));
       setDepartments(depsWithCount);
+      setSelectedDepartment((prev) => {
+        if (!prev) return null;
+        return depsWithCount.find((dept) => dept.id === prev.id) ?? null;
+      });
     }
   };
 
@@ -89,7 +91,7 @@ export const DepartmentsPage: React.FC = () => {
     }
 
     if (data) {
-      setEmployees(data as any);
+      setEmployees(data as Employee[]);
     }
   };
 
@@ -131,8 +133,6 @@ export const DepartmentsPage: React.FC = () => {
     const depts = getDepartmentTree(parentId);
 
     return depts.map((dept) => {
-      const isEmployeesVisible = departmentEmployeesVisible[dept.id] === true;
-
       return (
         <div key={dept.id} style={{ marginLeft: `${level * 2}rem` }}>
           <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 mb-4">
@@ -154,25 +154,15 @@ export const DepartmentsPage: React.FC = () => {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() =>
-                    setDepartmentEmployeesVisible((prev) => ({
-                      ...prev,
-                      [dept.id]: !isEmployeesVisible,
-                    }))
-                  }
+                  onClick={() => {
+                    setSelectedDepartment(dept);
+                    setShowEmployeesModal(true);
+                  }}
                   className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                  title={
-                    isEmployeesVisible ? "Hide Employees" : "Show Employees"
-                  }
-                  aria-label={
-                    isEmployeesVisible ? "Hide Employees" : "Show Employees"
-                  }
+                  title="View Employees"
+                  aria-label="View Employees"
                 >
-                  {isEmployeesVisible ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
+                  <Eye className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => {
@@ -208,37 +198,6 @@ export const DepartmentsPage: React.FC = () => {
                 </button>
               </div>
             </div>
-
-            {isEmployeesVisible && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">
-                  Employees:
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {dept.users?.map((emp) => (
-                    <span
-                      key={emp.id}
-                      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                    >
-                      {emp.full_name}
-                      <button
-                        onClick={() => handleRemoveFromDepartment(emp.id)}
-                        className="hover:text-red-600"
-                        disabled={removingEmployeeId === emp.id}
-                      >
-                        {removingEmployeeId === emp.id ? (
-                          <span className="inline-flex h-4 w-4 items-center justify-center">
-                            <span className="h-3 w-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                          </span>
-                        ) : (
-                          "×"
-                        )}
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {renderDepartmentTree(dept.id, level + 1)}
@@ -318,6 +277,87 @@ export const DepartmentsPage: React.FC = () => {
           setSelectedDepartment(null);
         }}
       />
+
+      {showEmployeesModal && selectedDepartment && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onClick={() => {
+            setShowEmployeesModal(false);
+            setSelectedDepartment(null);
+          }}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 px-6 py-5 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-200">
+                    Department Employees
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold">
+                    {selectedDepartment.name}
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-200">
+                    {selectedDepartment.employee_count || 0} assigned employee
+                    {(selectedDepartment.employee_count || 0) === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowEmployeesModal(false);
+                    setSelectedDepartment(null);
+                  }}
+                  className="rounded-full p-2 text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label="Close employees modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[28rem] overflow-y-auto p-6">
+              {selectedDepartment.users && selectedDepartment.users.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {selectedDepartment.users.map((emp) => (
+                    <span
+                      key={emp.id}
+                      className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700"
+                    >
+                      {emp.full_name}
+                      <button
+                        onClick={() => handleRemoveFromDepartment(emp.id)}
+                        className="inline-flex items-center justify-center rounded-full text-blue-700 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70"
+                        disabled={removingEmployeeId === emp.id}
+                        aria-label={`Remove ${emp.full_name} from department`}
+                      >
+                        {removingEmployeeId === emp.id ? (
+                          <span className="inline-flex h-4 w-4 items-center justify-center">
+                            <span className="h-3 w-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                          </span>
+                        ) : (
+                          <X className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+                  <Users className="mx-auto h-12 w-12 text-slate-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                    No employees assigned
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Add employees to this department to see them here.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

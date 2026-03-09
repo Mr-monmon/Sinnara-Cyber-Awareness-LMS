@@ -33,7 +33,12 @@ export const DepartmentAssign: React.FC<DepartmentAssignProps> = ({
     return unassignedEmployees.filter((emp) => {
       const name = emp.full_name?.toLowerCase() ?? "";
       const email = emp.email?.toLowerCase() ?? "";
-      return name.includes(normalizedQuery) || email.includes(normalizedQuery);
+      const id = emp.id?.toLowerCase() ?? "";
+      return (
+        name.includes(normalizedQuery) ||
+        email.includes(normalizedQuery) ||
+        id.includes(normalizedQuery)
+      );
     });
   }, [searchQuery, unassignedEmployees]);
 
@@ -73,9 +78,9 @@ export const DepartmentAssign: React.FC<DepartmentAssignProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name or email"
+            placeholder="Search by name or email or id"
             className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Search employees by name or email"
+            aria-label="Search employees by name or email or id"
           />
         </div>
 

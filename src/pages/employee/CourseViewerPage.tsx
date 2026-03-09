@@ -32,6 +32,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
   const { user } = useAuth();
   const [sections, setSections] = useState<CourseSection[]>([]);
   const [progress, setProgress] = useState<Record<string, SectionProgress>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
@@ -44,6 +45,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
   const loadCourseData = async () => {
     if (!user) return;
 
+    setIsLoading(true);
     const [sectionsRes, progressRes, newProgressRes] = await Promise.all([
       supabase
         .from('course_sections')
@@ -62,6 +64,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
         .eq('course_id', courseId)
     ]);
 
+    setIsLoading(false);
     if (sectionsRes.data) setSections(sectionsRes.data);
 
     const progressMap: Record<string, SectionProgress> = {};
@@ -320,11 +323,21 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
     return url;
   };
 
-  if (!currentSection) {
+  if (!currentSection && isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <p className="text-slate-600">جاري تحميل الدورة...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentSection && !isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-slate-600">لا يوجد محتويات لهذه الدورة</p>
         </div>
       </div>
     );
