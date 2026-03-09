@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { BookOpen, PlayCircle, CheckCircle, Clock, Award } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
+import { formatLocalizedDate, formatLocalizedNumber } from "../../i18n/utils";
 import { supabase } from "../../lib/supabase";
 import { Course } from "../../lib/types";
 import { CourseViewerPage } from "./CourseViewerPage";
@@ -20,12 +22,14 @@ type Props = {
 
 export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(["common", "employee"]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [courseProgress, setCourseProgress] = useState<
     Record<string, CourseProgress>
   >({});
   const [loading, setLoading] = useState(true);
   const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
+  const currentLanguage = i18n.resolvedLanguage;
 
   useEffect(() => {
     loadCourses();
@@ -141,10 +145,10 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
     <div>
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-slate-900 mb-2">
-          My Training Courses
+          {t("courses.title", { ns: "employee" })}
         </h1>
         <p className="text-slate-600">
-          Continue your cybersecurity awareness training
+          {t("courses.subtitle", { ns: "employee" })}
         </p>
       </div>
 
@@ -155,11 +159,11 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               <BookOpen className="h-6 w-6 text-blue-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {courses.length}
+              {formatLocalizedNumber(courses.length, currentLanguage)}
             </span>
           </div>
           <div className="text-sm font-medium text-slate-600">
-            Total Courses
+            {t("courses.summary.total", { ns: "employee" })}
           </div>
         </div>
 
@@ -169,10 +173,12 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               <CheckCircle className="h-6 w-6 text-green-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {completedCount}
+              {formatLocalizedNumber(completedCount, currentLanguage)}
             </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Completed</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t("courses.summary.completed", { ns: "employee" })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -181,10 +187,12 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               <Clock className="h-6 w-6 text-amber-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {inProgressCount}
+              {formatLocalizedNumber(inProgressCount, currentLanguage)}
             </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">In Progress</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t("courses.summary.inProgress", { ns: "employee" })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -193,10 +201,12 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               <PlayCircle className="h-6 w-6 text-slate-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {notStartedCount}
+              {formatLocalizedNumber(notStartedCount, currentLanguage)}
             </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Not Started</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t("courses.summary.notStarted", { ns: "employee" })}
+          </div>
         </div>
       </div>
 
@@ -206,7 +216,6 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
           const status = getCourseStatus(course.id);
           const isCompleted = status === "COMPLETED";
           const isInProgress = status === "IN_PROGRESS";
-          const isAssigned = status === "ASSIGNED";
 
           return (
             <div
@@ -249,10 +258,10 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                     }`}
                   >
                     {isCompleted
-                      ? "Completed"
+                      ? t("courses.summary.completed", { ns: "employee" })
                       : isInProgress
-                      ? "In Progress"
-                      : "Not Started"}
+                      ? t("courses.summary.inProgress", { ns: "employee" })
+                      : t("courses.summary.notStarted", { ns: "employee" })}
                   </span>
                 </div>
 
@@ -265,14 +274,19 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
 
                 <div className="flex items-center gap-2 mb-4 text-sm text-slate-600">
                   <Clock className="h-4 w-4" />
-                  <span>{course.duration_minutes} minutes</span>
+                  <span>
+                    {formatLocalizedNumber(course.duration_minutes, currentLanguage)}{" "}
+                    {t("labels.minutes", { ns: "common" })}
+                  </span>
                 </div>
 
                 {!isCompleted && (
                   <div className="mb-4">
                     <div className="flex justify-between text-xs text-slate-600 mb-1">
-                      <span>Progress</span>
-                      <span>{progress.toFixed(0)}%</span>
+                      <span>{t("labels.progress", { ns: "common" })}</span>
+                      <span>
+                        {formatLocalizedNumber(Math.round(progress), currentLanguage)}%
+                      </span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-2">
                       <div
@@ -289,10 +303,11 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                   <div className="flex items-center gap-2 mb-4 text-sm text-green-600">
                     <Award className="h-4 w-4" />
                     <span>
-                      Completed{" "}
-                      {new Date(
-                        courseProgress[course.id].completed_at!
-                      ).toLocaleDateString()}
+                      {t("labels.completedOn", { ns: "common" })}{" "}
+                      {formatLocalizedDate(
+                        courseProgress[course.id].completed_at!,
+                        currentLanguage
+                      )}
                     </span>
                   </div>
                 )}
@@ -307,10 +322,10 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                   }`}
                 >
                   {isCompleted
-                    ? "View Certificate"
+                    ? t("courses.card.viewCertificate", { ns: "employee" })
                     : isInProgress
-                    ? "Continue"
-                    : "Start Course"}
+                    ? t("actions.continue", { ns: "common" })
+                    : t("courses.card.startCourse", { ns: "employee" })}
                 </button>
               </div>
             </div>
@@ -321,9 +336,11 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       {courses.length === 0 && (
         <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-slate-200">
           <BookOpen className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-          <p className="text-lg font-medium">No courses assigned yet</p>
+          <p className="text-lg font-medium">
+            {t("courses.empty.title", { ns: "employee" })}
+          </p>
           <p className="text-sm">
-            Your company admin will assign courses to you soon.
+            {t("courses.empty.description", { ns: "employee" })}
           </p>
         </div>
       )}

@@ -1,0 +1,59 @@
+{
+  "app": {
+    "name": "منصة سنارة للتوعية السيبرانية"
+  },
+  "auth": {
+    "signedInAs": "تم تسجيل الدخول باسم",
+    "logout": "تسجيل الخروج"
+  },
+  "language": {
+    "english": "English",
+    "arabic": "العربية",
+    "switcherLabel": "اللغة"
+  },
+  "portal": {
+    "employee": "بوابة الموظف",
+    "companyAdmin": "لوحة إدارة الشركة",
+    "platformAdmin": "لوحة إدارة المنصة"
+  },
+  "actions": {
+    "acknowledge": "إقرار",
+    "back": "رجوع",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "continue": "متابعة",
+    "download": "تنزيل",
+    "goBack": "العودة",
+    "loading": "جارٍ التحميل...",
+    "next": "التالي",
+    "previous": "السابق",
+    "retake": "إعادة",
+    "save": "حفظ",
+    "start": "ابدأ",
+    "submit": "إرسال"
+  },
+  "labels": {
+    "active": "نشط",
+    "certificateNumber": "رقم الشهادة:",
+    "channel": "القناة",
+    "completed": "مكتمل",
+    "completedOn": "اكتمل في",
+    "dueDate": "تاريخ الاستحقاق",
+    "issued": "تاريخ الإصدار",
+    "latestYear": "أحدث سنة",
+    "mandatory": "إلزامي",
+    "minutes": "دقيقة",
+    "passing": "درجة النجاح",
+    "progress": "التقدم",
+    "remaining": "المتبقي",
+    "score": "النتيجة",
+    "severity": "الخطورة",
+    "total": "الإجمالي",
+    "used": "المستخدم"
+  },
+  "states": {
+    "empty": "لا توجد بيانات",
+    "error": "حدث خطأ ما",
+    "loading": "جارٍ التحميل..."
+  }
+}

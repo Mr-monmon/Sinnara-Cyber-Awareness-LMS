@@ -20,7 +20,9 @@ import {
   Mail,
   AlertCircle,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
+import { SupportedLanguage } from "../../i18n";
 import { NotificationBell } from "../NotificationBell";
 
 interface DashboardLayoutProps {
@@ -42,9 +44,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onNavigate,
 }) => {
   const { user, logout } = useAuth();
+  const { t, i18n } = useTranslation(["common", "employee"]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
+  const isEmployee = user?.role === "EMPLOYEE";
+  const isRtl = i18n.dir() === "rtl";
+  const currentLanguage = i18n.resolvedLanguage === "ar" ? "ar" : "en";
 
   /* 🔹 فتح القائمة الأم تلقائياً عند الدخول لصفحة فرعية */
   useEffect(() => {
@@ -190,12 +196,38 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     }
 
     return [
-      { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-      { id: "my-courses", label: "My Courses", icon: BookOpen },
-      { id: "my-exams", label: "Assessments", icon: ClipboardCheck },
-      { id: "fraud-alerts", label: "Fraud Alerts", icon: AlertCircle },
-      { id: "certificates", label: "Certificates", icon: FileText },
+      {
+        id: "dashboard",
+        label: t("navigation.dashboard", { ns: "employee" }),
+        icon: BarChart3,
+      },
+      {
+        id: "my-courses",
+        label: t("navigation.myCourses", { ns: "employee" }),
+        icon: BookOpen,
+      },
+      {
+        id: "my-exams",
+        label: t("navigation.myExams", { ns: "employee" }),
+        icon: ClipboardCheck,
+      },
+      {
+        id: "fraud-alerts",
+        label: t("navigation.fraudAlerts", { ns: "employee" }),
+        icon: AlertCircle,
+      },
+      {
+        id: "certificates",
+        label: t("navigation.certificates", { ns: "employee" }),
+        icon: FileText,
+      },
     ];
+  };
+
+  const handleLanguageChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    void i18n.changeLanguage(event.target.value as SupportedLanguage);
   };
 
   const renderMenuItem = (item: MenuItem) => {
@@ -232,7 +264,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </button>
 
           {sidebarOpen && isExpanded && (
-            <div className="ml-6 pl-3 border-l border-slate-700 space-y-1">
+            <div
+              className={`space-y-1 ${
+                isRtl
+                  ? "mr-6 pr-3 border-r border-slate-700"
+                  : "ml-6 pl-3 border-l border-slate-700"
+              }`}
+            >
               {item.children?.map((child) => renderMenuItem(child))}
             </div>
           )}
@@ -246,7 +284,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         onClick={() => onNavigate(item.id)}
         className={`${baseClasses} ${
           activePage === item.id
-            ? "bg-blue-500/10 text-blue-400 border-l-2 border-blue-500"
+            ? `bg-blue-500/10 text-blue-400 ${
+                isRtl ? "border-r-2 border-blue-500" : "border-l-2 border-blue-500"
+              }`
             : "text-slate-400 hover:bg-slate-800/60 hover:text-white"
         }`}
       >
@@ -259,7 +299,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const menuItems = getMenuItems();
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div dir={isRtl ? "rtl" : "ltr"} className="min-h-screen flex bg-slate-50">
       <aside
         className={`${
           sidebarOpen ? "w-64" : "w-20"
@@ -291,7 +331,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         <div className="p-4 border-t border-slate-800 space-y-3">
           {sidebarOpen && (
             <div className="bg-slate-800/60 rounded-md p-3 text-sm">
-              <div className="text-slate-400 text-xs mb-1">Signed in as</div>
+              <div className="text-slate-400 text-xs mb-1">
+                {t("auth.signedInAs", { ns: "common" })}
+              </div>
               <div className="font-medium truncate">{user?.full_name}</div>
               <div className="text-xs text-slate-400">
                 {user?.role.replace("_", " ")}
@@ -303,7 +345,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 py-2.5 rounded-md transition-colors"
           >
             <LogOut size={16} />
-            {sidebarOpen && <span>Logout</span>}
+            {sidebarOpen && <span>{t("auth.logout", { ns: "common" })}</span>}
           </button>
         </div>
       </aside>
@@ -312,12 +354,31 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         <div className="bg-white border-b border-slate-200 sticky top-0 z-30 px-8 py-4 flex items-center justify-between">
           <div className="text-sm text-slate-600">
             {user?.role === "EMPLOYEE"
-              ? "Employee Portal"
+              ? t("portal.employee", { ns: "common" })
               : user?.role === "COMPANY_ADMIN"
-              ? "Company Admin Panel"
-              : "Platform Admin Panel"}
+              ? t("portal.companyAdmin", { ns: "common" })
+              : t("portal.platformAdmin", { ns: "common" })}
           </div>
-          <NotificationBell onNavigate={onNavigate} />
+          <div className="flex items-center gap-3">
+            {isEmployee && (
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <span>{t("language.switcherLabel", { ns: "common" })}</span>
+                <select
+                  value={currentLanguage}
+                  onChange={handleLanguageChange}
+                  className="bg-transparent font-medium text-slate-900 outline-none"
+                >
+                  <option value="en">
+                    {t("language.english", { ns: "common" })}
+                  </option>
+                  <option value="ar">
+                    {t("language.arabic", { ns: "common" })}
+                  </option>
+                </select>
+              </label>
+            )}
+            <NotificationBell onNavigate={onNavigate} />
+          </div>
         </div>
 
         <div className="max-w-7xl mx-auto p-8">{children}</div>

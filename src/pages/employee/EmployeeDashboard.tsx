@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { BookOpen, ClipboardCheck, Award } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { MyCoursesPage } from "./MyCoursesPage";
 import { MyExamsPage } from "./MyExamsPage";
@@ -9,11 +10,15 @@ import { FraudAlertWidget } from "../../components/FraudAlertWidget";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
+import {
+  formatLocalizedNumber,
+} from "../../i18n/utils";
 import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 
 export const EmployeeDashboard = () => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation("employee");
   const [activePage, setActivePage] = useState("dashboard");
   const [isLoading, setIsLoading] = useState(true);
   const [company, setCompany] = useState<Company | null>(null);
@@ -25,6 +30,8 @@ export const EmployeeDashboard = () => {
   });
 
   const [userRank, setUserRank] = useState(0);
+  const currentLanguage = i18n.resolvedLanguage;
+  const isRtl = i18n.dir() === "rtl";
 
   useEffect(() => {
     loadCompany();
@@ -156,23 +163,25 @@ export const EmployeeDashboard = () => {
             <div className="flex items-center justify-between mb-8">
               <div className="flex flex-col gap-2">
                 <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                  My Dashboard
+                  {t("dashboard.title")}
                 </h1>
                 <p className="text-slate-600 mb-8">
-                  Welcome back! Continue your cybersecurity training journey.
+                  {t("dashboard.subtitle")}
                 </p>
               </div>
 
               <div className="group flex items-center gap-3 rounded-2xl border border-blue-100/70 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
-                  <span className="text-lg font-semibold">{userRank}</span>
+                  <span className="text-lg font-semibold">
+                    {formatLocalizedNumber(userRank, currentLanguage)}
+                  </span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    User Rank
+                    {t("dashboard.rankLabel")}
                   </span>
                   <span className="text-sm font-medium text-slate-800">
-                    Keep leveling up
+                    {t("dashboard.rankHint")}
                   </span>
                 </div>
               </div>
@@ -185,11 +194,11 @@ export const EmployeeDashboard = () => {
                     <BookOpen className="h-6 w-6 text-blue-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {stats.assignedCourses}
+                    {formatLocalizedNumber(stats.assignedCourses, currentLanguage)}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
-                  Assigned Courses
+                  {t("dashboard.stats.assignedCourses")}
                 </div>
               </div>
 
@@ -199,11 +208,11 @@ export const EmployeeDashboard = () => {
                     <ClipboardCheck className="h-6 w-6 text-green-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {stats.completedCourses}
+                    {formatLocalizedNumber(stats.completedCourses, currentLanguage)}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
-                  Completed Courses
+                  {t("dashboard.stats.completedCourses")}
                 </div>
               </div>
 
@@ -213,11 +222,11 @@ export const EmployeeDashboard = () => {
                     <ClipboardCheck className="h-6 w-6 text-orange-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {stats.pendingExams}
+                    {formatLocalizedNumber(stats.pendingExams, currentLanguage)}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
-                  Pending Assessments
+                  {t("dashboard.stats.pendingAssessments")}
                 </div>
               </div>
 
@@ -227,11 +236,11 @@ export const EmployeeDashboard = () => {
                     <Award className="h-6 w-6 text-purple-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {stats.certificates}
+                    {formatLocalizedNumber(stats.certificates, currentLanguage)}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
-                  Certificates Earned
+                  {t("dashboard.stats.certificatesEarned")}
                 </div>
               </div>
             </div>
@@ -241,58 +250,69 @@ export const EmployeeDashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                  Quick Actions
+                  {t("dashboard.quickActions.title")}
                 </h3>
                 <div className="space-y-3">
                   <button
                     onClick={() => setActivePage("my-courses")}
-                    className="w-full text-left px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    className={`w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors ${
+                      isRtl ? "text-right" : "text-left"
+                    }`}
                   >
                     <div className="font-medium text-blue-900">
-                      Continue Learning
+                      {t("dashboard.quickActions.continueLearning.title")}
                     </div>
                     <div className="text-sm text-blue-700">
-                      Access your assigned courses
+                      {t("dashboard.quickActions.continueLearning.subtitle")}
                     </div>
                   </button>
                   <button
                     onClick={() => setActivePage("my-exams")}
-                    className="w-full text-left px-4 py-3 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors"
+                    className={`w-full px-4 py-3 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors ${
+                      isRtl ? "text-right" : "text-left"
+                    }`}
                   >
                     <div className="font-medium text-orange-900">
-                      Take Assessments
+                      {t("dashboard.quickActions.takeAssessments.title")}
                     </div>
                     <div className="text-sm text-orange-700">
-                      Complete your pending tests
+                      {t("dashboard.quickActions.takeAssessments.subtitle")}
                     </div>
                   </button>
                   <button
                     onClick={() => setActivePage("certificates")}
-                    className="w-full text-left px-4 py-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                    className={`w-full px-4 py-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors ${
+                      isRtl ? "text-right" : "text-left"
+                    }`}
                   >
                     <div className="font-medium text-purple-900">
-                      View Certificates
+                      {t("dashboard.quickActions.viewCertificates.title")}
                     </div>
                     <div className="text-sm text-purple-700">
-                      Download your achievements
+                      {t("dashboard.quickActions.viewCertificates.subtitle")}
                     </div>
                   </button>
                 </div>
               </div>
 
               <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl shadow-lg p-6 text-white">
-                <h3 className="text-lg font-semibold mb-4">Your Progress</h3>
+                <h3 className="text-lg font-semibold mb-4">
+                  {t("dashboard.progressCard.title")}
+                </h3>
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm mb-2">
-                      <span>Course Completion</span>
+                      <span>{t("dashboard.progressCard.courseCompletion")}</span>
                       <span>
-                        {stats.assignedCourses > 0
-                          ? Math.round(
-                              (stats.completedCourses / stats.assignedCourses) *
-                                100
-                            )
-                          : 0}
+                        {formatLocalizedNumber(
+                          stats.assignedCourses > 0
+                            ? Math.round(
+                                (stats.completedCourses / stats.assignedCourses) *
+                                  100
+                              )
+                            : 0,
+                          currentLanguage
+                        )}
                         %
                       </span>
                     </div>
@@ -314,15 +334,19 @@ export const EmployeeDashboard = () => {
                   <div className="pt-4 border-t border-white/20 space-y-2">
                     <div className="flex justify-between">
                       <span className="text-sm opacity-90">
-                        Completed Courses
+                        {t("dashboard.progressCard.completedCourses")}
                       </span>
                       <span className="font-bold">
-                        {stats.completedCourses}
+                        {formatLocalizedNumber(stats.completedCourses, currentLanguage)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm opacity-90">Certificates</span>
-                      <span className="font-bold">{stats.certificates}</span>
+                      <span className="text-sm opacity-90">
+                        {t("dashboard.progressCard.certificates")}
+                      </span>
+                      <span className="font-bold">
+                        {formatLocalizedNumber(stats.certificates, currentLanguage)}
+                      </span>
                     </div>
                   </div>
                 </div>
