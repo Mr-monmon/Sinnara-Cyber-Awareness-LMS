@@ -9,16 +9,22 @@ interface Partner {
   order_index: number;
 }
 
+/* ── Design Tokens ── */
+const T = {
+  bg:          '#12140a',
+  accent:      '#c8ff00',
+  border:      'rgba(255,255,255,0.10)',
+  borderFaint: 'rgba(255,255,255,0.05)',
+  textMuted:   '#64748b',
+  textBody:    '#94a3b8',
+  cardBg:      'rgba(255,255,255,0.04)',
+  cardHover:   'rgba(200,255,0,0.06)',
+};
+
 export const PartnersCarousel: React.FC = () => {
   const [partners, setPartners] = useState<Partner[]>([]);
-  const settings = {
-    title: 'Trusted by Leading Organizations',
-    subtitle: 'Our partners rely on Sinnara to strengthen their cybersecurity culture.'
-  };
 
-  useEffect(() => {
-    loadPartners();
-  }, []);
+  useEffect(() => { loadPartners(); }, []);
 
   const loadPartners = async () => {
     const { data } = await supabase
@@ -26,134 +32,174 @@ export const PartnersCarousel: React.FC = () => {
       .select('*')
       .eq('is_active', true)
       .order('order_index');
-
     if (data) setPartners(data);
   };
 
   if (partners.length === 0) return null;
 
-  const duplicatedPartners = [...partners, ...partners, ...partners];
+  /* triple-duplicate for seamless infinite loop */
+  const looped = [...partners, ...partners, ...partners];
+  /* card width (288) + gap (24) = 312px per item */
+  const totalShift = 312 * partners.length;
+
+  const LogoCard: React.FC<{ partner: Partner; idx: number }> = ({ partner, idx }) => {
+    const inner = (
+      <div
+        className="aw-partner-card"
+        style={{
+          width: 288,
+          height: 120,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px 24px',
+          background: T.cardBg,
+          border: `1px solid ${T.borderFaint}`,
+          borderRadius: 12,
+          transition: 'background 0.25s, border-color 0.25s, filter 0.25s, opacity 0.25s',
+          filter: 'grayscale(1)',
+          opacity: 0.55,
+          cursor: partner.website ? 'pointer' : 'default',
+        }}
+        onMouseEnter={e => {
+          const el = e.currentTarget as HTMLElement;
+          el.style.background    = T.cardHover;
+          el.style.borderColor   = 'rgba(200,255,0,0.25)';
+          el.style.filter        = 'grayscale(0)';
+          el.style.opacity       = '1';
+        }}
+        onMouseLeave={e => {
+          const el = e.currentTarget as HTMLElement;
+          el.style.background    = T.cardBg;
+          el.style.borderColor   = T.borderFaint;
+          el.style.filter        = 'grayscale(1)';
+          el.style.opacity       = '0.55';
+        }}
+      >
+        <img
+          src={partner.logo_url}
+          alt={partner.name}
+          style={{ maxHeight: 72, maxWidth: '100%', objectFit: 'contain', display: 'block' }}
+          onError={e => {
+            const img = e.target as HTMLImageElement;
+            img.style.display = 'none';
+            const fallback = document.createElement('span');
+            fallback.textContent = partner.name;
+            fallback.style.cssText = `font-size:14px;font-weight:700;color:${T.textBody};text-align:center;`;
+            img.parentElement?.appendChild(fallback);
+          }}
+        />
+      </div>
+    );
+
+    return partner.website ? (
+      <a
+        key={`${partner.id}-${idx}`}
+        href={partner.website}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ textDecoration: 'none', flexShrink: 0 }}
+        tabIndex={-1}
+      >
+        {inner}
+      </a>
+    ) : (
+      <div key={`${partner.id}-${idx}`} style={{ flexShrink: 0 }}>
+        {inner}
+      </div>
+    );
+  };
 
   return (
-    <section className="py-20 bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
-      <div className="absolute inset-0 bg-grid-slate-100 bg-[size:30px_30px] opacity-30" />
+    <section
+      style={{
+        padding: '96px 0',
+        background: 'rgba(255,255,255,0.05)',
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      {/* ── Heading ── */}
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px', marginBottom: 56 }}>
+        <p style={{
+          textAlign: 'center',
+          fontSize: 14,
+          fontWeight: 700,
+          color: T.textMuted,
+          letterSpacing: '2.8px',
+          textTransform: 'uppercase',
+          lineHeight: '20px',
+          margin: 0,
+        }}>
+          Trusted by Leading Organizations
+        </p>
+      </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl lg:text-5xl font-bold text-slate-900 mb-4">
-            {settings.title}
-          </h2>
-          <p className="text-xl text-slate-600">
-            {settings.subtitle}
-          </p>
-        </div>
+      {/* ── Carousel track ── */}
+      <div style={{ position: 'relative' }}>
+        {/* Left fade */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute', left: 0, top: 0, bottom: 0, width: 120, zIndex: 2,
+            background: 'linear-gradient(to right, rgba(18,18,12,0.95) 0%, transparent 100%)',
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Right fade */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute', right: 0, top: 0, bottom: 0, width: 120, zIndex: 2,
+            background: 'linear-gradient(to left, rgba(18,18,12,0.95) 0%, transparent 100%)',
+            pointerEvents: 'none',
+          }}
+        />
 
-        <div className="relative">
-          <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-white to-transparent z-10" />
-          <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-white to-transparent z-10" />
-
-          <div className="overflow-hidden py-4">
-            <div className="flex gap-12 animate-scroll">
-              {duplicatedPartners.map((partner, index) => (
-                <div
-                  key={`${partner.id}-${index}`}
-                  className="flex-shrink-0"
-                >
-                  {partner.website ? (
-                    <a
-                      href={partner.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block group"
-                    >
-                      <div className="h-48 w-72 flex items-center justify-center bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 border border-slate-200 hover:border-blue-300 transform hover:-translate-y-1">
-                        <div className="text-center w-full">
-                          <div className="h-32 flex items-center justify-center mb-2">
-                            <img
-                              src={partner.logo_url}
-                              alt={partner.name}
-                              className="max-h-full max-w-full object-contain filter grayscale group-hover:grayscale-0 transition-all duration-300 opacity-70 group-hover:opacity-100"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement?.parentElement;
-                                if (parent) {
-                                  const fallback = document.createElement('div');
-                                  fallback.className = 'text-2xl font-bold text-slate-400 group-hover:text-blue-600 transition-colors';
-                                  fallback.textContent = partner.name;
-                                  parent.appendChild(fallback);
-                                }
-                              }}
-                            />
-                          </div>
-                          <div className="text-sm font-medium text-slate-600 group-hover:text-blue-600 transition-colors">
-                            {partner.name}
-                          </div>
-                        </div>
-                      </div>
-                    </a>
-                  ) : (
-                    <div className="h-48 w-72 flex items-center justify-center bg-white rounded-xl shadow-sm p-8 border border-slate-200">
-                      <div className="text-center w-full">
-                        <div className="h-32 flex items-center justify-center mb-2">
-                          <img
-                            src={partner.logo_url}
-                            alt={partner.name}
-                            className="max-h-full max-w-full object-contain filter grayscale opacity-70"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              const parent = target.parentElement?.parentElement;
-                              if (parent) {
-                                const fallback = document.createElement('div');
-                                fallback.className = 'text-2xl font-bold text-slate-400';
-                                fallback.textContent = partner.name;
-                                parent.appendChild(fallback);
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="text-sm font-medium text-slate-600">
-                          {partner.name}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        <div style={{ overflow: 'hidden', padding: '8px 0' }}>
+          <div
+            className="aw-carousel-track"
+            style={{ display: 'flex', gap: 24, width: 'max-content' }}
+          >
+            {looped.map((partner, idx) => (
+              <LogoCard key={`${partner.id}-${idx}`} partner={partner} idx={idx} />
+            ))}
           </div>
-        </div>
-
-        <div className="text-center mt-12">
-          <p className="text-sm text-slate-500 italic">
-            Hover to pause • Trusted by leading organizations
-          </p>
         </div>
       </div>
 
+      {/* ── Pause hint ── */}
+      <p style={{
+        textAlign: 'center',
+        fontSize: 12,
+        color: T.textMuted,
+        marginTop: 32,
+        letterSpacing: '0.4px',
+        opacity: 0.6,
+      }}>
+        Hover to pause
+      </p>
+
+      {/* ── Animation ── */}
       <style>{`
-        @keyframes scroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(calc(-336px * ${partners.length}));
-          }
+        @keyframes aw-scroll {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-${totalShift}px); }
         }
 
-        .animate-scroll {
-          animation: scroll 40s linear infinite;
+        .aw-carousel-track {
+          animation: aw-scroll ${Math.max(20, partners.length * 6)}s linear infinite;
           will-change: transform;
         }
 
-        .animate-scroll:hover {
+        .aw-carousel-track:hover {
           animation-play-state: paused;
         }
 
         @media (max-width: 768px) {
-          .animate-scroll {
-            animation-duration: 25s;
+          .aw-carousel-track {
+            animation-duration: ${Math.max(15, partners.length * 4)}s;
           }
         }
       `}</style>
