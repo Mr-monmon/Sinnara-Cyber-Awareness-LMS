@@ -1,12 +1,93 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Shield, ChevronRight, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, Shield, ChevronRight, ArrowLeft, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+/* ─────────────────────────────────────────
+   DESIGN TOKENS
+───────────────────────────────────────── */
+const T = {
+  bg:          '#12140a',
+  bgCard:      '#1a1e0e',
+  accent:      '#c8ff00',
+  accentDark:  '#12140a',
+  white:       '#ffffff',
+  textBody:    '#94a3b8',
+  textLabel:   '#cbd5e1',
+  textMuted:   '#64748b',
+  border:      'rgba(255,255,255,0.10)',
+  borderFaint: 'rgba(255,255,255,0.05)',
+  cardBg:      'rgba(255,255,255,0.03)',
+} as const;
+
+/* ── Severity config ── */
+const SEVERITY = {
+  HIGH:   { color: '#f87171', bg: 'rgba(248,113,113,0.08)',  border: 'rgba(248,113,113,0.30)', label: 'HIGH',   dot: '#ef4444' },
+  MEDIUM: { color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.30)',  label: 'MEDIUM', dot: '#f59e0b' },
+  LOW:    { color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',   border: 'rgba(96,165,250,0.30)',  label: 'LOW',    dot: '#3b82f6' },
+} as const;
+
+type SeverityKey = keyof typeof SEVERITY;
+
+/* ─────────────────────────────────────────
+   GLOBAL CSS
+───────────────────────────────────────── */
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  .aw-alert-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 24px;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .aw-alert-card:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.14);
+    transform: translateY(-2px);
+  }
+
+  .aw-tip-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 22px;
+    color: #94a3b8;
+  }
+
+  .aw-alerts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 768px) {
+    .aw-alerts-grid { grid-template-columns: 1fr; }
+  }
+
+  @keyframes aw-spin { to { transform: rotate(360deg); } }
+`;
+
+if (typeof document !== 'undefined' && !document.getElementById('aw-fraud-styles')) {
+  const tag = document.createElement('style');
+  tag.id = 'aw-fraud-styles';
+  tag.textContent = STYLES;
+  document.head.appendChild(tag);
+}
+
+/* ─────────────────────────────────────────
+   TYPES
+───────────────────────────────────────── */
 interface FraudAlert {
   id: string;
   title: string;
   fraud_type: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  severity: SeverityKey;
   public_summary: string;
   safety_tips: string[];
   video_url?: string;
@@ -16,101 +97,108 @@ interface PublicFraudAlertsPageProps {
   onNavigate: (page: string) => void;
 }
 
+/* ─────────────────────────────────────────
+   SHARED ATOMS
+───────────────────────────────────────── */
+const pageStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  background: T.bg,
+  fontFamily: "'Inter', sans-serif",
+  padding: '48px 16px',
+};
+
+const SeverityBadge: React.FC<{ severity: SeverityKey }> = ({ severity }) => {
+  const s = SEVERITY[severity] ?? SEVERITY.LOW;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '4px 10px', borderRadius: 9999, flexShrink: 0,
+      background: s.bg, border: `1px solid ${s.border}`,
+      fontSize: 11, fontWeight: 700, color: s.color,
+      letterSpacing: '0.6px', textTransform: 'uppercase',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
+      {s.label}
+    </span>
+  );
+};
+
+const BackBtn: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
+  <button
+    onClick={onClick}
+    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, color: T.textBody, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 28px', transition: 'color 0.2s', fontFamily: 'inherit' }}
+    onMouseEnter={e => (e.currentTarget.style.color = T.white)}
+    onMouseLeave={e => (e.currentTarget.style.color = T.textBody)}
+  >
+    <ArrowLeft size={16} /> {label}
+  </button>
+);
+
+/* ═══════════════════════════════════════════
+   COMPONENT
+═══════════════════════════════════════════ */
 export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ onNavigate }) => {
-  const [alerts, setAlerts] = useState<FraudAlert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [alerts, setAlerts]             = useState<FraudAlert[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<FraudAlert | null>(null);
 
   useEffect(() => {
-    const fetchAlerts = async () => {
+    (async () => {
       const { data, error } = await supabase
         .from('fraud_alerts')
         .select('id, title, fraud_type, severity, public_summary, safety_tips, video_url')
         .eq('is_published', true)
         .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setAlerts(data);
-      }
+      if (!error && data) setAlerts(data);
       setLoading(false);
-    };
-
-    fetchAlerts();
+    })();
   }, []);
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'HIGH':
-        return 'bg-red-50 border-red-200';
-      case 'MEDIUM':
-        return 'bg-yellow-50 border-yellow-200';
-      case 'LOW':
-        return 'bg-blue-50 border-blue-200';
-      default:
-        return 'bg-gray-50 border-gray-200';
-    }
-  };
-
-  const getSeverityBadgeColor = (severity: string) => {
-    switch (severity) {
-      case 'HIGH':
-        return 'bg-red-100 text-red-800';
-      case 'MEDIUM':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'LOW':
-        return 'bg-blue-100 text-blue-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
+  /* ══════════
+     DETAIL VIEW
+  ══════════ */
   if (selectedAlert) {
+    const s = SEVERITY[selectedAlert.severity] ?? SEVERITY.LOW;
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800">
-        <div className="max-w-4xl mx-auto px-4 py-12">
-          <button
-            onClick={() => setSelectedAlert(null)}
-            className="inline-flex items-center gap-2 text-white hover:text-gray-300 mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to All Alerts
-          </button>
+      <div style={pageStyle}>
+        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+          <BackBtn label="Back to All Alerts" onClick={() => setSelectedAlert(null)} />
 
-          <div className={`bg-white rounded-xl shadow-xl p-8 border-2 ${
-            selectedAlert.severity === 'HIGH' ? 'border-red-300' :
-            selectedAlert.severity === 'MEDIUM' ? 'border-yellow-300' :
-            'border-blue-300'
-          }`}>
-            <div className="flex items-start justify-between mb-4">
-              <h1 className="text-3xl font-bold text-gray-900 flex-1">
+          {/* Card */}
+          <div style={{
+            background: T.bgCard,
+            border: `1px solid ${s.border}`,
+            borderRadius: 16,
+            padding: '36px 40px',
+            boxShadow: `0 0 40px ${s.bg}, 0 25px 60px rgba(0,0,0,0.40)`,
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 8 }}>
+              <h1 style={{ fontSize: 26, fontWeight: 900, color: T.white, lineHeight: '34px', letterSpacing: '-0.3px', flex: 1 }}>
                 {selectedAlert.title}
               </h1>
-              <span
-                className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap ml-4 ${getSeverityBadgeColor(
-                  selectedAlert.severity
-                )}`}
-              >
-                {selectedAlert.severity}
-              </span>
+              <SeverityBadge severity={selectedAlert.severity} />
             </div>
 
-            <p className="text-lg font-medium text-gray-600 mb-6">
-              Channel: {selectedAlert.fraud_type}
+            {/* Channel tag */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, borderRadius: 9999, marginBottom: 24 }}>
+              <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 500 }}>Channel:</span>
+              <span style={{ fontSize: 12, color: T.textLabel, fontWeight: 600 }}>{selectedAlert.fraud_type}</span>
+            </div>
+
+            {/* Summary */}
+            <p style={{ fontSize: 15, color: T.textBody, lineHeight: '26px', marginBottom: 28 }}>
+              {selectedAlert.public_summary}
             </p>
 
-            <div className="prose max-w-none mb-6">
-              <p className="text-gray-800 text-lg leading-relaxed">
-                {selectedAlert.public_summary}
-              </p>
-            </div>
-
+            {/* Video */}
             {selectedAlert.video_url && (
-              <div className="mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Awareness Video</h3>
-                <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+              <div style={{ marginBottom: 28 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, marginBottom: 12 }}>Awareness Video</h3>
+                <div style={{ position: 'relative', paddingTop: '56.25%', background: 'rgba(0,0,0,0.40)', borderRadius: 10, overflow: 'hidden', border: `1px solid ${T.border}` }}>
                   <iframe
                     src={selectedAlert.video_url}
-                    className="w-full h-full"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
@@ -118,29 +206,46 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
               </div>
             )}
 
-            {selectedAlert.safety_tips && selectedAlert.safety_tips.length > 0 && (
-              <div className="bg-green-50 border-2 border-green-200 rounded-lg p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Shield className="w-6 h-6 text-green-600" />
+            {/* Safety tips */}
+            {selectedAlert.safety_tips?.length > 0 && (
+              <div style={{
+                background: 'rgba(200,255,0,0.04)',
+                border: `1px solid rgba(200,255,0,0.18)`,
+                borderRadius: 12,
+                padding: '20px 24px',
+                marginBottom: 28,
+              }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: T.white, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Shield size={18} style={{ color: T.accent }} />
                   Safety Tips
                 </h3>
-                <ul className="space-y-3">
-                  {selectedAlert.safety_tips.map((tip, idx) => (
-                    <li key={idx} className="text-gray-800 flex gap-3">
-                      <span className="text-green-600 font-bold text-xl">•</span>
-                      <span className="flex-1">{tip}</span>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {selectedAlert.safety_tips.map((tip, i) => (
+                    <li key={i} className="aw-tip-item">
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 8, flexShrink: 0, boxShadow: '0 0 6px rgba(200,255,0,0.50)' }} />
+                      {tip}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            <div className="mt-8 pt-6 border-t border-gray-200">
+            {/* CTA */}
+            <div style={{ paddingTop: 20, borderTop: `1px solid ${T.borderFaint}` }}>
               <button
                 onClick={() => onNavigate('login')}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                style={{
+                  width: '100%', padding: '14px 24px', fontSize: 15, fontWeight: 700,
+                  background: T.accent, color: T.accentDark, borderRadius: 10, border: 'none',
+                  cursor: 'pointer', boxShadow: '0 0 20px rgba(200,255,0,0.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  transition: 'opacity 0.2s, transform 0.15s', fontFamily: 'inherit',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
               >
                 Login to See Employee Guidelines
+                <ChevronRight size={16} />
               </button>
             </div>
           </div>
@@ -149,87 +254,146 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
     );
   }
 
+  /* ══════════
+     LIST VIEW
+  ══════════ */
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800">
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <button
-          onClick={() => onNavigate('landing')}
-          className="inline-flex items-center gap-2 text-white hover:text-gray-300 mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Home
-        </button>
+    <div style={pageStyle}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <BackBtn label="Back to Home" onClick={() => onNavigate('landing')} />
 
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <AlertCircle className="w-10 h-10 text-red-500" />
-            <h1 className="text-4xl font-bold text-white">Fraud Alerts</h1>
+        {/* Page header */}
+        <div style={{ textAlign: 'center', marginBottom: 64 }}>
+          {/* Icon */}
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%',
+            background: 'rgba(248,113,113,0.10)',
+            border: '1px solid rgba(248,113,113,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px',
+            boxShadow: '0 0 32px rgba(248,113,113,0.12)',
+          }}>
+            <AlertTriangle size={32} style={{ color: '#f87171' }} />
           </div>
-          <p className="text-gray-300 text-lg max-w-2xl mx-auto">
+
+          <h1 style={{ fontSize: 40, fontWeight: 900, color: T.white, letterSpacing: '-0.5px', margin: '0 0 12px' }}>
+            Live Fraud Alerts
+          </h1>
+          <p style={{ fontSize: 16, color: T.textBody, lineHeight: '26px', maxWidth: 560, margin: '0 auto' }}>
             Stay informed about active scams and fraud schemes in Saudi Arabia. Learn how to protect yourself and your business.
           </p>
+
+          {/* Stats bar */}
+          {!loading && alerts.length > 0 && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 24, marginTop: 24, padding: '10px 24px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.borderFaint}`, borderRadius: 9999 }}>
+              {(['HIGH', 'MEDIUM', 'LOW'] as SeverityKey[]).map(sev => {
+                const count = alerts.filter(a => a.severity === sev).length;
+                if (!count) return null;
+                const s = SEVERITY[sev];
+                return (
+                  <div key={sev} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{count} {sev}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
+        {/* Content */}
         {loading ? (
-          <div className="text-center text-gray-400">Loading alerts...</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px 0', gap: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', border: `3px solid ${T.borderFaint}`, borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+            <p style={{ fontSize: 14, color: T.textBody }}>Loading alerts…</p>
+          </div>
         ) : alerts.length === 0 ? (
-          <div className="text-center text-gray-400 py-12">
-            <Shield className="w-12 h-12 mx-auto mb-4 text-green-500" />
-            <p>No active fraud alerts at this time.</p>
+          <div style={{ textAlign: 'center', padding: '80px 0' }}>
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <Shield size={32} style={{ color: T.accent }} />
+            </div>
+            <h3 style={{ fontSize: 20, fontWeight: 700, color: T.white, marginBottom: 8 }}>All Clear</h3>
+            <p style={{ fontSize: 15, color: T.textBody }}>No active fraud alerts at this time.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {alerts.map((alert) => (
-              <div
-                key={alert.id}
-                className={`border rounded-lg p-6 transition-all hover:shadow-lg ${getSeverityColor(
-                  alert.severity
-                )}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900 flex-1">
-                    {alert.title}
-                  </h3>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap ml-2 ${getSeverityBadgeColor(
-                      alert.severity
-                    )}`}
-                  >
-                    {alert.severity}
-                  </span>
-                </div>
-
-                <p className="text-sm font-medium text-gray-600 mb-3">
-                  Channel: {alert.fraud_type}
-                </p>
-
-                <p className="text-gray-700 mb-4">{alert.public_summary}</p>
-
-                {alert.safety_tips && alert.safety_tips.length > 0 && (
-                  <div className="mb-4 bg-white bg-opacity-60 rounded p-3">
-                    <p className="text-sm font-semibold text-gray-900 mb-2">
-                      Safety Tips:
-                    </p>
-                    <ul className="space-y-1">
-                      {alert.safety_tips.map((tip, idx) => (
-                        <li key={idx} className="text-sm text-gray-700 flex gap-2">
-                          <span className="text-green-600 font-bold">•</span>
-                          {tip}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <button
+          <div className="aw-alerts-grid">
+            {alerts.map(alert => {
+              const s = SEVERITY[alert.severity] ?? SEVERITY.LOW;
+              return (
+                <article
+                  key={alert.id}
+                  className="aw-alert-card"
                   onClick={() => setSelectedAlert(alert)}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ borderLeftWidth: 3, borderLeftStyle: 'solid', borderLeftColor: s.dot }}
                 >
-                  View Full Alert
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+                  {/* Card header */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, lineHeight: '24px', flex: 1 }}>
+                      {alert.title}
+                    </h3>
+                    <SeverityBadge severity={alert.severity} />
+                  </div>
+
+                  {/* Channel */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, borderRadius: 9999, width: 'fit-content' }}>
+                    <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 500 }}>Channel:</span>
+                    <span style={{ fontSize: 11, color: T.textLabel, fontWeight: 600 }}>{alert.fraud_type}</span>
+                  </div>
+
+                  {/* Summary */}
+                  <p style={{ fontSize: 14, color: T.textBody, lineHeight: '22px' }}>
+                    {alert.public_summary.length > 160
+                      ? alert.public_summary.slice(0, 160) + '…'
+                      : alert.public_summary}
+                  </p>
+
+                  {/* Tips preview */}
+                  {alert.safety_tips?.length > 0 && (
+                    <div style={{ background: 'rgba(200,255,0,0.03)', border: `1px solid rgba(200,255,0,0.10)`, borderRadius: 8, padding: '12px 14px' }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 8 }}>
+                        Safety Tips
+                      </p>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {alert.safety_tips.slice(0, 2).map((tip, i) => (
+                          <li key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: T.textBody, lineHeight: '20px' }}>
+                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.accent, marginTop: 7.5, flexShrink: 0 }} />
+                            {tip}
+                          </li>
+                        ))}
+                        {alert.safety_tips.length > 2 && (
+                          <li style={{ fontSize: 12, color: T.textMuted, paddingLeft: 13 }}>+{alert.safety_tips.length - 2} more tips…</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* CTA */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: s.color, transition: 'gap 0.2s' }}>
+                      View Full Alert <ChevronRight size={14} />
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Bottom CTA */}
+        {!loading && alerts.length > 0 && (
+          <div style={{ marginTop: 56, textAlign: 'center', padding: '36px 24px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 14 }}>
+            <AlertCircle size={24} style={{ color: T.textMuted, marginBottom: 12, display: 'block', margin: '0 auto 12px' }} />
+            <p style={{ fontSize: 15, color: T.textBody, marginBottom: 20 }}>
+              Want full threat intelligence, employee guidelines, and incident reporting tools?
+            </p>
+            <button
+              onClick={() => onNavigate('login')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 28px', background: T.accent, color: T.accentDark, fontSize: 14, fontWeight: 700, borderRadius: 10, border: 'none', cursor: 'pointer', boxShadow: '0 0 20px rgba(200,255,0,0.20)', transition: 'opacity 0.2s, transform 0.15s', fontFamily: 'inherit' }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
+            >
+              Login to Dashboard <ChevronRight size={15} />
+            </button>
           </div>
         )}
       </div>
