@@ -1,5 +1,5 @@
 /*
-  # Sinnara Cybersecurity Training Platform - Database Schema
+  # AwareOne Cybersecurity Training Platform - Database Schema
 
   ## Overview
   Multi-tenant cybersecurity awareness training platform with role-based access control.
