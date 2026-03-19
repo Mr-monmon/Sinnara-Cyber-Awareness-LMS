@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Users, Building2, BookOpen, Target, Award, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Building2, BookOpen, Target, Award, Activity, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface AnalyticsData {
@@ -326,6 +326,7 @@ export const AnalyticsPage: React.FC = () => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Passed Exams</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Average Score</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Awareness Level</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -344,6 +345,19 @@ export const AnalyticsPage: React.FC = () => {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${level.bg} ${level.color}`}>
                         {level.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <button
+                        title="Issue certificate"
+                        disabled={stat.average_score < 80}
+                        className={`p-2 rounded-lg transition-colors ${
+                          stat.average_score >= 80
+                            ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
+                            : 'text-slate-300 cursor-not-allowed'
+                        }`}
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
                     </td>
                   </tr>
                 );
