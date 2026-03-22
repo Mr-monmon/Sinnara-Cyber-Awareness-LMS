@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Shield, Lock, Mail } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState } from "react";
+import { ArrowLeft, Shield, Lock, Mail } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
 ───────────────────────────────────────── */
 const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#94a3b8',
-  textLabel:   '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.10)',
-  borderFaint: 'rgba(255,255,255,0.05)',
+  bg: "#12140a",
+  bgCard: "#1a1e0e",
+  accent: "#c8ff00",
+  accentDark: "#12140a",
+  white: "#ffffff",
+  textBody: "#94a3b8",
+  textLabel: "#cbd5e1",
+  textMuted: "#64748b",
+  border: "rgba(255,255,255,0.10)",
+  borderFaint: "rgba(255,255,255,0.05)",
 } as const;
 
 /* ─────────────────────────────────────────
@@ -73,9 +74,12 @@ const STYLES = `
   }
 `;
 
-if (typeof document !== 'undefined' && !document.getElementById('aw-login-styles')) {
-  const tag = document.createElement('style');
-  tag.id = 'aw-login-styles';
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("aw-login-styles")
+) {
+  const tag = document.createElement("style");
+  tag.id = "aw-login-styles";
   tag.textContent = STYLES;
   document.head.appendChild(tag);
 }
@@ -83,22 +87,21 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-login-styles
 /* ─────────────────────────────────────────
    LOGO  (reuse asset from session)
 ───────────────────────────────────────── */
-const LOGO = 'https://www.figma.com/api/mcp/asset/f7badfce-8bdc-4ae5-9ad9-e5af67dfd195';
+const LOGO =
+  "https://www.figma.com/api/mcp/asset/f7badfce-8bdc-4ae5-9ad9-e5af67dfd195";
 
-interface LoginPageProps {
-  onNavigate: (page: string) => void;
-}
 
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
+export const LoginPage = () => {
   const { login } = useAuth();
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -106,7 +109,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     try {
       await login(email, password);
     } catch {
-      setError('Invalid email or password. Please try again.');
+      setError("Invalid email or password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -118,72 +121,128 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   };
 
   const demoAccounts = [
-    { role: 'Platform Admin',  email: 'admin@sinnara.com',        password: 'admin123'    },
-    { role: 'Company Admin',   email: 'teemo@teemo.com',          password: 'company123'  },
-    { role: 'Employee',        email: 'mohammed@techcorp.com',    password: 'employee123' },
+    {
+      role: "Platform Admin",
+      email: "admin@sinnara.com",
+      password: "admin123",
+    },
+    { role: "Company Admin", email: "teemo@teemo.com", password: "company123" },
+    {
+      role: "Employee",
+      email: "mohammed@techcorp.com",
+      password: "employee123",
+    },
   ];
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: T.bg,
-      fontFamily: "'Inter', sans-serif",
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '48px 16px',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-
+    <div
+      style={{
+        minHeight: "100vh",
+        background: T.bg,
+        fontFamily: "'Inter', sans-serif",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "48px 16px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
       {/* ── Background radial glow ── */}
-      <div aria-hidden="true" style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 50% 0%, rgba(200,255,0,0.08) 0%, transparent 60%)',
-      }} />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          background:
+            "radial-gradient(ellipse at 50% 0%, rgba(200,255,0,0.08) 0%, transparent 60%)",
+        }}
+      />
 
-      <div style={{ position: 'relative', width: '100%', maxWidth: 440 }}>
-
+      <div style={{ position: "relative", width: "100%", maxWidth: 440 }}>
         {/* ── Back button ── */}
         <button
-          onClick={() => onNavigate('landing')}
+          onClick={() => navigate("/")}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            fontSize: 14, color: T.textBody, background: 'none', border: 'none',
-            cursor: 'pointer', padding: '0 0 24px', transition: 'color 0.2s',
-            fontFamily: 'inherit',
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 14,
+            color: T.textBody,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "0 0 24px",
+            transition: "color 0.2s",
+            fontFamily: "inherit",
           }}
-          onMouseEnter={e => (e.currentTarget.style.color = T.white)}
-          onMouseLeave={e => (e.currentTarget.style.color = T.textBody)}
+          onMouseEnter={(e) => (e.currentTarget.style.color = T.white)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}
         >
           <ArrowLeft size={16} /> Back to Home
         </button>
 
         {/* ── Card ── */}
-        <div style={{
-          background: T.bgCard,
-          border: `1px solid ${T.border}`,
-          borderRadius: 16,
-          padding: '40px',
-          boxShadow: '0 25px 60px rgba(0,0,0,0.50)',
-        }}>
-
+        <div
+          style={{
+            background: T.bgCard,
+            border: `1px solid ${T.border}`,
+            borderRadius: 16,
+            padding: "40px",
+            boxShadow: "0 25px 60px rgba(0,0,0,0.50)",
+          }}
+        >
           {/* Accent bar */}
-          <div style={{ width: 40, height: 3, background: T.accent, borderRadius: 9999, marginBottom: 28 }} />
+          <div
+            style={{
+              width: 40,
+              height: 3,
+              background: T.accent,
+              borderRadius: 9999,
+              marginBottom: 28,
+            }}
+          />
 
           {/* Logo + heading */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 32 }}>
-            <div style={{
-              width: 64, height: 64, borderRadius: 14,
-              background: 'rgba(200,255,0,0.08)',
-              border: '1px solid rgba(200,255,0,0.20)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: 20,
-            }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              marginBottom: 32,
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 14,
+                background: "rgba(200,255,0,0.08)",
+                border: "1px solid rgba(200,255,0,0.20)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 20,
+              }}
+            >
               <Shield size={30} style={{ color: T.accent }} />
             </div>
-            <img src={LOGO} alt="AwareOne" style={{ height: 28, width: 'auto', marginBottom: 20 }} />
-            <h1 style={{ fontSize: 24, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: '0 0 6px' }}>
+            <img
+              src={LOGO}
+              alt="AwareOne"
+              style={{ height: 28, width: "auto", marginBottom: 20 }}
+            />
+            <h1
+              style={{
+                fontSize: 24,
+                fontWeight: 900,
+                color: T.white,
+                letterSpacing: "-0.3px",
+                margin: "0 0 6px",
+              }}
+            >
               Welcome Back
             </h1>
             <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
@@ -193,33 +252,58 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
 
           {/* ── Error message ── */}
           {error && (
-            <div style={{
-              marginBottom: 20,
-              padding: '12px 14px',
-              background: 'rgba(248,113,113,0.08)',
-              border: '1px solid rgba(248,113,113,0.25)',
-              borderRadius: 8,
-              fontSize: 13,
-              color: '#fca5a5',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
+            <div
+              style={{
+                marginBottom: 20,
+                padding: "12px 14px",
+                background: "rgba(248,113,113,0.08)",
+                border: "1px solid rgba(248,113,113,0.25)",
+                borderRadius: 8,
+                fontSize: 13,
+                color: "#fca5a5",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
               <span style={{ flexShrink: 0 }}>⚠</span>
               {error}
             </div>
           )}
 
           {/* ── Form ── */}
-          <form onSubmit={handleSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
+          <form
+            onSubmit={handleSubmit}
+            autoComplete="on"
+            style={{ display: "flex", flexDirection: "column", gap: 18 }}
+          >
             {/* Email */}
             <div>
-              <label htmlFor="login-email" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: T.textLabel, marginBottom: 6 }}>
-                Email Address<span style={{ color: T.accent, marginLeft: 3 }}>*</span>
+              <label
+                htmlFor="login-email"
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: T.textLabel,
+                  marginBottom: 6,
+                }}
+              >
+                Email Address
+                <span style={{ color: T.accent, marginLeft: 3 }}>*</span>
               </label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+              <div style={{ position: "relative" }}>
+                <Mail
+                  size={16}
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: T.textMuted,
+                    pointerEvents: "none",
+                  }}
+                />
                 <input
                   id="login-email"
                   className="aw-login-input"
@@ -228,18 +312,38 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label htmlFor="login-password" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: T.textLabel, marginBottom: 6 }}>
-                Password<span style={{ color: T.accent, marginLeft: 3 }}>*</span>
+              <label
+                htmlFor="login-password"
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: T.textLabel,
+                  marginBottom: 6,
+                }}
+              >
+                Password
+                <span style={{ color: T.accent, marginLeft: 3 }}>*</span>
               </label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+              <div style={{ position: "relative" }}>
+                <Lock
+                  size={16}
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: T.textMuted,
+                    pointerEvents: "none",
+                  }}
+                />
                 <input
                   id="login-password"
                   className="aw-login-input"
@@ -248,7 +352,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                   autoComplete="current-password"
                   placeholder="••••••••"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
             </div>
@@ -259,52 +363,98 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
               disabled={loading}
               style={{
                 marginTop: 4,
-                width: '100%',
-                padding: '14px 24px',
-                background: loading ? 'rgba(200,255,0,0.50)' : T.accent,
+                width: "100%",
+                padding: "14px 24px",
+                background: loading ? "rgba(200,255,0,0.50)" : T.accent,
                 color: T.accentDark,
                 fontSize: 15,
                 fontWeight: 700,
                 borderRadius: 10,
-                border: 'none',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                boxShadow: loading ? 'none' : '0 0 20px rgba(200,255,0,0.25)',
-                transition: 'opacity 0.2s, transform 0.15s',
-                fontFamily: 'inherit',
+                border: "none",
+                cursor: loading ? "not-allowed" : "pointer",
+                boxShadow: loading ? "none" : "0 0 20px rgba(200,255,0,0.25)",
+                transition: "opacity 0.2s, transform 0.15s",
+                fontFamily: "inherit",
               }}
-              onMouseEnter={e => { if (!loading) { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; } }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.opacity = "0.88";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = "1";
+                e.currentTarget.style.transform = "none";
+              }}
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? "Signing in…" : "Sign In"}
             </button>
           </form>
 
           {/* ── Demo Accounts ── */}
-          <div style={{ marginTop: 28, paddingTop: 24, borderTop: `1px solid ${T.borderFaint}` }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '1.2px', textAlign: 'center', marginBottom: 12 }}>
+          <div
+            style={{
+              marginTop: 28,
+              paddingTop: 24,
+              borderTop: `1px solid ${T.borderFaint}`,
+            }}
+          >
+            <p
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: T.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "1.2px",
+                textAlign: "center",
+                marginBottom: 12,
+              }}
+            >
               Demo Accounts
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {demoAccounts.map(({ role, email: e, password: p }) => (
                 <button
                   key={role}
                   className="aw-demo-btn"
                   onClick={() => quickLogin(e, p)}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.white, marginBottom: 2 }}>{role}</div>
-                  <div style={{ fontSize: 12, color: T.textMuted, fontFamily: "'Inter', monospace" }}>{e}</div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: T.white,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {role}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: T.textMuted,
+                      fontFamily: "'Inter', monospace",
+                    }}
+                  >
+                    {e}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
-
         </div>
 
         {/* ── Footer note ── */}
-        <p style={{ textAlign: 'center', fontSize: 12, color: T.textMuted, marginTop: 20 }}>
+        <p
+          style={{
+            textAlign: "center",
+            fontSize: 12,
+            color: T.textMuted,
+            marginTop: 20,
+          }}
+        >
           Accounts are created by administrators only
         </p>
-
       </div>
     </div>
   );
