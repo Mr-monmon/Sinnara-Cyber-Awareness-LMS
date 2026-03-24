@@ -1,33 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, BookOpen, Settings } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { Course } from '../../lib/types';
-import { CourseContentManager } from './CourseContentManager';
+import React, { useState, useEffect } from "react";
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  BookOpen,
+  Settings,
+  Download,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { Course, EmployeeCourse } from "../../lib/types";
+import { CourseContentManager } from "./CourseContentManager";
 
 export const CoursesPage: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [managingCourse, setManagingCourse] = useState<Course | null>(null);
+  const [employeeCourses, setEmployeeCourses] = useState<EmployeeCourse[]>([]);
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    content_type: 'TEXT' as 'VIDEO' | 'SLIDES' | 'TEXT',
+    title: "",
+    description: "",
+    content_type: "TEXT" as "VIDEO" | "SLIDES" | "TEXT",
     duration_minutes: 30,
-    order_index: 0
+    order_index: 0,
   });
 
   useEffect(() => {
     loadCourses();
+    loadEmployeeCourses();
   }, []);
 
   const loadCourses = async () => {
     const { data } = await supabase
-      .from('courses')
-      .select('*')
-      .order('order_index');
+      .from("courses")
+      .select("*")
+      .order("order_index");
 
     if (data) setCourses(data);
+  };
+
+  const loadEmployeeCourses = async () => {
+    const { data, error } = await supabase
+    .from("employee_courses")
+    .select(`
+      *,
+      employee:users!employee_courses_employee_id_fkey(
+        id,
+        full_name,
+        email,
+        department:departments!users_department_id_fkey(
+          id,
+          name
+        )
+      )
+    `)
+    .order("assigned_at");
+
+    if (data) setEmployeeCourses(data as unknown as EmployeeCourse[]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,26 +65,30 @@ export const CoursesPage: React.FC = () => {
     try {
       if (editingCourse) {
         const { error } = await supabase
-          .from('courses')
+          .from("courses")
           .update(formData)
-          .eq('id', editingCourse.id);
+          .eq("id", editingCourse.id);
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('courses')
-          .insert([formData]);
+        const { error } = await supabase.from("courses").insert([formData]);
 
         if (error) throw error;
       }
 
       setShowModal(false);
       setEditingCourse(null);
-      setFormData({ title: '', description: '', content_type: 'TEXT', duration_minutes: 30, order_index: 0 });
+      setFormData({
+        title: "",
+        description: "",
+        content_type: "TEXT",
+        duration_minutes: 30,
+        order_index: 0,
+      });
       await loadCourses();
     } catch (error) {
-      console.error('Error saving course:', error);
-      alert('Failed to save course');
+      console.error("Error saving course:", error);
+      alert("Failed to save course");
     }
   };
 
@@ -66,39 +99,110 @@ export const CoursesPage: React.FC = () => {
       description: course.description,
       content_type: course.content_type,
       duration_minutes: course.duration_minutes,
-      order_index: course.order_index
+      order_index: course.order_index,
     });
     setShowModal(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this course?')) return;
+    if (!confirm("Are you sure you want to delete this course?")) return;
 
     try {
-      const { error } = await supabase.from('courses').delete().eq('id', id);
+      const { error } = await supabase.from("courses").delete().eq("id", id);
       if (error) throw error;
       await loadCourses();
     } catch (error) {
-      console.error('Error deleting course:', error);
-      alert('Failed to delete course');
+      console.error("Error deleting course:", error);
+      alert("Failed to delete course");
     }
   };
 
   if (managingCourse) {
-    return <CourseContentManager course={managingCourse} onBack={() => setManagingCourse(null)} />;
+    return (
+      <CourseContentManager
+        course={managingCourse}
+        onBack={() => setManagingCourse(null)}
+      />
+    );
   }
+
+  const handleDownloadEmployeeCourses = async (courseId: string) => {
+    const rows = employeeCourses.filter(
+      (employeeCourse) => employeeCourse.course_id === courseId
+    );
+
+    if (rows.length === 0) {
+      alert("No employee course records found for this course");
+      return;
+    }
+
+    const escapeCsvValue = (value: string | number | null | undefined) => {
+      const normalized = value == null ? "" : String(value);
+      return `"${normalized.replace(/"/g, '""')}"`;
+    };
+
+    const headers = [
+      "user name",
+      "user email",
+      "department",
+      "progress_percentage",
+      "completed_at",
+    ];
+
+    const csvLines = rows.map((row) => {
+      const employee = (
+        row as EmployeeCourse & {
+          employee?: { full_name?: string | null; email?: string | null; department?: { name?: string | null } };
+        }
+      ).employee;
+
+      return [
+        escapeCsvValue(employee?.full_name ?? ""),
+        escapeCsvValue(employee?.email ?? ""),
+        escapeCsvValue(employee?.department?.name ?? ""),
+        escapeCsvValue(row.progress_percentage),
+        escapeCsvValue(row.completed_at),
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...csvLines].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const course = courses.find((item) => item.id === courseId);
+    const safeCourseTitle = (course?.title ?? "course")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const fileName = `${safeCourseTitle}_employee_courses.csv`;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Training Courses</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Training Courses
+          </h1>
           <p className="text-slate-600">Training Content Management</p>
         </div>
         <button
           onClick={() => {
             setEditingCourse(null);
-            setFormData({ title: '', description: '', content_type: 'TEXT', duration_minutes: 30, order_index: courses.length });
+            setFormData({
+              title: "",
+              description: "",
+              content_type: "TEXT",
+              duration_minutes: 30,
+              order_index: courses.length,
+            });
             setShowModal(true);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -110,12 +214,22 @@ export const CoursesPage: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {courses.map((course) => (
-          <div key={course.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+          <div
+            key={course.id}
+            className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow"
+          >
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 bg-purple-50 rounded-lg">
                 <BookOpen className="h-6 w-6 text-purple-600" />
               </div>
               <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownloadEmployeeCourses(course.id)}
+                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  title="View Employee Courses"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
                 <button
                   onClick={() => setManagingCourse(course)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -138,14 +252,24 @@ export const CoursesPage: React.FC = () => {
               </div>
             </div>
 
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">{course.title}</h3>
-            <p className="text-slate-600 text-sm mb-4 line-clamp-2">{course.description}</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {course.title}
+            </h3>
+            <p className="text-slate-600 text-sm mb-4 line-clamp-2">
+              {course.description}
+            </p>
 
             <div className="flex items-center justify-between text-sm">
               <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full">
-                {course.content_type === 'VIDEO' ? 'Video' : course.content_type === 'SLIDES' ? 'Slides' : 'Text'}
+                {course.content_type === "VIDEO"
+                  ? "Video"
+                  : course.content_type === "SLIDES"
+                  ? "Slides"
+                  : "Text"}
               </span>
-              <span className="text-slate-600">{course.duration_minutes} minutes</span>
+              <span className="text-slate-600">
+                {course.duration_minutes} minutes
+              </span>
             </div>
           </div>
         ))}
@@ -161,7 +285,7 @@ export const CoursesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              {editingCourse ? 'Edit Course' : 'Add New Course'}
+              {editingCourse ? "Edit Course" : "Add New Course"}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -173,7 +297,9 @@ export const CoursesPage: React.FC = () => {
                   type="text"
                   required
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -186,7 +312,9 @@ export const CoursesPage: React.FC = () => {
                   required
                   rows={3}
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 />
               </div>
@@ -197,7 +325,15 @@ export const CoursesPage: React.FC = () => {
                 </label>
                 <select
                   value={formData.content_type}
-                  onChange={(e) => setFormData({ ...formData, content_type: e.target.value as 'VIDEO' | 'SLIDES' | 'TEXT' })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      content_type: e.target.value as
+                        | "VIDEO"
+                        | "SLIDES"
+                        | "TEXT",
+                    })
+                  }
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="TEXT">Text</option>
@@ -215,13 +351,20 @@ export const CoursesPage: React.FC = () => {
                   required
                   min="1"
                   value={formData.duration_minutes}
-                  onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      duration_minutes: parseInt(e.target.value),
+                    })
+                  }
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-                <strong>Note:</strong> After creating the course, use the "Content Management" button to add sections (videos, articles, quizzes).
+                <strong>Note:</strong> After creating the course, use the
+                "Content Management" button to add sections (videos, articles,
+                quizzes).
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -239,7 +382,7 @@ export const CoursesPage: React.FC = () => {
                   type="submit"
                   className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                 >
-                  {editingCourse ? 'Update' : 'Create'}
+                  {editingCourse ? "Update" : "Create"}
                 </button>
               </div>
             </form>

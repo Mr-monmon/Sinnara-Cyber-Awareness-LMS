@@ -54,6 +54,16 @@ export interface CourseSection {
   created_at: string;
 }
 
+export interface EmployeeCourse {
+  id: string;
+  employee_id: string;
+  course_id: string;
+  progress_percentage: number;
+  status: string;
+  assigned_at: string;
+  completed_at: string | null;
+}
+
 export interface PhishingCampaignRequest {
   id: string;
   admin_notes: string;
@@ -90,6 +100,30 @@ export interface RequestWithCompany extends PhishingCampaignRequest {
   companies?: { name: string };
   users?: { full_name: string };
   phishing_templates?: { name: string };
+}
+
+export interface PhishingCampaign {
+  id: string;
+  campaign_name: string;
+  status: string;
+  launch_date: string;
+  total_targets: number;
+  emails_sent: number;
+  open_rate: number;
+  click_rate: number;
+  credential_rate: number;
+  reporting_rate: number;
+  emails_opened: number;
+  links_clicked: number;
+  credentials_entered: number;
+  emails_reported: number;
+  completion_date: string;
+}
+
+export interface PhishingCampaignQuota {
+  id: string;
+  annual_quota: number;
+  used_campaigns: number;
 }
 
 export interface Company {
@@ -151,4 +185,16 @@ export interface Department {
   parent_department_id: string | null;
   employee_count?: number;
   users?: Employee[];
+}
+
+export interface PhishingTemplate {
+  id: string;
+  subject: string;
+  html_content: string;
+  name: string;
+  difficulty_level: string;
+  category: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }

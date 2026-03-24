@@ -25,6 +25,8 @@ import { DemoRequestsPage } from "./DemoRequestsPage";
 import { PartnersManagementPage } from "./PartnersManagementPage";
 import { FraudAlertsManagementPage } from "./FraudAlertsManagementPage";
 import { supabase } from "../../lib/supabase";
+import SupportRequestsPage from "./SupportRequestsPage";
+import EmailPage from "./EmailPage";
 
 export const PlatformDashboard = () => {
   const [activePage, setActivePage] = useState("dashboard");
@@ -101,6 +103,10 @@ export const PlatformDashboard = () => {
         return <FraudAlertsManagementPage />;
       case "partners-management":
         return <PartnersManagementPage />;
+      case "support-requests":
+        return <SupportRequestsPage />;
+      case "email":
+        return <EmailPage />;
       default:
         return (
           <div>

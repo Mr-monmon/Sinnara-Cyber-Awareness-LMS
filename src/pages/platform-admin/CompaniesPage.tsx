@@ -12,6 +12,7 @@ interface CompanyWithQuota extends Company {
 
 export const CompaniesPage: React.FC = () => {
   const { user } = useAuth();
+  const loginUrl = import.meta.env.VITE_SITE_URL_LOGIN || '';
   const [companies, setCompanies] = useState<CompanyWithQuota[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -144,6 +145,8 @@ export const CompaniesPage: React.FC = () => {
           .select()
           .single();
 
+        
+
         if (companyError) throw companyError;
 
         const { error: userError } = await supabase
@@ -177,6 +180,66 @@ export const CompaniesPage: React.FC = () => {
           description: `Create new company: ${formData.name}`,
           new_value: formData
         }]);
+
+
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: formData.admin_email,
+            subject: 'Welcome to Awareone',
+            html: `
+              <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
+                <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
+                  <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+                    <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+                    <h1 style="margin:0; font-size:28px; line-height:1.3;">Welcome aboard, ${formData.admin_name}</h1>
+                    <p style="margin:12px 0 0; font-size:15px; line-height:1.7; color:#cbd5e1;">
+                      Your company workspace for <strong>${formData.name}</strong> is ready.
+                    </p>
+                  </div>
+
+                  <div style="padding:32px;">
+                    <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
+                      We created your company admin account. Use the credentials below to sign in and start managing your team.
+                    </p>
+
+                    <div style="margin:24px 0; padding:24px; background:rgba(200,255,0,0.10); border:1px solid rgba(200,255,0,0.20); border-radius:14px;">
+                      <p style="margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#c8ff00;">
+                        Account Details
+                      </p>
+                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${formData.admin_email}</p>
+                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> Admin123!</p>
+                      <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> Company Admin</p>
+                    </div>
+
+                    ${loginUrl ? `
+                    <div style="margin:24px 0;">
+                      <a
+                        href="${loginUrl}"
+                        style="display:inline-block; padding:14px 22px; background:#c8ff00; color:#12140a; text-decoration:none; font-size:15px; font-weight:700; border-radius:10px;"
+                      >
+                        Go to Login
+                      </a>
+                      <p style="margin:12px 0 0; font-size:14px; line-height:1.7; color:#94a3b8;">
+                        Website link: <a href="${loginUrl}" style="color:#c8ff00; text-decoration:none;">${loginUrl}</a>
+                      </p>
+                    </div>
+                    ` : ''}
+
+                    <div style="margin:24px 0; padding:18px 20px; background:rgba(255,255,255,0.03); border-left:4px solid #c8ff00; border-radius:10px;">
+                      <p style="margin:0; font-size:14px; line-height:1.7; color:#cbd5e1;">
+                        For security, please sign in and change your password as soon as possible.
+                      </p>
+                    </div>
+
+                    <p style="margin:24px 0 0; font-size:15px; line-height:1.8; color:#94a3b8;">
+                      If you need help getting started, reply to this email and our team will assist you.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            `
+          }
+        });
       }
 
       setShowModal(false);

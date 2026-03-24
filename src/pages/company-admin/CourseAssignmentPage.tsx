@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Plus, X } from "lucide-react";
+import { BookOpen, Download, Plus, X } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { Course } from "../../lib/types";
+import { Course, EmployeeCourse } from "../../lib/types";
 
 interface Department {
   id: string;
@@ -15,10 +15,14 @@ export const CourseAssignmentPage: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [employeeCourses, setEmployeeCourses] = useState<EmployeeCourse[]>([]);
 
   useEffect(() => {
     loadData();
+    loadEmployeeCourses();
   }, [user]);
+
+  console.log(user)
 
   const loadData = async () => {
     if (!user?.company_id) return;
@@ -40,6 +44,29 @@ export const CourseAssignmentPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadEmployeeCourses = async () => {
+    const { data, error } = await supabase
+      .from("employee_courses")
+      .select(
+        `
+      *,
+      employee:users!employee_courses_employee_id_fkey(
+        id,
+        full_name,
+        email,
+        company_id,
+        department:departments!users_department_id_fkey(
+          id,
+          name
+        )
+      )
+    `
+      )
+      .order("assigned_at");
+
+    if (data) setEmployeeCourses(data as unknown as EmployeeCourse[]);
   };
 
   const toggleDepartment = async (courseId: string, deptId: string) => {
@@ -117,6 +144,68 @@ export const CourseAssignmentPage: React.FC = () => {
     }
   };
 
+  const handleDownloadEmployeeCourses = async (courseId: string) => {
+    const rows = employeeCourses.filter(
+      (employeeCourse) => employeeCourse.course_id === courseId && employeeCourse.employee?.company_id === user?.company_id
+    );
+
+    if (rows.length === 0) {
+      alert("No employee course records found for this course");
+      return;
+    }
+
+    const escapeCsvValue = (value: string | number | null | undefined) => {
+      const normalized = value == null ? "" : String(value);
+      return `"${normalized.replace(/"/g, '""')}"`;
+    };
+
+    const headers = [
+      "user name",
+      "user email",
+      "department",
+      "progress_percentage",
+      "completed_at",
+    ];
+
+    const csvLines = rows.map((row) => {
+      const employee = (
+        row as EmployeeCourse & {
+          employee?: {
+            full_name?: string | null;
+            email?: string | null;
+            department?: { name?: string | null };
+          };
+        }
+      ).employee;
+
+      return [
+        escapeCsvValue(employee?.full_name ?? ""),
+        escapeCsvValue(employee?.email ?? ""),
+        escapeCsvValue(employee?.department?.name ?? ""),
+        escapeCsvValue(row.progress_percentage),
+        escapeCsvValue(row.completed_at),
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...csvLines].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const course = courses.find((item) => item.id === courseId);
+    const safeCourseTitle = (course?.title ?? "course")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const fileName = `${safeCourseTitle}_employee_courses.csv`;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -157,18 +246,27 @@ export const CourseAssignmentPage: React.FC = () => {
                 className="bg-white rounded-xl shadow-sm border border-slate-200 p-6"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="p-2 bg-blue-50 rounded-lg">
-                      <BookOpen className="h-5 w-5 text-blue-600" />
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="p-2 bg-blue-50 rounded-lg">
+                        <BookOpen className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-slate-900 mb-1">
+                          {course.title}
+                        </h3>
+                        <p className="text-sm text-slate-600 line-clamp-2">
+                          {course.description}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-slate-900 mb-1">
-                        {course.title}
-                      </h3>
-                      <p className="text-sm text-slate-600 line-clamp-2">
-                        {course.description}
-                      </p>
-                    </div>
+                    <button
+                      onClick={() => handleDownloadEmployeeCourses(course.id)}
+                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="View Employee Courses"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
                   </div>
 
                   {saving === course.id && (

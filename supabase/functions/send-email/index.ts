@@ -17,7 +17,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
 interface reqPayload {
   to: string;
   subject: string;
-  body: string;
+  html: string;
 }
 
 export const corsHeaders = {
@@ -36,36 +36,48 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { to, subject, html }: reqPayload = await req.json();
+  try {
+    const { to, subject, html }: reqPayload = await req.json();
 
-  const res = await fetch("https://api.zeptomail.com/v1.1/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Zoho-enczapikey ${Deno.env.get("ZEPTOMAIL_TOKEN")}`,
-    },
-    body: JSON.stringify({
-      from: {
-        address: "support@awareone.net",
-        name: "Awareone",
+    const res = await fetch("https://api.zeptomail.com/v1.1/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Zoho-enczapikey ${Deno.env.get("ZEPTOMAIL_TOKEN")}`,
       },
-      to: [
-        {
-          email_address: {
-            address: to,
-            name: "User",
-          },
+      body: JSON.stringify({
+        from: {
+          address: "support@awareone.net",
+          name: "Awareone",
         },
-      ],
-      subject,
-      htmlbody: html,
-    }),
-  });
+        to: [
+          {
+            email_address: {
+              address: to,
+              name: "User",
+            },
+          },
+        ],
+        subject,
+        htmlbody: html,
+      }),
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  return new Response(JSON.stringify(data), {
-    status: res.ok ? 200 : res.status,
-    headers: { "Content-Type": "application/json" },
-  });
+    return new Response(JSON.stringify(data), {
+      status: res.ok ? 200 : res.status,
+      headers: corsHeaders,
+    });
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Failed to send email",
+      }),
+      {
+        status: 500,
+        headers: corsHeaders,
+      }
+    );
+  }
 });

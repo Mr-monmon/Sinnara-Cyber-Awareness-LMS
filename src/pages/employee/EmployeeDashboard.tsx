@@ -15,6 +15,7 @@ import {
 } from "../../i18n/utils";
 import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
+import AccountSettings from "../company-admin/AccountSettings";
 
 export const EmployeeDashboard = () => {
   const { user } = useAuth();
@@ -157,6 +158,8 @@ export const EmployeeDashboard = () => {
         return <FraudAlertsPage />;
       case "certificates":
         return <CertificatesPage />;
+      case "account":
+        return <AccountSettings />;
       default:
         return (
           <div>

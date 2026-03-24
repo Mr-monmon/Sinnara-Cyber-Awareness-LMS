@@ -37,6 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUser(data);
     localStorage.setItem('sinnara_user', JSON.stringify(data));
+    window.location.href = '/dashboard';
   };
 
   const logout = () => {

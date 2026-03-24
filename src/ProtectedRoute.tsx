@@ -3,7 +3,7 @@ import { useAuth } from "./contexts/AuthContext";
 import LoadingScreen from "./components/LoadingScreen";
 
 const ProtectedRoute = () => {
-  const { user, loading } = useAuth();
+  const { user, loading } = useAuth();  
 
   if (loading) {
     return <LoadingScreen />;

@@ -14,6 +14,8 @@ import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
 import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
+import AccountSettings from "./AccountSettings";
+import { SupportRequestsPage } from "./SupportRequestsPage";
 
 export const CompanyDashboard = () => {
   const { user } = useAuth();
@@ -127,6 +129,7 @@ export const CompanyDashboard = () => {
         .eq("id", user.company_id)
         .single();
       setCompany(company);
+      setIsLoading(false);
     } catch (error) {
       console.error("Error loading company:", error);
       setIsLoading(false);
@@ -168,6 +171,10 @@ export const CompanyDashboard = () => {
         return <PhishingDashboardPage />;
       case "phishing-request":
         return <PhishingRequestPage />;
+      case "account":
+        return <AccountSettings />;
+      case "support-requests":
+        return <SupportRequestsPage />;
       default:
         const completionRate =
           stats.totalEmployees > 0
@@ -433,7 +440,7 @@ export const CompanyDashboard = () => {
               </div>
               <div className="mt-6 space-y-3">
                 {topEmployees.length > 0 ? (
-                  topEmployees.map((employee, index) => (
+                  topEmployees.slice(0, 3).map((employee, index) => (
                     <div
                       key={employee.id}
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"

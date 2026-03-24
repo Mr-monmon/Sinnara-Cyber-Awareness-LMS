@@ -13,10 +13,92 @@ interface Department {
   name: string;
 }
 
+const sendEmail = async (
+  to: string,
+  fullName: string,
+  subject: string,
+  title: string,
+  description: string,
+  loginUrl?: string,
+  isDelete = false
+) => {
+  return await supabase.functions.invoke("send-email", {
+    body: {
+      to: to,
+      subject: subject,
+      html: `
+        <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
+          <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
+            <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+              <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+              <h1 style="margin:0; font-size:28px; line-height:1.3;">${title}, ${fullName}</h1>
+            </div>
+
+            <div style="padding:32px;">
+              <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
+                ${description}
+              </p>
+
+              
+             ${
+               !isDelete
+                 ? `<div style="margin:24px 0; padding:24px; background:rgba(200,255,0,0.10); border:1px solid rgba(200,255,0,0.20); border-radius:14px;">
+                <p style="margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#c8ff00;">
+                  Account Details
+                </p>
+                <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${to}</p>
+                <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> employee123</p>
+                <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> Employee</p>
+              </div>`
+                 : ""
+             } 
+
+              ${
+                loginUrl
+                  ? `
+              <div style="margin:24px 0;">
+                <a
+                  href="${loginUrl}"
+                  style="display:inline-block; padding:14px 22px; background:#c8ff00; color:#12140a; text-decoration:none; font-size:15px; font-weight:700; border-radius:10px;"
+                >
+                  Go to Login
+                </a>
+                <p style="margin:12px 0 0; font-size:14px; line-height:1.7; color:#94a3b8;">
+                  Website link: <a href="${loginUrl}" style="color:#c8ff00; text-decoration:none;">${loginUrl}</a>
+                </p>
+              </div>
+              `
+                  : ""
+              }
+
+
+              ${
+                !isDelete
+                  ? `<div style="margin:24px 0; padding:18px 20px; background:rgba(255,255,255,0.03); border-left:4px solid #c8ff00; border-radius:10px;">
+                <p style="margin:0; font-size:14px; line-height:1.7; color:#cbd5e1;">
+                  For security, please sign in and change your password as soon as possible.
+                </p>
+              </div>
+
+              <p style="margin:24px 0 0; font-size:15px; line-height:1.8; color:#94a3b8;">
+                If you need help getting started, reply to this email and our team will assist you.
+              </p>`
+                  : ""
+              }
+              
+            </div>
+          </div>
+        </div>
+      `,
+    },
+  });
+};
+
 export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   onViewEmployee,
 }) => {
   const { user: currentUser } = useAuth();
+  const loginUrl = import.meta.env.VITE_SITE_URL_LOGIN || "";
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -79,8 +161,18 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             ...formData,
             role: "EMPLOYEE",
             company_id: currentUser?.company_id,
+            department_id: formData.department_id || null,
           },
         ]);
+
+        await sendEmail(
+          formData.email,
+          formData.full_name,
+          "Welcome to Awareone",
+          "Welcome aboard",
+          "We created your employee account. Use the credentials below to sign in and start managing your team.",
+          loginUrl
+        );
       }
 
       setShowModal(false);
@@ -113,11 +205,20 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, email: string, fullName: string) => {
     if (!confirm("Are you sure you want to delete this employee?")) return;
 
     try {
       await supabase.from("users").delete().eq("id", id);
+      await sendEmail(
+        email,
+        fullName,
+        "Account Deleted",
+        "Account Deleted",
+        "Your account has been deleted. Please contact your administrator if you need to access your account again.",
+        undefined,
+        true
+      );
       loadEmployees();
     } catch (error) {
       console.error("Error deleting employee:", error);
@@ -128,7 +229,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   const handleResetPassword = async (employee: UserType) => {
     if (
       !confirm(
-        `Reset password for ${employee.full_name} to default (Employee123!)?`
+        `Reset password for ${employee.full_name} to default (employee123)?`
       )
     )
       return;
@@ -136,13 +237,22 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     try {
       const { error } = await supabase
         .from("users")
-        .update({ password: "Employee123!" })
+        .update({ password: "employee123" })
         .eq("id", employee.id);
 
       if (error) throw error;
 
       alert(
-        `Password reset successfully!\nEmail: ${employee.email}\nNew Password: Employee123!`
+        `Password reset successfully!\nEmail: ${employee.email}\nNew Password: employee123`
+      );
+
+      await sendEmail(
+        employee.email,
+        employee.full_name,
+        "Password Reset",
+        "Password Reset",
+        "Your password has been reset to the default password. Please sign in and change your password as soon as possible.",
+        loginUrl
       );
     } catch (error) {
       console.error("Error resetting password:", error);
@@ -492,7 +602,13 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(employee.id)}
+                      onClick={() =>
+                        handleDelete(
+                          employee.id,
+                          employee.email,
+                          employee.full_name
+                        )
+                      }
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete Employee"
                     >
