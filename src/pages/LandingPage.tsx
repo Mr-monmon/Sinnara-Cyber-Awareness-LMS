@@ -747,12 +747,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           <div className="aw-footer-bottom" style={{ padding: '32px 0', borderTop: `1px solid ${T.borderFaint}` }}>
             <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>{footerSettings.copyright}</p>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              {['Privacy Policy','Terms of Service','Cookies'].map(label => (
-                <a key={label} href="#"
-                  style={{ fontSize: 13, color: T.textMuted, textDecoration: 'none', transition: 'color 0.2s' }}
+              {['Privacy Policy','Terms of Service','Cookies Policy'].map(label => (
+                <button key={label}
+                  onClick={() => onNavigate('legal')}
+                  style={{ fontSize: 13, color: T.textMuted, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', transition: 'color 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.color = T.textNav)}
                   onMouseLeave={e => (e.currentTarget.style.color = T.textMuted)}
-                >{label}</a>
+                >{label}</button>
+              ))}
               ))}
             </div>
           </div>
