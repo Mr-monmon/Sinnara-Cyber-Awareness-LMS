@@ -8,8 +8,9 @@ import { LoginPage } from './pages/LoginPage';
 import { PlatformDashboard } from './pages/platform-admin/PlatformDashboard';
 import { CompanyDashboard } from './pages/company-admin/CompanyDashboard';
 import { EmployeeDashboard } from './pages/employee/EmployeeDashboard';
+import { LegalPage } from './pages/LegalPage';
 
-type Page = 'landing' | 'public-assessment' | 'fraud-alerts' | 'login' | 'dashboard';
+type Page = 'landing' | 'public-assessment' | 'fraud-alerts' | 'login' | 'dashboard' | 'legal';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -61,6 +62,8 @@ const AppContent: React.FC = () => {
     case 'landing':
     default:
       return <LandingPage onNavigate={handleNavigate} />;
+    case 'legal':
+      return <LegalPage onNavigate={handleNavigate} />;
   }
 };
 
