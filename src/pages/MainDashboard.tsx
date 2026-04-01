@@ -15,8 +15,6 @@ const MainDashboard = () => {
     setShowConsent(Boolean(user && !user.policy_accepted));
   }, [user]);
 
-  console.log("user", user?.policy_accepted);
-
   if (!user) {
     return null;
   }

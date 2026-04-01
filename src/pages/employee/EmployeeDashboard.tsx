@@ -37,8 +37,8 @@ export const EmployeeDashboard = () => {
 
   useEffect(() => {
     loadCompany();
-    loadStats();
     loadAssignedExams();
+    loadStats();
   }, [user]);
 
   // console.log("assignedExams", assignedExams);
@@ -122,23 +122,6 @@ export const EmployeeDashboard = () => {
           "POST_ASSESSMENT",
         ]);
       }
-
-      const { data: availableExams } = await availableExamsQuery;
-      const allExamIds = availableExams?.map((e) => e.id) || [];
-
-      const { data: examAttempts } = await supabase
-        .from("exam_attempts")
-        .select("exam_id, passed")
-        .eq("employee_id", user.id);
-
-      const completedExamIds = new Set(
-        examAttempts?.filter((a) => a.passed).map((a) => a.exam_id) || []
-      );
-
-      const pendingExamsCount = allExamIds.filter(
-        (id) => !completedExamIds.has(id)
-      ).length;
-
       const { data: certificates } = await supabase
         .from("exam_attempts")
         .select("id")
@@ -159,7 +142,7 @@ export const EmployeeDashboard = () => {
         assignedCourses: courses?.length || 0,
         completedCourses:
           courses?.filter((c) => c.status === "COMPLETED").length || 0,
-        pendingExams: pendingExamsCount,
+        pendingExams: assignedExams.length,
         certificates: certificates?.length || 0,
       });
       setIsLoading(false);

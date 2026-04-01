@@ -179,6 +179,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   required
                   value={formData.admin_email}
                   onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+                  disabled={company !== null}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   placeholder="admin@company.com"
                 />

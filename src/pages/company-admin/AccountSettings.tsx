@@ -56,22 +56,19 @@ const AccountSettings = () => {
     setError("");
 
     try {
-      const { data: existingUser, error: verificationError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("id", user.id)
-        .eq("password", formData.currentPassword)
-        .maybeSingle();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: formData.currentPassword,
+      });
 
-      if (verificationError || !existingUser) {
+      if (signInError) {
         setError("Current password is incorrect.");
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ password: formData.newPassword })
-        .eq("id", user.id);
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: formData.newPassword,
+      });
 
       if (updateError) {
         throw updateError;

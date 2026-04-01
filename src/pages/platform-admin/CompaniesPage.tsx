@@ -121,7 +121,6 @@ export const CompaniesPage: React.FC = () => {
           .from('users')
           .update({
             full_name: formData.admin_name,
-            email: formData.admin_email,
             phone: formData.admin_phone
           })
           .eq('company_id', editingCompany.id)
@@ -149,18 +148,21 @@ export const CompaniesPage: React.FC = () => {
 
         if (companyError) throw companyError;
 
-        const { error: userError } = await supabase
-          .from('users')
-          .insert([{
-            email: formData.admin_email,
-            password: 'Admin123!',
-            full_name: formData.admin_name,
-            phone: formData.admin_phone,
-            role: 'COMPANY_ADMIN',
-            company_id: newCompany.id
-          }]);
+        const { data: adminResult, error: adminError } =
+          await supabase.functions.invoke('user-admin', {
+            body: {
+              action: 'createUser',
+              email: formData.admin_email,
+              password: 'Admin123!',
+              full_name: formData.admin_name,
+              phone: formData.admin_phone || null,
+              role: 'COMPANY_ADMIN',
+              company_id: newCompany.id,
+            },
+          });
 
-        if (userError) throw userError;
+        if (adminError || !adminResult?.success)
+          throw new Error(adminResult?.error || 'Failed to create company admin');
 
         await supabase.from('subscriptions').insert([{
           company_id: newCompany.id,

@@ -69,7 +69,7 @@ export const CompanyDashboard = () => {
         return;
       }
 
-      const [resultsRes, courseProgressRes] = await Promise.all([
+      const [resultsRes, courseProgressRes, availableExams] = await Promise.all([
         supabase
           .from("exam_results")
           .select("employee_id, percentage, passed")
@@ -79,6 +79,10 @@ export const CompanyDashboard = () => {
           .select("employee_id, completed_at")
           .in("employee_id", employeeIds)
           .not("completed_at", "is", null),
+        supabase
+          .from("employee_available_exams")
+          .select("employee_id")
+          .in("employee_id", employeeIds),
       ]);
 
       const employeesWithCompletedCourses = new Set(
@@ -108,7 +112,7 @@ export const CompanyDashboard = () => {
         totalEmployees: employees?.length || 0,
         completedTraining: totalCompleted,
         averageScore: avgScore,
-        pendingAssessments: (employees?.length || 0) - totalCompleted,
+        pendingAssessments: availableExams.data?.length || 0,
       });
 
       setTopEmployees(rankedEmployees || []);
@@ -304,7 +308,7 @@ export const CompanyDashboard = () => {
               })}
             </div>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.1fr]">
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-slate-900">
@@ -356,7 +360,7 @@ export const CompanyDashboard = () => {
                             Pending Assessments
                           </div>
                           <div className="text-sm font-semibold text-slate-900">
-                            {stats.pendingAssessments} employees
+                            {stats.pendingAssessments} Assessments
                           </div>
                         </div>
                       </div>

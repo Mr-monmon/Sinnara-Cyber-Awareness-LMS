@@ -76,15 +76,13 @@ export const UsersManagementPage: React.FC = () => {
 
   const verifyCurrentUserPassword = async (password: string): Promise<boolean> => {
     if (!user?.email) return false;
-    
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', user.email)
-      .eq('password', password)
-      .maybeSingle();
 
-    return !error && !!data;
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password,
+    });
+
+    return !error;
   };
 
   const handlePasswordConfirm = async () => {
@@ -158,18 +156,21 @@ export const UsersManagementPage: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .insert([{
-          full_name: newUserData.full_name,
-          email: newUserData.email.toLowerCase(),
-          phone: newUserData.phone || null,
-          password: newUserData.password,
-          role: newUserData.role,
-          company_id: newUserData.company_id || null
-        }]);
+      const { data: createResult, error: createError } =
+        await supabase.functions.invoke('user-admin', {
+          body: {
+            action: 'createUser',
+            full_name: newUserData.full_name,
+            email: newUserData.email.toLowerCase(),
+            phone: newUserData.phone || null,
+            password: newUserData.password,
+            role: newUserData.role,
+            company_id: newUserData.company_id || null,
+          },
+        });
 
-      if (error) throw error;
+      if (createError || !createResult?.success)
+        throw new Error(createResult?.error || 'Failed to create user');
 
       await supabase.from('audit_logs').insert([{
         user_id: user?.id,
@@ -215,12 +216,13 @@ export const UsersManagementPage: React.FC = () => {
 
   const executeResetPassword = async (userId: string, userEmail: string, newPassword: string) => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ password: newPassword })
-        .eq('id', userId);
+      const { data: resetResult, error: resetError } =
+        await supabase.functions.invoke('user-admin', {
+          body: { action: 'resetPassword', userId, password: newPassword },
+        });
 
-      if (error) throw error;
+      if (resetError || !resetResult?.success)
+        throw new Error(resetResult?.error || 'Failed to reset password');
 
       await supabase.from('audit_logs').insert([{
         user_id: user?.id,
@@ -294,12 +296,13 @@ export const UsersManagementPage: React.FC = () => {
 
   const executeDeleteUser = async (userId: string) => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId);
+      const { data: delResult, error: delError } =
+        await supabase.functions.invoke('user-admin', {
+          body: { action: 'deleteUser', userId },
+        });
 
-      if (error) throw error;
+      if (delError || !delResult?.success)
+        throw new Error(delResult?.error || 'Failed to delete user');
 
       await supabase.from('audit_logs').insert([{
         user_id: user?.id,
@@ -378,27 +381,29 @@ export const UsersManagementPage: React.FC = () => {
           return;
         }
 
-        const { error } = await supabase
-          .from('users')
-          .insert(employees);
+        const { data: bulkResult, error: bulkError } =
+          await supabase.functions.invoke('user-admin', {
+            body: { action: 'bulkCreate', users: employees },
+          });
 
-        if (error) throw error;
+        if (bulkError) throw bulkError;
 
         await supabase.from('audit_logs').insert([{
           user_id: user?.id,
           action_type: 'UPLOAD_EMPLOYEES',
           entity_type: 'EMPLOYEE',
-          description: `Uploaded ${employees.length} employees from Excel`,
-          new_value: { count: employees.length, company_id: uploadCompanyId }
+          description: `Uploaded ${bulkResult?.succeeded ?? 0} employees from CSV`,
+          new_value: { count: bulkResult?.succeeded ?? 0, company_id: uploadCompanyId }
         }]);
 
         setShowUploadModal(false);
         setUploadCompanyId('');
         await loadData();
 
-        const message = failedRows.length > 0
-          ? `Added ${employees.length} employees successfully.\nFailed rows: ${failedRows.join(', ')}`
-          : `Added ${employees.length} employees successfully!`;
+        const serverFailed = bulkResult?.failed ?? 0;
+        const message = (failedRows.length > 0 || serverFailed > 0)
+          ? `Added ${bulkResult?.succeeded ?? 0} employees successfully.\nCSV row failures: ${failedRows.length > 0 ? failedRows.join(', ') : 'none'}. Server failures: ${serverFailed}.`
+          : `Added ${bulkResult?.succeeded ?? 0} employees successfully!`;
 
         alert(message);
       } catch (error) {

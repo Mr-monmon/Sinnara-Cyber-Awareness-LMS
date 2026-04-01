@@ -55,6 +55,8 @@ export const DepartmentsPage: React.FC = () => {
       .eq("company_id", user.company_id)
       .order("name");
 
+    console.log("departments", data);
+
     if (data) {
       const depsWithCount = data.map((dept) => ({
         ...dept,

@@ -151,19 +151,29 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
     try {
       if (editingEmployee) {
+        const { password: _ , email: __, ...profileData } = formData;
         await supabase
           .from("users")
-          .update(formData)
+          .update(profileData)
           .eq("id", editingEmployee.id);
       } else {
-        await supabase.from("users").insert([
-          {
-            ...formData,
-            role: "EMPLOYEE",
-            company_id: currentUser?.company_id,
-            department_id: formData.department_id || null,
-          },
-        ]);
+        const { data: createResult, error: createError } =
+          await supabase.functions.invoke("user-admin", {
+            body: {
+              action: "createUser",
+              email: formData.email,
+              password: formData.password,
+              full_name: formData.full_name,
+              phone: formData.phone || null,
+              employee_id: formData.employee_id || null,
+              role: "EMPLOYEE",
+              company_id: currentUser?.company_id,
+              department_id: formData.department_id || null,
+            },
+          });
+
+        if (createError || !createResult?.success)
+          throw new Error(createResult?.error || "Failed to create employee");
 
         await sendEmail(
           formData.email,
@@ -209,7 +219,13 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     if (!confirm("Are you sure you want to delete this employee?")) return;
 
     try {
-      await supabase.from("users").delete().eq("id", id);
+      const { data: delResult, error: delError } =
+        await supabase.functions.invoke("user-admin", {
+          body: { action: "deleteUser", userId: id },
+        });
+      if (delError || !delResult?.success)
+        throw new Error(delResult?.error || "Failed to delete employee");
+
       await sendEmail(
         email,
         fullName,
@@ -235,12 +251,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       return;
 
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ password: "employee123" })
-        .eq("id", employee.id);
+      const { data: resetResult, error: resetError } =
+        await supabase.functions.invoke("user-admin", {
+          body: {
+            action: "resetPassword",
+            userId: employee.id,
+            password: "employee123",
+          },
+        });
 
-      if (error) throw error;
+      if (resetError || !resetResult?.success)
+        throw new Error(resetResult?.error || "Failed to reset password");
 
       alert(
         `Password reset successfully!\nEmail: ${employee.email}\nNew Password: employee123`
@@ -446,16 +467,32 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         return;
       }
 
-      const { error } = await supabase.from("users").insert(validRows);
-      if (error) throw error;
+      const bulkUsers = validRows.map((row) => ({
+        email: row.email,
+        password: row.password,
+        full_name: row.full_name,
+        phone: row.phone || null,
+        employee_id: row.employee_id || null,
+        role: "EMPLOYEE" as const,
+        company_id: row.company_id,
+        department_id: row.department_id || null,
+      }));
 
-      const rejectedTotal =
+      const { data: bulkResult, error: bulkError } =
+        await supabase.functions.invoke("user-admin", {
+          body: { action: "bulkCreate", users: bulkUsers },
+        });
+      if (bulkError) throw bulkError;
+
+      const clientRejected =
         rejectionCounts.missingName +
         rejectionCounts.missingEmail +
-        rejectionCounts.invalidEmail;
+        rejectionCounts.invalidEmail +
+        rejectionCounts.existingEmail;
+      const serverFailed = bulkResult?.failed ?? 0;
       setUploadSummary(
-        `Imported ${validRows.length} employees. Rejected ${rejectedTotal} rows.\n` +
-          `Reasons: missing name (${rejectionCounts.missingName}), missing email (${rejectionCounts.missingEmail}), invalid email (${rejectionCounts.invalidEmail}).`
+        `Imported ${bulkResult?.succeeded ?? 0} employees. Rejected ${clientRejected + serverFailed} rows.\n` +
+          `Client: missing name (${rejectionCounts.missingName}), missing email (${rejectionCounts.missingEmail}), invalid email (${rejectionCounts.invalidEmail}), existing email (${rejectionCounts.existingEmail}). Server failures: ${serverFailed}.`
       );
 
       if (fileInputRef.current) {
@@ -662,6 +699,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
+                  disabled={editingEmployee !== null}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
