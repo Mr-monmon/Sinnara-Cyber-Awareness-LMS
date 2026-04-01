@@ -1581,6 +1581,19 @@ export const LandingPage = () => {
                     </button>
                   </li>
                 ))}
+                <li>
+                  <button
+                    onClick={() => navigate("/legal")}
+                    style={{
+                      fontSize: 14,
+                      color: T.textBody,
+                      background: "none",
+                      border: "none",
+                    }}
+                  >
+                    Legal
+                  </button>
+                </li>
               </ul>
             </nav>
 
@@ -1697,6 +1710,7 @@ export const LandingPage = () => {
                   <a
                     key={label}
                     href="#"
+                    onClick={() => navigate("/legal")}
                     style={{
                       fontSize: 13,
                       color: T.textMuted,
