@@ -9,10 +9,8 @@ import { FraudAlertsPage } from "./FraudAlertsPage";
 import { FraudAlertWidget } from "../../components/FraudAlertWidget";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { Company } from "../../lib/types";
-import {
-  formatLocalizedNumber,
-} from "../../i18n/utils";
+import { EmployeeAvailableExam, Company } from "../../lib/types";
+import { formatLocalizedNumber } from "../../i18n/utils";
 import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import AccountSettings from "../company-admin/AccountSettings";
@@ -22,6 +20,9 @@ export const EmployeeDashboard = () => {
   const { t, i18n } = useTranslation("employee");
   const [activePage, setActivePage] = useState("dashboard");
   const [isLoading, setIsLoading] = useState(true);
+  const [assignedExams, setAssignedExams] = useState<EmployeeAvailableExam[]>(
+    []
+  );
   const [company, setCompany] = useState<Company | null>(null);
   const [stats, setStats] = useState({
     assignedCourses: 0,
@@ -37,12 +38,32 @@ export const EmployeeDashboard = () => {
   useEffect(() => {
     loadCompany();
     loadStats();
+    loadAssignedExams();
   }, [user]);
+
+  // console.log("assignedExams", assignedExams);
+
+  useEffect(() => {
+    if (!isLoading && assignedExams.length > 0) {
+      setActivePage("my-exams");
+    }
+  }, [isLoading, assignedExams]);
+
+  const loadAssignedExams = async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("employee_available_exams")
+      .select("*")
+      .eq("employee_id", user.id);
+
+    setAssignedExams((data as EmployeeAvailableExam[]) || []);
+  };
 
   const loadCompany = async () => {
     if (!user?.company_id) return;
     setIsLoading(true);
-    try { 
+    try {
       const { data: company } = await supabase
         .from("companies")
         .select("id , name, is_active")
@@ -151,9 +172,20 @@ export const EmployeeDashboard = () => {
   const renderContent = () => {
     switch (activePage) {
       case "my-courses":
-        return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
+        return (
+          <MyCoursesPage
+            navigateToCertificates={() => setActivePage("certificates")}
+          />
+        );
       case "my-exams":
-        return <MyExamsPage />;
+        return (
+          <MyExamsPage
+            onExamCompleted={() => {
+              loadAssignedExams();
+              loadStats();
+            }}
+          />
+        );
       case "fraud-alerts":
         return <FraudAlertsPage />;
       case "certificates":
@@ -168,9 +200,7 @@ export const EmployeeDashboard = () => {
                 <h1 className="text-3xl font-bold text-slate-900 mb-2">
                   {t("dashboard.title")}
                 </h1>
-                <p className="text-slate-600 mb-8">
-                  {t("dashboard.subtitle")}
-                </p>
+                <p className="text-slate-600 mb-8">{t("dashboard.subtitle")}</p>
               </div>
 
               <div className="group flex items-center gap-3 rounded-2xl border border-blue-100/70 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -197,7 +227,10 @@ export const EmployeeDashboard = () => {
                     <BookOpen className="h-6 w-6 text-blue-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {formatLocalizedNumber(stats.assignedCourses, currentLanguage)}
+                    {formatLocalizedNumber(
+                      stats.assignedCourses,
+                      currentLanguage
+                    )}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
@@ -211,7 +244,10 @@ export const EmployeeDashboard = () => {
                     <ClipboardCheck className="h-6 w-6 text-green-600" />
                   </div>
                   <span className="text-3xl font-bold text-slate-900">
-                    {formatLocalizedNumber(stats.completedCourses, currentLanguage)}
+                    {formatLocalizedNumber(
+                      stats.completedCourses,
+                      currentLanguage
+                    )}
                   </span>
                 </div>
                 <div className="text-sm font-medium text-slate-600">
@@ -305,12 +341,15 @@ export const EmployeeDashboard = () => {
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm mb-2">
-                      <span>{t("dashboard.progressCard.courseCompletion")}</span>
+                      <span>
+                        {t("dashboard.progressCard.courseCompletion")}
+                      </span>
                       <span>
                         {formatLocalizedNumber(
                           stats.assignedCourses > 0
                             ? Math.round(
-                                (stats.completedCourses / stats.assignedCourses) *
+                                (stats.completedCourses /
+                                  stats.assignedCourses) *
                                   100
                               )
                             : 0,
@@ -340,7 +379,10 @@ export const EmployeeDashboard = () => {
                         {t("dashboard.progressCard.completedCourses")}
                       </span>
                       <span className="font-bold">
-                        {formatLocalizedNumber(stats.completedCourses, currentLanguage)}
+                        {formatLocalizedNumber(
+                          stats.completedCourses,
+                          currentLanguage
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -348,7 +390,10 @@ export const EmployeeDashboard = () => {
                         {t("dashboard.progressCard.certificates")}
                       </span>
                       <span className="font-bold">
-                        {formatLocalizedNumber(stats.certificates, currentLanguage)}
+                        {formatLocalizedNumber(
+                          stats.certificates,
+                          currentLanguage
+                        )}
                       </span>
                     </div>
                   </div>
@@ -365,7 +410,13 @@ export const EmployeeDashboard = () => {
       {isLoading ? (
         <LoadingScreen />
       ) : company?.is_active ? (
-        <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
+        <DashboardLayout
+          activePage={activePage}
+          onNavigate={(page) => {
+            if (assignedExams.length > 0 && page !== "my-exams") return;
+            setActivePage(page);
+          }}
+        >
           {renderContent()}
         </DashboardLayout>
       ) : (
@@ -374,4 +425,3 @@ export const EmployeeDashboard = () => {
     </>
   );
 };
-  

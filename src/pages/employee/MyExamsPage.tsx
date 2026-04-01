@@ -21,7 +21,12 @@ interface ExamWithStatus {
   is_mandatory: boolean;
 }
 
-export const MyExamsPage: React.FC = () => {
+type Props = {
+  onExamCompleted: () => void;
+}
+
+
+export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   const { user } = useAuth();
   const { t, i18n } = useTranslation(['common', 'employee']);
   const [exams, setExams] = useState<ExamWithStatus[]>([]);
@@ -69,6 +74,7 @@ export const MyExamsPage: React.FC = () => {
         onBack={() => {
           setViewingExam(null);
           loadExams();
+          onExamCompleted();
         }}
       />
     );
@@ -93,6 +99,14 @@ export const MyExamsPage: React.FC = () => {
           {t('exams.title', { ns: 'employee' })}
         </h1>
         <p className="text-slate-600">{t('exams.subtitle', { ns: 'employee' })}</p>
+        {exams.length > 0 && (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+            <AlertCircle className="h-5 w-5 shrink-0 text-orange-600 mt-0.5" />
+            <p className="text-sm font-medium text-orange-800">
+              {t('exams.assignedBanner', { ns: 'employee' })}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

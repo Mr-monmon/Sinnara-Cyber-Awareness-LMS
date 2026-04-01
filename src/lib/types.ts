@@ -26,6 +26,8 @@ export interface User {
   role: "PLATFORM_ADMIN" | "COMPANY_ADMIN" | "EMPLOYEE";
   company_id?: string;
   department?: string;
+  policy_accepted?: boolean;
+  policy_accepted_at?: string;
   created_at: string;
   department_id?: string;
 }
@@ -197,4 +199,18 @@ export interface PhishingTemplate {
   description: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface EmployeeAvailableExam {
+  employee_id: string;
+  exam_id: string;
+  title: string;
+  description: string;
+  time_limit_minutes: number;
+  passing_score: number;
+  exam_type: string;
+  max_attempts: number;
+  attempts_used: number;
+  has_passed: boolean;
+  is_mandatory: boolean;
 }

@@ -7,6 +7,7 @@ import { LoginPage } from "./pages/LoginPage";
 import MainDashboard from "./pages/MainDashboard";
 import ProtectedRoute from "./ProtectedRoute";
 import { PublicResourcesPage } from "./pages/PublicResourcesPage";
+import { LegalPage } from "./pages/LegalPage";
 
 const routes: RouteObject[] = [
   { path: "/", element: <LandingPage /> },
@@ -14,6 +15,7 @@ const routes: RouteObject[] = [
   { path: "/fraud", element: <PublicFraudAlertsPage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/resources", element: <PublicResourcesPage /> },
+  { path: "/legal", element: <LegalPage /> },
   {
     element: <ProtectedRoute />,
     children: [{ path: "/dashboard", element: <MainDashboard /> }],

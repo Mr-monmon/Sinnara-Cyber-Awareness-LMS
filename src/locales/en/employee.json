@@ -76,6 +76,7 @@
       "start": "Start Assessment",
       "exhaustedMessage": "You have used all {{value}} attempt(s). Contact your admin to request more."
     },
+    "assignedBanner": "You have mandatory assessments assigned to you. Please complete all required assessments before proceeding.",
     "empty": {
       "title": "No assessments available yet.",
       "description": "Check back later!"
