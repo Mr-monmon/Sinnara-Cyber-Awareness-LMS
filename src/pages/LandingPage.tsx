@@ -55,7 +55,7 @@ interface FooterSettings {
 const LOGO =
   "https://raw.githubusercontent.com/Mr-monmon/Sinnara-Cyber-Awareness-LMS/main/supabase/without%20bg%202.png";
 const DASH =
-  "https://www.figma.com/api/mcp/asset/086116a6-2692-4da2-b352-59aa6654cad8";
+  "https://github.com/Mr-monmon/Sinnara-Cyber-Awareness-LMS/blob/main/src/pages/AwareOne%20cybersecurity%20dashboard.png";
 const PLAY =
   "https://www.figma.com/api/mcp/asset/c85903ba-c0f3-41b9-9f7f-39f7f71d1b1f";
 
@@ -69,14 +69,61 @@ const PARTNERS = [
 ];
 
 const FEATURE_ICONS = [
-  "https://www.figma.com/api/mcp/asset/d3e1538c-812f-40a8-af3a-638e384fa36e",
-  "https://www.figma.com/api/mcp/asset/6af2aa0c-df1f-4e4e-9e64-0b23e6dd802a",
-  "https://www.figma.com/api/mcp/asset/121e663b-7ebc-442c-9646-25615016fe91",
-  "https://www.figma.com/api/mcp/asset/df6107f0-f94b-4165-8e2e-3e9335fe2c55",
-  "https://www.figma.com/api/mcp/asset/6946c8bc-f3b6-4b39-a501-da6cc3729421",
-  "https://www.figma.com/api/mcp/asset/588936eb-8b9c-4a7f-b1f7-e3c252b58eb4",
-  "https://www.figma.com/api/mcp/asset/9d9133ea-9f88-4ed9-a220-5cb9caec8878",
-  "https://www.figma.com/api/mcp/asset/6b0a5ae6-6e39-4816-9b0f-6a480ce2e153",
+  // 1. Cloud — Hosted in Saudi Arabia
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <path d="M6.5 19C4.01 19 2 16.99 2 14.5C2 12.24 3.66 10.36 5.84 10.05C6.19 7.2 8.6 5 11.5 5C14.08 5 16.26 6.73 16.86 9.09C17.08 9.03 17.29 9 17.5 9C19.43 9 21 10.57 21 12.5C21 14.43 19.43 16 17.5 16H16" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M12 13V21M12 21L9.5 18.5M12 21L14.5 18.5" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>,
+
+  // 2. Shield Check — Regulatory Compliance
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2L4 5V11C4 16.55 7.84 21.74 12 23C16.16 21.74 20 16.55 20 11V5L12 2Z" stroke="#c8ff00" strokeWidth="1.5" strokeLinejoin="round"/>
+    <path d="M9 12L11 14L15 10" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>,
+
+  // 3. Globe — Local Threat Intel
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="9" stroke="#c8ff00" strokeWidth="1.5"/>
+    <path d="M12 3C12 3 8 7 8 12C8 17 12 21 12 21" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M12 3C12 3 16 7 16 12C16 17 12 21 12 21" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M3 12H21" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M4.5 7.5H19.5M4.5 16.5H19.5" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>,
+
+  // 4. Open Book — Comprehensive Training
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <path d="M4 4H9C10.06 4 11.08 4.42 11.83 5.17C12.58 5.92 13 6.94 13 8V20C13 19.2 12.68 18.44 12.12 17.88C11.56 17.32 10.8 17 10 17H4V4Z" stroke="#c8ff00" strokeWidth="1.5" strokeLinejoin="round"/>
+    <path d="M20 4H15C13.94 4 12.92 4.42 12.17 5.17C11.42 5.92 11 6.94 11 8V20C11 19.2 11.32 18.44 11.88 17.88C12.44 17.32 13.2 17 14 17H20V4Z" stroke="#c8ff00" strokeWidth="1.5" strokeLinejoin="round"/>
+  </svg>,
+
+  // 5. Clipboard Check — Pre & Post Assessments
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <rect x="5" y="3" width="14" height="18" rx="2" stroke="#c8ff00" strokeWidth="1.5"/>
+    <path d="M9 3V5H15V3" stroke="#c8ff00" strokeWidth="1.5" strokeLinejoin="round"/>
+    <path d="M8 13L10.5 15.5L16 10" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>,
+
+  // 6. Trending Chart — Real-Time Analytics
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <path d="M3 17L8 12L12 15L17 9L21 11" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M17 9H21V13" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M3 20H21" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>,
+
+  // 7. User + Lock — Role-Based Access
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <circle cx="9" cy="7" r="3.5" stroke="#c8ff00" strokeWidth="1.5"/>
+    <path d="M3 20C3 16.69 5.69 14 9 14" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <rect x="14" y="14" width="7" height="6" rx="1.5" stroke="#c8ff00" strokeWidth="1.5"/>
+    <path d="M16 14V12.5C16 11.4 16.9 10.5 18 10.5C19.1 10.5 20 11.4 20 12.5V14" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="17.5" cy="17" r="0.75" fill="#c8ff00"/>
+  </svg>,
+
+  // 8. @ — Phishing Simulation
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="3.5" stroke="#c8ff00" strokeWidth="1.5"/>
+    <path d="M15.5 12C15.5 13.93 15.5 16 17.25 16C19 16 19.5 14.5 19.5 12C19.5 7.86 16.42 5 12 5C7.58 5 4.5 8.13 4.5 12C4.5 15.87 7.58 19 12 19C13.6 19 15.09 18.52 16.32 17.7" stroke="#c8ff00" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>,
 ];
 
 const FEATURES = [
