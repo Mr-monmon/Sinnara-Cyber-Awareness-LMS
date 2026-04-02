@@ -1435,9 +1435,9 @@ export const LandingPage = () => {
               <div style={{ display: "flex", gap: 12 }}>
                 {(
                   [
-                    ["LinkedIn", Linkedin],
-                    ["X (Twitter)", Twitter],
-                    ["YouTube", Youtube],
+                    ["LinkedIn", Linkedin, "https://www.linkedin.com/company/awareone/"],
+                    ["X (Twitter)", Twitter, "https://twitter.com/awareone"],
+                    ["YouTube", Youtube, "https://www.youtube.com/@awareone-net"],
                   ] as const
                 ).map(([label, Icon]) => (
                   <a
