@@ -450,7 +450,7 @@ export const LandingPage = () => {
             <img
               src={LOGO}
               alt="AwareOne"
-              style={{ height: 65, width: "auto", display: "block" }}
+              style={{ height: 125, width: "auto", display: "block" }}
             />
           </a>
 
@@ -1419,7 +1419,7 @@ export const LandingPage = () => {
                 <img
                   src={LOGO}
                   alt="AwareOne"
-                  style={{ height: 65, width: "auto", display: "block" }}
+                  style={{ height: 130, width: "auto", display: "block" }}
                 />
               </div>
               <p
