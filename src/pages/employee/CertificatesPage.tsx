@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Award, Download, Calendar, CheckCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatLocalizedDate, formatLocalizedNumber } from '../../i18n/utils';
 import { supabase } from '../../lib/supabase';
 
 interface Certificate {
@@ -21,8 +23,10 @@ interface Certificate {
 
 export const CertificatesPage: React.FC = () => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(['common', 'employee']);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
+  const currentLanguage = i18n.resolvedLanguage;
 
   useEffect(() => {
     loadCertificates();
@@ -54,31 +58,46 @@ export const CertificatesPage: React.FC = () => {
   };
 
   const handleDownload = (cert: Certificate) => {
+    const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
     const certificateText = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          CERTIFICATE OF COMPLETION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${divider}
+          ${t('certificates.downloadTemplate.title', { ns: 'employee' })}
+${divider}
 
-This certifies that
+${t('certificates.downloadTemplate.certifies', { ns: 'employee' })}
 
-${user?.full_name || 'Employee'}
+${user?.full_name || t('certificates.downloadTemplate.employeeFallback', { ns: 'employee' })}
 
-has successfully completed the training course
+${t('certificates.downloadTemplate.completedCourse', { ns: 'employee' })}
 
 "${cert.courses.title}"
 
-Certificate Number: ${cert.certificate_number}
-Issue Date: ${new Date(cert.issued_at).toLocaleDateString()}
-Completion Date: ${new Date(cert.completion_date).toLocaleDateString()}
-${cert.score ? `Score Achieved: ${cert.score.toFixed(1)}%` : ''}
+${t('certificates.downloadTemplate.certificateNumber', {
+      ns: 'employee',
+      value: cert.certificate_number,
+    })}
+${t('certificates.downloadTemplate.issueDate', {
+      ns: 'employee',
+      value: formatLocalizedDate(cert.issued_at, currentLanguage),
+    })}
+${t('certificates.downloadTemplate.completionDate', {
+      ns: 'employee',
+      value: formatLocalizedDate(cert.completion_date, currentLanguage),
+    })}
+${cert.score !== null
+      ? t('certificates.downloadTemplate.score', {
+          ns: 'employee',
+          value: cert.score.toFixed(1),
+        })
+      : ''}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${divider}
 
-This certificate validates the holder's completion of
-cybersecurity awareness training and demonstrates their
-commitment to maintaining security best practices.
+${t('certificates.downloadTemplate.summaryLine1', { ns: 'employee' })}
+${t('certificates.downloadTemplate.summaryLine2', { ns: 'employee' })}
+${t('certificates.downloadTemplate.summaryLine3', { ns: 'employee' })}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${divider}
     `;
 
     const blob = new Blob([certificateText], { type: 'text/plain;charset=utf-8' });
@@ -99,10 +118,12 @@ commitment to maintaining security best practices.
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">My Certificates</h1>
-        <p className="text-slate-600">View and download your earned certificates</p>
+      <div>
+        <div className="mb-6">
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          {t('certificates.title', { ns: 'employee' })}
+        </h1>
+        <p className="text-slate-600">{t('certificates.subtitle', { ns: 'employee' })}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -111,9 +132,13 @@ commitment to maintaining security best practices.
             <div className="p-3 bg-amber-50 rounded-lg">
               <Award className="h-6 w-6 text-amber-600" />
             </div>
-            <span className="text-3xl font-bold text-slate-900">{certificates.length}</span>
+            <span className="text-3xl font-bold text-slate-900">
+              {formatLocalizedNumber(certificates.length, currentLanguage)}
+            </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Total Certificates</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('certificates.summary.total', { ns: 'employee' })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -122,10 +147,12 @@ commitment to maintaining security best practices.
               <CheckCircle className="h-6 w-6 text-green-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {certificates.length}
+              {formatLocalizedNumber(certificates.length, currentLanguage)}
             </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Active</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('certificates.summary.active', { ns: 'employee' })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -134,10 +161,14 @@ commitment to maintaining security best practices.
               <Calendar className="h-6 w-6 text-blue-600" />
             </div>
             <span className="text-3xl font-bold text-slate-900">
-              {certificates.length > 0 ? new Date(certificates[0].issued_at).getFullYear() : '-'}
+              {certificates.length > 0
+                ? formatLocalizedNumber(new Date(certificates[0].issued_at).getFullYear(), currentLanguage)
+                : '-'}
             </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Latest Year</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('labels.latestYear', { ns: 'common' })}
+          </div>
         </div>
       </div>
 
@@ -163,27 +194,37 @@ commitment to maintaining security best practices.
 
                 <div className="bg-white/80 rounded-lg p-3 mb-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">Certificate #:</span>
+                    <span className="text-slate-600">
+                      {t('labels.certificateNumber', { ns: 'common' })}
+                    </span>
                     <span className="font-mono font-semibold text-slate-900 text-xs">
                       {cert.certificate_number}
                     </span>
                   </div>
                   {cert.score !== null && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Score:</span>
-                      <span className="font-bold text-green-600">{cert.score.toFixed(1)}%</span>
+                      <span className="text-slate-600">
+                        {t('labels.score', { ns: 'common' })}:
+                      </span>
+                      <span className="font-bold text-green-600">
+                        {formatLocalizedNumber(Number(cert.score.toFixed(1)), currentLanguage)}%
+                      </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">Issued:</span>
+                    <span className="text-slate-600">
+                      {t('labels.issued', { ns: 'common' })}:
+                    </span>
                     <span className="font-semibold text-slate-900">
-                      {new Date(cert.issued_at).toLocaleDateString()}
+                      {formatLocalizedDate(cert.issued_at, currentLanguage)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">Completed:</span>
+                    <span className="text-slate-600">
+                      {t('labels.completed', { ns: 'common' })}:
+                    </span>
                     <span className="font-semibold text-slate-900">
-                      {new Date(cert.completion_date).toLocaleDateString()}
+                      {formatLocalizedDate(cert.completion_date, currentLanguage)}
                     </span>
                   </div>
                 </div>
@@ -193,7 +234,7 @@ commitment to maintaining security best practices.
                   className="w-full py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 text-sm font-medium bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white shadow-sm hover:shadow-md"
                 >
                   <Download className="h-4 w-4" />
-                  Download Certificate
+                  {t('certificates.download', { ns: 'employee' })}
                 </button>
               </div>
             );
@@ -204,20 +245,21 @@ commitment to maintaining security best practices.
           <div className="inline-flex items-center justify-center w-20 h-20 bg-amber-50 rounded-full mb-4">
             <Award className="h-10 w-10 text-amber-600" />
           </div>
-          <h3 className="text-2xl font-bold text-slate-900 mb-2">No Certificates Yet</h3>
+          <h3 className="text-2xl font-bold text-slate-900 mb-2">
+            {t('certificates.empty.title', { ns: 'employee' })}
+          </h3>
           <p className="text-slate-600 mb-6 max-w-md mx-auto">
-            Complete your training courses and pass assessments to earn certificates.
-            Certificates are automatically issued upon course completion.
+            {t('certificates.empty.description', { ns: 'employee' })}
           </p>
           <div className="flex items-center justify-center gap-8 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              <span>Complete Course</span>
+              <span>{t('certificates.empty.completeCourse', { ns: 'employee' })}</span>
             </div>
             <div className="text-slate-300">→</div>
             <div className="flex items-center gap-2">
               <Award className="h-5 w-5 text-amber-600" />
-              <span>Earn Certificate</span>
+              <span>{t('certificates.empty.earnCertificate', { ns: 'employee' })}</span>
             </div>
           </div>
         </div>

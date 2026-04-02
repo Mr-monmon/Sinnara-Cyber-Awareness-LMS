@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, ArrowRight, Check, Clock, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatLocalizedNumber } from '../../i18n/utils';
 
 interface ExamQuestion {
   id: string;
@@ -21,6 +23,14 @@ interface ExamViewerProps {
   onBack: () => void;
 }
 
+interface ExamAccessResponse {
+  assignment_id: string | null;
+  attempts_used: number;
+  can_take_exam: boolean;
+  has_passed: boolean;
+  max_attempts: number;
+}
+
 export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   examId,
   examTitle,
@@ -30,17 +40,18 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   onBack
 }) => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(['common', 'employee']);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60);
   const [examStarted, setExamStarted] = useState(false);
   const [examSubmitted, setExamSubmitted] = useState(false);
-  const [score, setScore] = useState(0);
-  const [passed, setPassed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number>(0);
+  const currentLanguage = i18n.resolvedLanguage;
+  const isRtl = i18n.dir() === 'rtl';
 
   useEffect(() => {
     checkAccessAndLoad();
@@ -55,19 +66,19 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           p_employee_id: user.id,
           p_exam_id: examId
         })
-        .maybeSingle();
+        .maybeSingle<ExamAccessResponse>();
 
       if (error || !data) {
-        alert('Error checking exam access. Please try again.');
+        alert(t('examViewer.accessError', { ns: 'employee' }));
         onBack();
         return;
       }
 
       if (!data.can_take_exam) {
         if (data.has_passed) {
-          alert('You have already passed this exam!');
+          alert(t('examViewer.alreadyPassed', { ns: 'employee' }));
         } else {
-          alert(`You have used all your attempts for this exam. Contact your admin for more.`);
+          alert(t('examViewer.noAttemptsLeft', { ns: 'employee' }));
         }
         onBack();
         return;
@@ -78,7 +89,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
       await loadQuestions();
     } catch (err) {
       console.error('Error checking access:', err);
-      alert('Error checking exam access. Please try again.');
+      alert(t('examViewer.accessError', { ns: 'employee' }));
       onBack();
     }
   };
@@ -152,8 +163,6 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
     const finalScore = Math.round((correctCount / questions.length) * 100);
     const didPass = finalScore >= passingScore;
 
-    setScore(finalScore);
-    setPassed(didPass);
     setExamSubmitted(true);
 
     try {
@@ -194,7 +203,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Loading assessment...</p>
+          <p className="mt-4 text-slate-600">{t('examViewer.loading', { ns: 'employee' })}</p>
         </div>
       </div>
     );
@@ -205,13 +214,17 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-slate-900 mb-2">No Questions Found</p>
-          <p className="text-slate-600 mb-4">This assessment has no questions. Please contact your admin.</p>
+          <p className="text-lg font-medium text-slate-900 mb-2">
+            {t('examViewer.noQuestionsTitle', { ns: 'employee' })}
+          </p>
+          <p className="text-slate-600 mb-4">
+            {t('examViewer.noQuestionsDescription', { ns: 'employee' })}
+          </p>
           <button
             onClick={onBack}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Go Back
+            {t('actions.goBack', { ns: 'common' })}
           </button>
         </div>
       </div>
@@ -226,8 +239,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             onClick={onBack}
             className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
           >
-            <ArrowLeft className="h-5 w-5" />
-            Back to Assessments
+            <ArrowLeft className={`h-5 w-5 ${isRtl ? 'rotate-180' : ''}`} />
+            {t('examViewer.backToAssessments', { ns: 'employee' })}
           </button>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
@@ -241,43 +254,69 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                   ? 'bg-yellow-100 text-yellow-800'
                   : 'bg-green-100 text-green-800'
               }`}>
-                {examType === 'PRE_ASSESSMENT' ? 'Pre-Assessment' : 'Post-Assessment'}
+                {examType === 'PRE_ASSESSMENT'
+                  ? t('exams.types.pre', { ns: 'employee' })
+                  : t('exams.types.post', { ns: 'employee' })}
               </span>
             </div>
 
             <div className="bg-slate-50 rounded-lg p-6 mb-8 space-y-4">
-              <h3 className="font-semibold text-slate-900 mb-4">Assessment Instructions:</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+              <h3 className="font-semibold text-slate-900 mb-4">
+                {t('examViewer.instructionsTitle', { ns: 'employee' })}
+              </h3>
+              <div className={`grid grid-cols-1 ${attemptsRemaining > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 text-center`}>
                 <div className="bg-white rounded-lg p-4">
-                  <div className="text-2xl font-bold text-blue-600 mb-1">{questions.length}</div>
-                  <div className="text-sm text-slate-600">Questions</div>
+                  <div className="text-2xl font-bold text-blue-600 mb-1">
+                    {formatLocalizedNumber(questions.length, currentLanguage)}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    {t('examViewer.questions', { ns: 'employee' })}
+                  </div>
                 </div>
                 <div className="bg-white rounded-lg p-4">
-                  <div className="text-2xl font-bold text-blue-600 mb-1">{timeLimit}</div>
-                  <div className="text-sm text-slate-600">Minutes</div>
+                  <div className="text-2xl font-bold text-blue-600 mb-1">
+                    {formatLocalizedNumber(timeLimit, currentLanguage)}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    {t('labels.minutes', { ns: 'common' })}
+                  </div>
                 </div>
                 <div className="bg-white rounded-lg p-4">
-                  <div className="text-2xl font-bold text-blue-600 mb-1">{passingScore}%</div>
-                  <div className="text-sm text-slate-600">Passing Score</div>
+                  <div className="text-2xl font-bold text-blue-600 mb-1">
+                    {formatLocalizedNumber(passingScore, currentLanguage)}%
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    {t('examViewer.passingScore', { ns: 'employee' })}
+                  </div>
                 </div>
+                {attemptsRemaining > 0 && (
+                  <div className="bg-white rounded-lg p-4">
+                    <div className="text-2xl font-bold text-blue-600 mb-1">
+                      {formatLocalizedNumber(attemptsRemaining, currentLanguage)}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {t('exams.summary.attemptsRemaining', { ns: 'employee' })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 space-y-2 text-slate-700">
                 <p className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  Answer all questions
+                  {t('examViewer.tipAnswerAll', { ns: 'employee' })}
                 </p>
                 <p className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  Navigate between questions before submitting
+                  {t('examViewer.tipNavigate', { ns: 'employee' })}
                 </p>
                 <p className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  Assessment will auto-submit when time expires
+                  {t('examViewer.tipAutoSubmit', { ns: 'employee' })}
                 </p>
                 <p className="flex items-start gap-2">
                   <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                  Cannot pause assessment once started
+                  {t('examViewer.tipCannotPause', { ns: 'employee' })}
                 </p>
               </div>
             </div>
@@ -286,7 +325,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               onClick={handleStartExam}
               className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-lg transition-all duration-300 text-lg"
             >
-              Start Assessment
+              {t('examViewer.startAssessment', { ns: 'employee' })}
             </button>
           </div>
         </div>
@@ -304,32 +343,34 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             </div>
 
             <h1 className="text-4xl font-bold mb-4 text-slate-900">
-              Assessment Submitted Successfully
+              {t('examViewer.submittedTitle', { ns: 'employee' })}
             </h1>
 
             <div className="bg-blue-50 rounded-lg p-6 mb-8 border border-blue-200">
               <p className="text-lg text-blue-900 font-medium mb-2">
-                Your answers have been recorded
+                {t('examViewer.submittedRecorded', { ns: 'employee' })}
               </p>
               <p className="text-blue-700">
-                Your company administrator will review your results and provide feedback soon.
+                {t('examViewer.submittedDescription', { ns: 'employee' })}
               </p>
             </div>
 
             <div className="bg-slate-50 rounded-lg p-6 mb-8">
-              <h3 className="font-semibold text-slate-900 mb-3">What happens next?</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">
+                {t('examViewer.nextStepsTitle', { ns: 'employee' })}
+              </h3>
               <div className="space-y-2 text-sm text-slate-700">
                 <p className="flex items-center gap-2 justify-center">
                   <Check className="h-4 w-4 text-green-600" />
-                  Your administrator will review your responses
+                  {t('examViewer.nextStepsReview', { ns: 'employee' })}
                 </p>
                 <p className="flex items-center gap-2 justify-center">
                   <Check className="h-4 w-4 text-green-600" />
-                  Results will be available in your assessment history
+                  {t('examViewer.nextStepsHistory', { ns: 'employee' })}
                 </p>
                 <p className="flex items-center gap-2 justify-center">
                   <Check className="h-4 w-4 text-green-600" />
-                  You may receive additional feedback or training recommendations
+                  {t('examViewer.nextStepsFeedback', { ns: 'employee' })}
                 </p>
               </div>
             </div>
@@ -338,7 +379,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               onClick={onBack}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
             >
-              Return to Assessments
+              {t('examViewer.returnToAssessments', { ns: 'employee' })}
             </button>
           </div>
         </div>
@@ -356,10 +397,18 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <span className="text-sm text-slate-600">
-                Question {currentQuestionIndex + 1} of {questions.length}
+                {t('examViewer.questionOf', {
+                  ns: 'employee',
+                  current: formatLocalizedNumber(currentQuestionIndex + 1, currentLanguage),
+                  total: formatLocalizedNumber(questions.length, currentLanguage),
+                })}
               </span>
               <span className="text-sm text-slate-600">
-                Answered: {getAnsweredCount()} / {questions.length}
+                {t('examViewer.answered', {
+                  ns: 'employee',
+                  answered: formatLocalizedNumber(getAnsweredCount(), currentLanguage),
+                  total: formatLocalizedNumber(questions.length, currentLanguage),
+                })}
               </span>
             </div>
 
@@ -391,7 +440,9 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               <button
                 key={index}
                 onClick={() => handleAnswerSelect(option)}
-                className={`w-full text-right p-4 rounded-lg border-2 transition-all duration-200 ${
+                className={`w-full p-4 rounded-lg border-2 transition-all duration-200 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } ${
                   answers[currentQuestion.id] === option
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
@@ -419,8 +470,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               disabled={currentQuestionIndex === 0}
               className="px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
-              <ArrowLeft className="h-5 w-5" />
-              Previous
+              <ArrowLeft className={`h-5 w-5 ${isRtl ? 'rotate-180' : ''}`} />
+              {t('actions.previous', { ns: 'common' })}
             </button>
 
             {currentQuestionIndex === questions.length - 1 ? (
@@ -429,22 +480,24 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                 disabled={getAnsweredCount() !== questions.length}
                 className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
               >
-                Submit Assessment
+                {t('examViewer.submitAssessment', { ns: 'employee' })}
               </button>
             ) : (
               <button
                 onClick={handleNext}
                 className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center gap-2"
               >
-                Next
-                <ArrowRight className="h-5 w-5" />
+                {t('actions.next', { ns: 'common' })}
+                <ArrowRight className={`h-5 w-5 ${isRtl ? 'rotate-180' : ''}`} />
               </button>
             )}
           </div>
         </div>
 
         <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-3">Quick Navigation:</h3>
+          <h3 className="font-semibold text-slate-900 mb-3">
+            {t('examViewer.quickNavigation', { ns: 'employee' })}
+          </h3>
           <div className="grid grid-cols-10 gap-2">
             {questions.map((_, index) => (
               <button

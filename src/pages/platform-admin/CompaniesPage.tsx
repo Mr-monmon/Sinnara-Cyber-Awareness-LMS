@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Building2, Settings, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Company, Course, Exam } from '../../types';
+import { Company, Course, Exam } from '../../lib/types';
 import { CompanyFormModal } from '../../components/platform-admin/CompanyFormModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CompanyWithQuota extends Company {
   annual_quota?: number;
@@ -10,6 +11,8 @@ interface CompanyWithQuota extends Company {
 }
 
 export const CompaniesPage: React.FC = () => {
+  const { user } = useAuth();
+  const loginUrl = import.meta.env.VITE_SITE_URL_LOGIN || '';
   const [companies, setCompanies] = useState<CompanyWithQuota[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -17,7 +20,7 @@ export const CompaniesPage: React.FC = () => {
   const [assigningCompany, setAssigningCompany] = useState<Company | null>(null);
   const [editingQuota, setEditingQuota] = useState<string | null>(null);
   const [quotaValue, setQuotaValue] = useState<number>(4);
-
+  
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
@@ -118,7 +121,6 @@ export const CompaniesPage: React.FC = () => {
           .from('users')
           .update({
             full_name: formData.admin_name,
-            email: formData.admin_email,
             phone: formData.admin_phone
           })
           .eq('company_id', editingCompany.id)
@@ -127,11 +129,12 @@ export const CompaniesPage: React.FC = () => {
         if (userError) throw userError;
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'UPDATE_COMPANY',
           entity_type: 'COMPANY',
           entity_id: editingCompany.id,
           entity_name: formData.name,
-          description: `تحديث شركة: ${formData.name}`,
+          description: `Update company: ${formData.name}`,
           new_value: formData
         }]);
       } else {
@@ -141,20 +144,25 @@ export const CompaniesPage: React.FC = () => {
           .select()
           .single();
 
+        
+
         if (companyError) throw companyError;
 
-        const { error: userError } = await supabase
-          .from('users')
-          .insert([{
-            email: formData.admin_email,
-            password: 'Admin123!',
-            full_name: formData.admin_name,
-            phone: formData.admin_phone,
-            role: 'COMPANY_ADMIN',
-            company_id: newCompany.id
-          }]);
+        const { data: adminResult, error: adminError } =
+          await supabase.functions.invoke('user-admin', {
+            body: {
+              action: 'createUser',
+              email: formData.admin_email,
+              password: 'Admin123!',
+              full_name: formData.admin_name,
+              phone: formData.admin_phone || null,
+              role: 'COMPANY_ADMIN',
+              company_id: newCompany.id,
+            },
+          });
 
-        if (userError) throw userError;
+        if (adminError || !adminResult?.success)
+          throw new Error(adminResult?.error || 'Failed to create company admin');
 
         await supabase.from('subscriptions').insert([{
           company_id: newCompany.id,
@@ -166,22 +174,83 @@ export const CompaniesPage: React.FC = () => {
         }]);
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'CREATE_COMPANY',
           entity_type: 'COMPANY',
           entity_id: newCompany.id,
           entity_name: formData.name,
-          description: `إنشاء شركة جديدة: ${formData.name}`,
+          description: `Create new company: ${formData.name}`,
           new_value: formData
         }]);
+
+
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: formData.admin_email,
+            subject: 'Welcome to Awareone',
+            html: `
+              <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
+                <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
+                  <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+                    <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+                    <h1 style="margin:0; font-size:28px; line-height:1.3;">Welcome aboard, ${formData.admin_name}</h1>
+                    <p style="margin:12px 0 0; font-size:15px; line-height:1.7; color:#cbd5e1;">
+                      Your company workspace for <strong>${formData.name}</strong> is ready.
+                    </p>
+                  </div>
+
+                  <div style="padding:32px;">
+                    <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
+                      We created your company admin account. Use the credentials below to sign in and start managing your team.
+                    </p>
+
+                    <div style="margin:24px 0; padding:24px; background:rgba(200,255,0,0.10); border:1px solid rgba(200,255,0,0.20); border-radius:14px;">
+                      <p style="margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#c8ff00;">
+                        Account Details
+                      </p>
+                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${formData.admin_email}</p>
+                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> Admin123!</p>
+                      <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> Company Admin</p>
+                    </div>
+
+                    ${loginUrl ? `
+                    <div style="margin:24px 0;">
+                      <a
+                        href="${loginUrl}"
+                        style="display:inline-block; padding:14px 22px; background:#c8ff00; color:#12140a; text-decoration:none; font-size:15px; font-weight:700; border-radius:10px;"
+                      >
+                        Go to Login
+                      </a>
+                      <p style="margin:12px 0 0; font-size:14px; line-height:1.7; color:#94a3b8;">
+                        Website link: <a href="${loginUrl}" style="color:#c8ff00; text-decoration:none;">${loginUrl}</a>
+                      </p>
+                    </div>
+                    ` : ''}
+
+                    <div style="margin:24px 0; padding:18px 20px; background:rgba(255,255,255,0.03); border-left:4px solid #c8ff00; border-radius:10px;">
+                      <p style="margin:0; font-size:14px; line-height:1.7; color:#cbd5e1;">
+                        For security, please sign in and change your password as soon as possible.
+                      </p>
+                    </div>
+
+                    <p style="margin:24px 0 0; font-size:15px; line-height:1.8; color:#94a3b8;">
+                      If you need help getting started, reply to this email and our team will assist you.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            `
+          }
+        });
       }
 
       setShowModal(false);
       setEditingCompany(null);
       await loadCompanies();
-      alert(editingCompany ? 'تم تحديث الشركة بنجاح' : 'تم إنشاء الشركة وحساب المدير بنجاح!\nالبريد: ' + formData.admin_email + '\nكلمة المرور: Admin123!');
+      alert(editingCompany ? 'Company updated successfully' : 'Company created successfully!\nEmail: ' + formData.admin_email + '\nPassword: Admin123!');
     } catch (error) {
       console.error('Error saving company:', error);
-      alert('فشل حفظ الشركة: ' + (error as any).message);
+      alert('Failed to save company: ' + (error as any).message);
     }
   };
 
@@ -191,7 +260,7 @@ export const CompaniesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الشركة؟ سيتم حذف جميع المستخدمين المرتبطين بها.')) {
+    if (!confirm('Are you sure you want to delete this company? All associated users will be deleted.')) {
       return;
     }
 
@@ -201,7 +270,7 @@ export const CompaniesPage: React.FC = () => {
       await loadCompanies();
     } catch (error) {
       console.error('Error deleting company:', error);
-      alert('فشل حذف الشركة');
+      alert('Failed to delete company');
     }
   };
 
@@ -245,10 +314,10 @@ export const CompaniesPage: React.FC = () => {
 
       setShowAssignModal(false);
       setAssigningCompany(null);
-      alert('تم حفظ التخصيصات بنجاح');
+      alert('Assignments saved successfully');
     } catch (error) {
       console.error('Error saving assignments:', error);
-      alert('فشل حفظ التخصيصات');
+      alert('Failed to save assignments');
     }
   };
 
@@ -256,8 +325,8 @@ export const CompaniesPage: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">الشركات</h1>
-          <p className="text-slate-600">إدارة حسابات الشركات والباقات</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Companies</h1>
+          <p className="text-slate-600">Manage company accounts and packages</p>
         </div>
         <button
           onClick={() => {
@@ -267,7 +336,7 @@ export const CompaniesPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg transition-all font-medium"
         >
           <Plus className="h-5 w-5" />
-          إضافة شركة جديدة
+          Add New Company
         </button>
       </div>
 
@@ -275,19 +344,19 @@ export const CompaniesPage: React.FC = () => {
         <table className="w-full">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Company Name
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Package
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 License Limit
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Campaign Quota
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              </th> 
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Created
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -358,14 +427,14 @@ export const CompaniesPage: React.FC = () => {
                   )}
                 </td>
                 <td className="px-6 py-4 text-slate-600">
-                  {new Date(company.created_at).toLocaleDateString()}
+                  {company.created_at ? new Date(company.created_at).toLocaleDateString() : 'N/A'}
                 </td>
                 <td className="px-6 py-4 text-left">
                   <div className="flex items-center justify-start gap-2">
                     <button
                       onClick={() => handleAssignContent(company)}
                       className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                      title="تخصيص المحتوى"
+                      title="Assign Content"
                     >
                       <Settings className="h-4 w-4" />
                     </button>
@@ -410,12 +479,12 @@ export const CompaniesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-4">
-              تخصيص المحتوى - {assigningCompany.name}
+              Assign Content - {assigningCompany.name}
             </h2>
 
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">الدورات التدريبية</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Training Courses</h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {allCourses.map(course => (
                     <label key={course.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
@@ -438,7 +507,7 @@ export const CompaniesPage: React.FC = () => {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">الاختبارات</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Exams</h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {allExams.map(exam => (
                     <label key={exam.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
@@ -469,13 +538,13 @@ export const CompaniesPage: React.FC = () => {
                 }}
                 className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
               >
-                إلغاء
+                Cancel
               </button>
               <button
                 onClick={handleSaveAssignments}
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
               >
-                حفظ التخصيصات
+                Save Assignments
               </button>
             </div>
           </div>

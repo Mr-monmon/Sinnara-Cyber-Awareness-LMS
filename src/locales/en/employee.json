@@ -1,0 +1,194 @@
+{
+  "dashboard": {
+    "title": "My Dashboard",
+    "subtitle": "Welcome back! Continue your cybersecurity training journey.",
+    "rankLabel": "User Rank",
+    "rankHint": "Keep leveling up",
+    "quickActions": {
+      "title": "Quick Actions",
+      "continueLearning": {
+        "title": "Continue Learning",
+        "subtitle": "Access your assigned courses"
+      },
+      "takeAssessments": {
+        "title": "Take Assessments",
+        "subtitle": "Complete your pending tests"
+      },
+      "viewCertificates": {
+        "title": "View Certificates",
+        "subtitle": "Download your achievements"
+      }
+    },
+    "progressCard": {
+      "title": "Your Progress",
+      "courseCompletion": "Course Completion",
+      "completedCourses": "Completed Courses",
+      "certificates": "Certificates"
+    },
+    "stats": {
+      "assignedCourses": "Assigned Courses",
+      "completedCourses": "Completed Courses",
+      "pendingAssessments": "Pending Assessments",
+      "certificatesEarned": "Certificates Earned"
+    }
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "myCourses": "My Courses",
+    "myExams": "Assessments",
+    "fraudAlerts": "Fraud Alerts",
+    "certificates": "Certificates"
+  },
+  "courses": {
+    "title": "My Training Courses",
+    "subtitle": "Continue your cybersecurity awareness training",
+    "summary": {
+      "total": "Total Courses",
+      "completed": "Completed",
+      "inProgress": "In Progress",
+      "notStarted": "Not Started"
+    },
+    "card": {
+      "viewCertificate": "View Certificate",
+      "startCourse": "Start Course"
+    },
+    "empty": {
+      "title": "No courses assigned yet",
+      "description": "Your company admin will assign courses to you soon."
+    }
+  },
+  "exams": {
+    "title": "My Assessments",
+    "subtitle": "View your assessment results",
+    "summary": {
+      "total": "Total Assessments",
+      "inProgress": "In Progress",
+      "attemptsRemaining": "Attempts Remaining"
+    },
+    "types": {
+      "pre": "Pre-Assessment",
+      "post": "Post-Assessment"
+    },
+    "attempts": {
+      "title": "Attempts",
+      "noneLeft": "No Attempts Remaining",
+      "retake": "Retake Assessment",
+      "start": "Start Assessment",
+      "exhaustedMessage": "You have used all {{value}} attempt(s). Contact your admin to request more."
+    },
+    "assignedBanner": "You have mandatory assessments assigned to you. Please complete all required assessments before proceeding.",
+    "empty": {
+      "title": "No assessments available yet.",
+      "description": "Check back later!"
+    }
+  },
+  "fraudAlerts": {
+    "title": "Fraud Alerts",
+    "subtitle": "Stay informed about active scams and learn how to protect yourself.",
+    "loading": "Loading alerts...",
+    "empty": "No active fraud alerts",
+    "acknowledged": "Acknowledged",
+    "awarenessVideo": "Awareness Video:",
+    "videoUnsupported": "Your browser does not support the video tag.",
+    "actionSteps": "Action Steps:",
+    "acknowledging": "Acknowledging...",
+    "understandAlert": "I Understand This Alert",
+    "severityLevels": {
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low"
+    }
+  },
+  "certificates": {
+    "title": "My Certificates",
+    "subtitle": "View and download your earned certificates",
+    "summary": {
+      "total": "Total Certificates",
+      "active": "Active"
+    },
+    "download": "Download Certificate",
+    "empty": {
+      "title": "No Certificates Yet",
+      "description": "Complete your training courses and pass assessments to earn certificates. Certificates are automatically issued upon course completion.",
+      "completeCourse": "Complete Course",
+      "earnCertificate": "Earn Certificate"
+    },
+    "downloadTemplate": {
+      "title": "CERTIFICATE OF COMPLETION",
+      "certifies": "This certifies that",
+      "employeeFallback": "Employee",
+      "completedCourse": "has successfully completed the training course",
+      "certificateNumber": "Certificate Number: {{value}}",
+      "issueDate": "Issue Date: {{value}}",
+      "completionDate": "Completion Date: {{value}}",
+      "score": "Score Achieved: {{value}}%",
+      "summaryLine1": "This certificate validates the holder's completion of",
+      "summaryLine2": "cybersecurity awareness training and demonstrates their",
+      "summaryLine3": "commitment to maintaining security best practices."
+    }
+  },
+  "courseViewer": {
+    "loading": "Loading course...",
+    "noContent": "This course has no content yet.",
+    "backToCourses": "Back to Courses",
+    "progress": "Progress",
+    "contentsTitle": "Course Contents",
+    "sectionOf": "Section {{current}} of {{total}}",
+    "videoLink": "Video link:",
+    "markComplete": "Mark as Complete",
+    "submitAnswers": "Submit Answers",
+    "passedQuiz": "Excellent! You passed the quiz",
+    "failedQuiz": "You did not pass",
+    "continueNext": "You can continue to the next section",
+    "minimumScore": "You need at least 60% to continue",
+    "retry": "Try Again",
+    "nextSection": "Go to Next Section",
+    "finishCourse": "Finish Course",
+    "completeAllSections": "Please complete all sections before finishing the course",
+    "checkEnrollmentError": "Error: {{message}}",
+    "alreadyCompleted": "You have already completed this course!",
+    "completionFailed": "Failed to mark course as complete: {{message}}",
+    "certificateReady": "Congratulations! Course completed successfully. Your certificate is ready!",
+    "certificateGenerated": "Congratulations! You have successfully completed the course! Your certificate has been generated.",
+    "fallbackCourseName": "Course"
+  },
+  "examViewer": {
+    "accessError": "Error checking exam access. Please try again.",
+    "alreadyPassed": "You have already passed this exam!",
+    "noAttemptsLeft": "You have used all your attempts for this exam. Contact your admin for more.",
+    "loading": "Loading assessment...",
+    "noQuestionsTitle": "No Questions Found",
+    "noQuestionsDescription": "This assessment has no questions. Please contact your admin.",
+    "backToAssessments": "Back to Assessments",
+    "instructionsTitle": "Assessment Instructions:",
+    "questions": "Questions",
+    "passingScore": "Passing Score",
+    "tipAnswerAll": "Answer all questions",
+    "tipNavigate": "Navigate between questions before submitting",
+    "tipAutoSubmit": "Assessment will auto-submit when time expires",
+    "tipCannotPause": "Cannot pause assessment once started",
+    "startAssessment": "Start Assessment",
+    "submittedTitle": "Assessment Submitted Successfully",
+    "submittedRecorded": "Your answers have been recorded",
+    "submittedDescription": "Your company administrator will review your results and provide feedback soon.",
+    "nextStepsTitle": "What happens next?",
+    "nextStepsReview": "Your administrator will review your responses",
+    "nextStepsHistory": "Results will be available in your assessment history",
+    "nextStepsFeedback": "You may receive additional feedback or training recommendations",
+    "returnToAssessments": "Return to Assessments",
+    "questionOf": "Question {{current}} of {{total}}",
+    "answered": "Answered: {{answered}} / {{total}}",
+    "submitAssessment": "Submit Assessment",
+    "quickNavigation": "Quick Navigation:"
+  },
+  "widget": {
+    "title": "Fraud Alerts",
+    "actionsRequiredSingle": "{{count}} Alert Requiring Action",
+    "actionsRequiredPlural": "{{count}} Alerts Requiring Action",
+    "reviewPrompt": "Please review and acknowledge all security alerts.",
+    "availableSingle": "{{count}} alert available",
+    "availablePlural": "{{count}} alerts available",
+    "acknowledged": "Acknowledged",
+    "viewAll": "View All Alerts"
+  }
+}

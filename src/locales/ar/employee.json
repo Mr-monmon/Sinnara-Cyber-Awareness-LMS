@@ -1,0 +1,194 @@
+{
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "subtitle": "مرحبًا بعودتك! واصل رحلتك في التوعية بالأمن السيبراني.",
+    "rankLabel": "ترتيب المستخدم",
+    "rankHint": "واصل التقدم",
+    "quickActions": {
+      "title": "إجراءات سريعة",
+      "continueLearning": {
+        "title": "واصل التعلّم",
+        "subtitle": "ادخل إلى دوراتك المسندة"
+      },
+      "takeAssessments": {
+        "title": "ابدأ التقييمات",
+        "subtitle": "أكمل اختباراتك المعلقة"
+      },
+      "viewCertificates": {
+        "title": "عرض الشهادات",
+        "subtitle": "نزّل إنجازاتك"
+      }
+    },
+    "progressCard": {
+      "title": "تقدمك",
+      "courseCompletion": "إكمال الدورات",
+      "completedCourses": "الدورات المكتملة",
+      "certificates": "الشهادات"
+    },
+    "stats": {
+      "assignedCourses": "الدورات المسندة",
+      "completedCourses": "الدورات المكتملة",
+      "pendingAssessments": "التقييمات المعلقة",
+      "certificatesEarned": "الشهادات المحصلة"
+    }
+  },
+  "navigation": {
+    "dashboard": "لوحة التحكم",
+    "myCourses": "دوراتي",
+    "myExams": "التقييمات",
+    "fraudAlerts": "تنبيهات الاحتيال",
+    "certificates": "الشهادات"
+  },
+  "courses": {
+    "title": "دوراتي التدريبية",
+    "subtitle": "واصل تدريبك على التوعية بالأمن السيبراني",
+    "summary": {
+      "total": "إجمالي الدورات",
+      "completed": "مكتملة",
+      "inProgress": "قيد التقدم",
+      "notStarted": "لم تبدأ"
+    },
+    "card": {
+      "viewCertificate": "عرض الشهادة",
+      "startCourse": "ابدأ الدورة"
+    },
+    "empty": {
+      "title": "لا توجد دورات مسندة بعد",
+      "description": "سيقوم مسؤول الشركة بإسناد الدورات لك قريبًا."
+    }
+  },
+  "exams": {
+    "title": "تقييماتي",
+    "subtitle": "اعرض نتائج تقييماتك",
+    "summary": {
+      "total": "إجمالي التقييمات",
+      "inProgress": "قيد التنفيذ",
+      "attemptsRemaining": "المحاولات المتبقية"
+    },
+    "types": {
+      "pre": "تقييم قبلي",
+      "post": "تقييم بعدي"
+    },
+    "attempts": {
+      "title": "المحاولات",
+      "noneLeft": "لا توجد محاولات متبقية",
+      "retake": "إعادة التقييم",
+      "start": "ابدأ التقييم",
+      "exhaustedMessage": "لقد استخدمت جميع المحاولات البالغ عددها {{value}}. تواصل مع المسؤول لطلب المزيد."
+    },
+    "assignedBanner": "لديك تقييمات إلزامية مسندة إليك. يرجى إكمال جميع التقييمات المطلوبة قبل المتابعة.",
+    "empty": {
+      "title": "لا توجد تقييمات متاحة بعد.",
+      "description": "تحقق مرة أخرى لاحقًا."
+    }
+  },
+  "fraudAlerts": {
+    "title": "تنبيهات الاحتيال",
+    "subtitle": "ابقَ على اطلاع على أساليب الاحتيال النشطة وتعلّم كيفية حماية نفسك.",
+    "loading": "جارٍ تحميل التنبيهات...",
+    "empty": "لا توجد تنبيهات احتيال نشطة",
+    "acknowledged": "تم الإقرار",
+    "awarenessVideo": "فيديو توعوي:",
+    "videoUnsupported": "متصفحك لا يدعم تشغيل الفيديو.",
+    "actionSteps": "خطوات الإجراء:",
+    "acknowledging": "جارٍ الإقرار...",
+    "understandAlert": "لقد فهمت هذا التنبيه",
+    "severityLevels": {
+      "HIGH": "مرتفعة",
+      "MEDIUM": "متوسطة",
+      "LOW": "منخفضة"
+    }
+  },
+  "certificates": {
+    "title": "شهاداتي",
+    "subtitle": "اعرض شهاداتك المستحقة وقم بتنزيلها",
+    "summary": {
+      "total": "إجمالي الشهادات",
+      "active": "نشطة"
+    },
+    "download": "تنزيل الشهادة",
+    "empty": {
+      "title": "لا توجد شهادات بعد",
+      "description": "أكمل دوراتك التدريبية واجتز التقييمات لتحصل على الشهادات. يتم إصدار الشهادات تلقائيًا عند إكمال الدورة.",
+      "completeCourse": "أكمل الدورة",
+      "earnCertificate": "احصل على الشهادة"
+    },
+    "downloadTemplate": {
+      "title": "شهادة إتمام",
+      "certifies": "تشهد هذه الوثيقة بأن",
+      "employeeFallback": "الموظف",
+      "completedCourse": "قد أتم بنجاح الدورة التدريبية",
+      "certificateNumber": "رقم الشهادة: {{value}}",
+      "issueDate": "تاريخ الإصدار: {{value}}",
+      "completionDate": "تاريخ الإكمال: {{value}}",
+      "score": "النتيجة المحققة: {{value}}%",
+      "summaryLine1": "تؤكد هذه الشهادة إتمام حاملها",
+      "summaryLine2": "لتدريب التوعية بالأمن السيبراني وتوضح",
+      "summaryLine3": "التزامه بالحفاظ على أفضل الممارسات الأمنية."
+    }
+  },
+  "courseViewer": {
+    "loading": "جارٍ تحميل الدورة...",
+    "noContent": "لا يوجد محتوى لهذه الدورة بعد.",
+    "backToCourses": "العودة إلى الدورات",
+    "progress": "التقدم",
+    "contentsTitle": "محتويات الدورة",
+    "sectionOf": "القسم {{current}} من {{total}}",
+    "videoLink": "رابط الفيديو:",
+    "markComplete": "تحديد كمكتمل",
+    "submitAnswers": "إرسال الإجابات",
+    "passedQuiz": "ممتاز! لقد نجحت في الاختبار",
+    "failedQuiz": "للأسف، لم تنجح",
+    "continueNext": "يمكنك المتابعة إلى القسم التالي",
+    "minimumScore": "يجب الحصول على 60% على الأقل للمتابعة",
+    "retry": "إعادة المحاولة",
+    "nextSection": "الانتقال إلى القسم التالي",
+    "finishCourse": "إنهاء الدورة",
+    "completeAllSections": "يرجى إكمال جميع الأقسام قبل إنهاء الدورة",
+    "checkEnrollmentError": "خطأ: {{message}}",
+    "alreadyCompleted": "لقد أكملت هذه الدورة بالفعل!",
+    "completionFailed": "تعذر تحديد الدورة كمكتملة: {{message}}",
+    "certificateReady": "تهانينا! اكتملت الدورة بنجاح. شهادتك جاهزة!",
+    "certificateGenerated": "تهانينا! لقد أكملت الدورة بنجاح وتم إنشاء شهادتك.",
+    "fallbackCourseName": "دورة"
+  },
+  "examViewer": {
+    "accessError": "حدث خطأ أثناء التحقق من إمكانية الوصول إلى التقييم. حاول مرة أخرى.",
+    "alreadyPassed": "لقد اجتزت هذا التقييم بالفعل!",
+    "noAttemptsLeft": "لقد استخدمت جميع محاولات هذا التقييم. تواصل مع المسؤول لطلب المزيد.",
+    "loading": "جارٍ تحميل التقييم...",
+    "noQuestionsTitle": "لا توجد أسئلة",
+    "noQuestionsDescription": "هذا التقييم لا يحتوي على أسئلة. يرجى التواصل مع المسؤول.",
+    "backToAssessments": "العودة إلى التقييمات",
+    "instructionsTitle": "تعليمات التقييم:",
+    "questions": "الأسئلة",
+    "passingScore": "درجة النجاح",
+    "tipAnswerAll": "أجب عن جميع الأسئلة",
+    "tipNavigate": "يمكنك التنقل بين الأسئلة قبل الإرسال",
+    "tipAutoSubmit": "سيتم إرسال التقييم تلقائيًا عند انتهاء الوقت",
+    "tipCannotPause": "لا يمكن إيقاف التقييم مؤقتًا بعد البدء",
+    "startAssessment": "ابدأ التقييم",
+    "submittedTitle": "تم إرسال التقييم بنجاح",
+    "submittedRecorded": "تم تسجيل إجاباتك",
+    "submittedDescription": "سيقوم مسؤول الشركة بمراجعة نتائجك وتقديم الملاحظات قريبًا.",
+    "nextStepsTitle": "ماذا يحدث بعد ذلك؟",
+    "nextStepsReview": "سيقوم المسؤول بمراجعة إجاباتك",
+    "nextStepsHistory": "ستتوفر النتائج في سجل تقييماتك",
+    "nextStepsFeedback": "قد تتلقى ملاحظات إضافية أو توصيات تدريبية",
+    "returnToAssessments": "العودة إلى التقييمات",
+    "questionOf": "السؤال {{current}} من {{total}}",
+    "answered": "تمت الإجابة: {{answered}} / {{total}}",
+    "submitAssessment": "إرسال التقييم",
+    "quickNavigation": "تنقل سريع:"
+  },
+  "widget": {
+    "title": "تنبيهات الاحتيال",
+    "actionsRequiredSingle": "يوجد {{count}} تنبيه يتطلب إجراء",
+    "actionsRequiredPlural": "يوجد {{count}} تنبيهات تتطلب إجراء",
+    "reviewPrompt": "يرجى مراجعة جميع التنبيهات الأمنية والإقرار بها.",
+    "availableSingle": "يوجد {{count}} تنبيه متاح",
+    "availablePlural": "يوجد {{count}} تنبيهات متاحة",
+    "acknowledged": "تم الإقرار",
+    "viewAll": "عرض كل التنبيهات"
+  }
+}

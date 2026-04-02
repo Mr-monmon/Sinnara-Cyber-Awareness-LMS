@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -17,9 +18,11 @@ interface FraudAlertWidgetProps {
 
 export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }) => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation('employee');
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const isRtl = i18n.dir() === 'rtl';
 
   useEffect(() => {
     if (!user) return;
@@ -69,7 +72,7 @@ export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }
   if (loading) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <p className="text-sm text-gray-500">Loading alerts...</p>
+        <p className="text-sm text-gray-500">{t('fraudAlerts.loading')}</p>
       </div>
     );
   }
@@ -79,19 +82,33 @@ export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }
   }
 
   return (
-    <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-4">
+    <div
+      className={`bg-blue-50 rounded-lg p-4 ${
+        isRtl ? 'border-r-4 border-blue-400' : 'border-l-4 border-blue-400'
+      }`}
+    >
       <div className="flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-blue-900">
             {unacknowledgedCount > 0
-              ? `${unacknowledgedCount} Alert${unacknowledgedCount > 1 ? 's' : ''} Requiring Action`
-              : 'Fraud Alerts'}
+              ? t(
+                  unacknowledgedCount === 1
+                    ? 'widget.actionsRequiredSingle'
+                    : 'widget.actionsRequiredPlural',
+                  { count: unacknowledgedCount }
+                )
+              : t('widget.title')}
           </h3>
           <p className="text-sm text-blue-800 mt-1">
             {unacknowledgedCount > 0
-              ? 'Please review and acknowledge all security alerts.'
-              : `${alerts.length} alert${alerts.length > 1 ? 's' : ''} available`}
+              ? t('widget.reviewPrompt')
+              : t(
+                  alerts.length === 1
+                    ? 'widget.availableSingle'
+                    : 'widget.availablePlural',
+                  { count: alerts.length }
+                )}
           </p>
 
           {alerts.length > 0 && (
@@ -110,7 +127,9 @@ export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }
                   ></span>
                   {alert.title}
                   {alert.acknowledged && (
-                    <span className="text-xs text-green-700 font-medium">✓ Acknowledged</span>
+                    <span className="text-xs text-green-700 font-medium">
+                      ✓ {t('widget.acknowledged')}
+                    </span>
                   )}
                 </li>
               ))}
@@ -121,8 +140,8 @@ export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }
             onClick={() => onNavigate('fraud-alerts')}
             className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 mt-3 transition-colors"
           >
-            View All Alerts
-            <ChevronRight className="w-4 h-4" />
+            {t('widget.viewAll')}
+            <ChevronRight className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>

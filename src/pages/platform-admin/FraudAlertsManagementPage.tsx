@@ -26,7 +26,7 @@ export const FraudAlertsManagementPage: React.FC = () => {
   const [formData, setFormData] = useState({
     title: '',
     fraud_type: '',
-    severity: 'MEDIUM' as const,
+    severity: 'MEDIUM',
     public_summary: '',
     internal_content: '',
     video_url: '',

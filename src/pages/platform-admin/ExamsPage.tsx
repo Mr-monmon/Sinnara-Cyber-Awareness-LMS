@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardCheck, Plus, Edit2, Trash2, List } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Exam, ExamQuestion } from '../../types';
+import { Exam, ExamQuestion } from '../../lib/types';
 
 export const ExamsPage: React.FC = () => {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -66,7 +66,7 @@ export const ExamsPage: React.FC = () => {
       await loadExams();
     } catch (error) {
       console.error('Error saving exam:', error);
-      alert('فشل حفظ الاختبار');
+      alert('Failed to save exam');
     }
   };
 
@@ -83,7 +83,7 @@ export const ExamsPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا الاختبار؟')) return;
+    if (!confirm('Are you sure you want to delete this exam?')) return;
 
     try {
       const { error } = await supabase.from('exams').delete().eq('id', id);
@@ -91,7 +91,7 @@ export const ExamsPage: React.FC = () => {
       await loadExams();
     } catch (error) {
       console.error('Error deleting exam:', error);
-      alert('فشل حذف الاختبار');
+      alert('Failed to delete exam');
     }
   };
 
@@ -119,12 +119,12 @@ export const ExamsPage: React.FC = () => {
     ].filter(o => o.trim());
 
     if (options.length < 2) {
-      alert('يجب إضافة خيارين على الأقل');
+      alert('At least two options are required');
       return;
     }
 
     if (!options.includes(questionForm.correct_answer)) {
-      alert('الإجابة الصحيحة يجب أن تكون من ضمن الخيارات');
+      alert('The correct answer must be one of the options');
       return;
     }
 
@@ -159,12 +159,12 @@ export const ExamsPage: React.FC = () => {
       if (data) setQuestions(data);
     } catch (error) {
       console.error('Error adding question:', error);
-      alert('فشل إضافة السؤال');
+      alert('Failed to add question');
     }
   };
 
   const handleDeleteQuestion = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا السؤال؟')) return;
+    if (!confirm('Are you sure you want to delete this question?')) return;
 
     try {
       const { error } = await supabase.from('exam_questions').delete().eq('id', id);
@@ -181,7 +181,7 @@ export const ExamsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error deleting question:', error);
-      alert('فشل حذف السؤال');
+      alert('Failed to delete question');
     }
   };
 
@@ -189,8 +189,8 @@ export const ExamsPage: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">الاختبارات والتقييمات</h1>
-          <p className="text-slate-600">إدارة قوالب الاختبارات وبنك الأسئلة</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Exams and Assessments</h1>
+          <p className="text-slate-600">Exam Template Management and Question Bank</p>
         </div>
         <button
           onClick={() => {
@@ -201,7 +201,7 @@ export const ExamsPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
         >
           <Plus className="h-5 w-5" />
-          إضافة اختبار
+          Add Exam
         </button>
       </div>
 
@@ -219,7 +219,7 @@ export const ExamsPage: React.FC = () => {
                   ? 'bg-green-100 text-green-800'
                   : 'bg-blue-100 text-blue-800'
               }`}>
-                {exam.exam_type === 'PRE_ASSESSMENT' ? 'اختبار قبلي' : exam.exam_type === 'POST_ASSESSMENT' ? 'اختبار بعدي' : 'اختبار عام'}
+                {exam.exam_type === 'PRE_ASSESSMENT' ? 'Pre-Assessment' : exam.exam_type === 'POST_ASSESSMENT' ? 'Post-Assessment' : 'General'}
               </span>
             </div>
 
@@ -227,8 +227,8 @@ export const ExamsPage: React.FC = () => {
             <p className="text-slate-600 text-sm mb-4 line-clamp-2">{exam.description}</p>
 
             <div className="flex items-center justify-between text-sm text-slate-600 mb-4">
-              <span>النجاح: {exam.passing_score}%</span>
-              {exam.time_limit_minutes && <span>{exam.time_limit_minutes} دقيقة</span>}
+              <span>Success Threshold: {exam.passing_score}%</span>
+              {exam.time_limit_minutes && <span>{exam.time_limit_minutes} minutes</span>}
             </div>
 
             <div className="flex gap-2">
@@ -237,7 +237,7 @@ export const ExamsPage: React.FC = () => {
                 className="flex-1 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
               >
                 <List className="h-4 w-4" />
-                الأسئلة
+                Questions
               </button>
               <button
                 onClick={() => handleEdit(exam)}
@@ -258,7 +258,7 @@ export const ExamsPage: React.FC = () => {
 
       {exams.length === 0 && (
         <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-slate-200">
-          No exams yet. Click "Add Exam" to create one.
+          No exams yet. Click the "Add Exam" button to create one.
         </div>
       )}
 
@@ -266,13 +266,13 @@ export const ExamsPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              {editingExam ? 'تعديل الاختبار' : 'إضافة اختبار جديد'}
+              {editingExam ? 'Edit Exam' : 'Add New Exam'}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  عنوان الاختبار *
+                  Exam Title *
                 </label>
                 <input
                   type="text"
@@ -285,7 +285,7 @@ export const ExamsPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  الوصف *
+                  Description *
                 </label>
                 <textarea
                   required
@@ -298,22 +298,22 @@ export const ExamsPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  نوع الاختبار *
+                  Exam Type *
                 </label>
                 <select
                   value={formData.exam_type}
                   onChange={(e) => setFormData({ ...formData, exam_type: e.target.value as any })}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="GENERAL">اختبار عام</option>
-                  <option value="PRE_ASSESSMENT">اختبار قبلي</option>
-                  <option value="POST_ASSESSMENT">اختبار بعدي</option>
+                  <option value="GENERAL">General</option>
+                  <option value="PRE_ASSESSMENT">Pre-Assessment</option>
+                  <option value="POST_ASSESSMENT">Post-Assessment</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  درجة النجاح (%) *
+                  Success Threshold (%) *
                 </label>
                 <input
                   type="number"
@@ -328,7 +328,7 @@ export const ExamsPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  مدة الاختبار (دقائق)
+                  Time Limit (minutes)
                 </label>
                 <input
                   type="number"
@@ -348,13 +348,13 @@ export const ExamsPage: React.FC = () => {
                   }}
                   className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  إلغاء
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                 >
-                  {editingExam ? 'تحديث' : 'إضافة'}
+                  {editingExam ? 'Update' : 'Add'}
                 </button>
               </div>
             </form>
@@ -366,16 +366,16 @@ export const ExamsPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-4">
-              إدارة أسئلة - {selectedExam.title}
+              Question Management - {selectedExam.title}
             </h2>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">إضافة سؤال جديد</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Add New Question</h3>
                 <form onSubmit={handleAddQuestion} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      السؤال *
+                      Question *
                     </label>
                     <textarea
                       required
@@ -388,7 +388,7 @@ export const ExamsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 1 *
+                      Option 1 *
                     </label>
                     <input
                       type="text"
@@ -401,7 +401,7 @@ export const ExamsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 2 *
+                      Option 2 *
                     </label>
                     <input
                       type="text"
@@ -414,7 +414,7 @@ export const ExamsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 3
+                      Option 3
                     </label>
                     <input
                       type="text"
@@ -426,7 +426,7 @@ export const ExamsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الخيار 4
+                      Option 4
                     </label>
                     <input
                       type="text"
@@ -438,7 +438,7 @@ export const ExamsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الإجابة الصحيحة *
+                      Correct Answer *
                     </label>
                     <input
                       type="text"
@@ -446,13 +446,13 @@ export const ExamsPage: React.FC = () => {
                       value={questionForm.correct_answer}
                       onChange={(e) => setQuestionForm({ ...questionForm, correct_answer: e.target.value })}
                       className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      placeholder="يجب أن تطابق أحد الخيارات"
+                      placeholder="The correct answer must be one of the options"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      الشرح (اختياري)
+                      Explanation (optional)
                     </label>
                     <textarea
                       rows={2}
@@ -466,14 +466,14 @@ export const ExamsPage: React.FC = () => {
                     type="submit"
                     className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
                   >
-                    إضافة السؤال
+                    Add Question
                   </button>
                 </form>
               </div>
 
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                  الأسئلة الحالية ({questions.length})
+                  Current Questions ({questions.length})
                 </h3>
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
                   {questions.map((q, index) => (
@@ -524,7 +524,7 @@ export const ExamsPage: React.FC = () => {
                 }}
                 className="px-6 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors"
               >
-                إغلاق
+                Close
               </button>
             </div>
           </div>

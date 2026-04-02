@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Clock, CheckCircle, XCircle, TrendingUp, Lock, AlertCircle } from 'lucide-react';
+import { ClipboardCheck, Clock, TrendingUp, Lock, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatLocalizedDate, formatLocalizedNumber } from '../../i18n/utils';
 import { supabase } from '../../lib/supabase';
-import { Exam } from '../../types';
 import { ExamViewerPage } from './ExamViewerPage';
 
 interface ExamWithStatus {
@@ -20,11 +21,18 @@ interface ExamWithStatus {
   is_mandatory: boolean;
 }
 
-export const MyExamsPage: React.FC = () => {
+type Props = {
+  onExamCompleted: () => void;
+}
+
+
+export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(['common', 'employee']);
   const [exams, setExams] = useState<ExamWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewingExam, setViewingExam] = useState<ExamWithStatus | null>(null);
+  const currentLanguage = i18n.resolvedLanguage;
 
   useEffect(() => {
     loadExams();
@@ -55,13 +63,6 @@ export const MyExamsPage: React.FC = () => {
     }
   };
 
-  const getAttemptsText = (exam: ExamWithStatus): string => {
-    const remaining = exam.max_attempts - exam.attempts_used;
-    if (remaining === 0) return 'No attempts left';
-    if (remaining === 1) return '1 attempt remaining';
-    return `${remaining} attempts remaining`;
-  };
-
   if (viewingExam) {
     return (
       <ExamViewerPage
@@ -73,6 +74,7 @@ export const MyExamsPage: React.FC = () => {
         onBack={() => {
           setViewingExam(null);
           loadExams();
+          onExamCompleted();
         }}
       />
     );
@@ -93,8 +95,18 @@ export const MyExamsPage: React.FC = () => {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">My Assessments</h1>
-        <p className="text-slate-600">View your assessment results</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          {t('exams.title', { ns: 'employee' })}
+        </h1>
+        <p className="text-slate-600">{t('exams.subtitle', { ns: 'employee' })}</p>
+        {exams.length > 0 && (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+            <AlertCircle className="h-5 w-5 shrink-0 text-orange-600 mt-0.5" />
+            <p className="text-sm font-medium text-orange-800">
+              {t('exams.assignedBanner', { ns: 'employee' })}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -103,9 +115,13 @@ export const MyExamsPage: React.FC = () => {
             <div className="p-3 bg-blue-50 rounded-lg">
               <ClipboardCheck className="h-6 w-6 text-blue-600" />
             </div>
-            <span className="text-3xl font-bold text-slate-900">{totalExams}</span>
+            <span className="text-3xl font-bold text-slate-900">
+              {formatLocalizedNumber(totalExams, currentLanguage)}
+            </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Total Assessments</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('exams.summary.total', { ns: 'employee' })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -113,9 +129,13 @@ export const MyExamsPage: React.FC = () => {
             <div className="p-3 bg-green-50 rounded-lg">
               <Clock className="h-6 w-6 text-green-600" />
             </div>
-            <span className="text-3xl font-bold text-slate-900">{examsWithAttempts}</span>
+            <span className="text-3xl font-bold text-slate-900">
+              {formatLocalizedNumber(examsWithAttempts, currentLanguage)}
+            </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">In Progress</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('exams.summary.inProgress', { ns: 'employee' })}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -123,9 +143,13 @@ export const MyExamsPage: React.FC = () => {
             <div className="p-3 bg-blue-50 rounded-lg">
               <TrendingUp className="h-6 w-6 text-blue-600" />
             </div>
-            <span className="text-3xl font-bold text-slate-900">{attemptsRemaining}</span>
+            <span className="text-3xl font-bold text-slate-900">
+              {formatLocalizedNumber(attemptsRemaining, currentLanguage)}
+            </span>
           </div>
-          <div className="text-sm font-medium text-slate-600">Attempts Remaining</div>
+          <div className="text-sm font-medium text-slate-600">
+            {t('exams.summary.attemptsRemaining', { ns: 'employee' })}
+          </div>
         </div>
       </div>
 
@@ -155,11 +179,13 @@ export const MyExamsPage: React.FC = () => {
                         ? 'bg-yellow-100 text-yellow-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {exam.exam_type === 'PRE_ASSESSMENT' ? 'Pre-Assessment' : 'Post-Assessment'}
+                      {exam.exam_type === 'PRE_ASSESSMENT'
+                        ? t('exams.types.pre', { ns: 'employee' })
+                        : t('exams.types.post', { ns: 'employee' })}
                     </span>
                     {exam.is_mandatory && (
                       <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
-                        Mandatory
+                        {t('labels.mandatory', { ns: 'common' })}
                       </span>
                     )}
                   </div>
@@ -171,21 +197,36 @@ export const MyExamsPage: React.FC = () => {
                 <div className="flex items-center gap-4 mb-4 text-sm text-slate-600">
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    <span>{exam.time_limit_minutes || 30} minutes</span>
+                    <span>
+                      {formatLocalizedNumber(exam.time_limit_minutes || 30, currentLanguage)}{' '}
+                      {t('labels.minutes', { ns: 'common' })}
+                    </span>
                   </div>
-                  <div>Passing: {exam.passing_score}%</div>
+                  <div>
+                    {t('labels.passing', { ns: 'common' })}: {formatLocalizedNumber(exam.passing_score, currentLanguage)}%
+                  </div>
                 </div>
 
                 {hasAttempted && (
                   <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <h4 className="text-sm font-semibold text-slate-900 mb-3">Attempts</h4>
+                    <h4 className="text-sm font-semibold text-slate-900 mb-3">
+                      {t('exams.attempts.title', { ns: 'employee' })}
+                    </h4>
                     <div className="flex justify-between items-center text-sm mb-2">
-                      <span className="text-slate-600">Used:</span>
-                      <span className="text-slate-900">{exam.attempts_used} / {exam.max_attempts}</span>
+                      <span className="text-slate-600">
+                        {t('labels.used', { ns: 'common' })}:
+                      </span>
+                      <span className="text-slate-900">
+                        {formatLocalizedNumber(exam.attempts_used, currentLanguage)} / {formatLocalizedNumber(exam.max_attempts, currentLanguage)}
+                      </span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-600">Remaining:</span>
-                      <span className="font-bold text-blue-600">{exam.max_attempts - exam.attempts_used}</span>
+                      <span className="text-slate-600">
+                        {t('labels.remaining', { ns: 'common' })}:
+                      </span>
+                      <span className="font-bold text-blue-600">
+                        {formatLocalizedNumber(exam.max_attempts - exam.attempts_used, currentLanguage)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -194,8 +235,12 @@ export const MyExamsPage: React.FC = () => {
                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                     <Clock className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-medium text-yellow-900">Due Date</p>
-                      <p className="text-xs text-yellow-800">{new Date(exam.due_date).toLocaleDateString()}</p>
+                      <p className="text-xs font-medium text-yellow-900">
+                        {t('labels.dueDate', { ns: 'common' })}
+                      </p>
+                      <p className="text-xs text-yellow-800">
+                        {formatLocalizedDate(exam.due_date, currentLanguage)}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -204,7 +249,10 @@ export const MyExamsPage: React.FC = () => {
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-red-900">
-                      You have used all {exam.max_attempts} attempt(s). Contact your admin to request more.
+                      {t('exams.attempts.exhaustedMessage', {
+                        ns: 'employee',
+                        value: formatLocalizedNumber(exam.max_attempts, currentLanguage),
+                      })}
                     </p>
                   </div>
                 )}
@@ -221,12 +269,14 @@ export const MyExamsPage: React.FC = () => {
                   {!canTake ? (
                     <>
                       <Lock className="h-4 w-4" />
-                      No Attempts Remaining
+                      {t('exams.attempts.noneLeft', { ns: 'employee' })}
                     </>
                   ) : (
                     <>
                       <ClipboardCheck className="h-4 w-4" />
-                      {hasAttempted ? 'Retake Assessment' : 'Start Assessment'}
+                      {hasAttempted
+                        ? t('exams.attempts.retake', { ns: 'employee' })
+                        : t('exams.attempts.start', { ns: 'employee' })}
                     </>
                   )}
                 </button>
@@ -239,8 +289,10 @@ export const MyExamsPage: React.FC = () => {
       {exams.length === 0 && (
         <div className="text-center py-12 text-slate-500 bg-white rounded-xl border border-slate-200">
           <ClipboardCheck className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-lg font-medium">No assessments available yet.</p>
-          <p className="text-sm">Check back later!</p>
+          <p className="text-lg font-medium">
+            {t('exams.empty.title', { ns: 'employee' })}
+          </p>
+          <p className="text-sm">{t('exams.empty.description', { ns: 'employee' })}</p>
         </div>
       )}
     </div>

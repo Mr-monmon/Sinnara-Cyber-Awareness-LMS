@@ -1,18 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Edit2, Trash2, Upload, Download, Shield, Building2, Plus, Key } from 'lucide-react';
+import { Users, Search, Trash2, Upload, Download, Building2, Plus, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-
-interface User {
-  id: string;
-  email: string;
-  full_name: string;
-  phone?: string;
-  employee_id?: string;
-  role: 'PLATFORM_ADMIN' | 'COMPANY_ADMIN' | 'EMPLOYEE';
-  company_id?: string;
-  department?: string;
-  created_at: string;
-}
+import { User } from '../../lib/types';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Company {
   id: string;
@@ -20,6 +10,7 @@ interface Company {
 }
 
 export const UsersManagementPage: React.FC = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +28,18 @@ export const UsersManagementPage: React.FC = () => {
     role: 'EMPLOYEE',
     company_id: ''
   });
+
+  // Password re-authentication state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'role_change' | 'delete' | 'reset_password';
+    userId: string;
+    userEmail: string;
+    newRole?: string;
+    newPassword?: string;
+  } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -71,6 +74,59 @@ export const UsersManagementPage: React.FC = () => {
     return company?.name || '-';
   };
 
+  const verifyCurrentUserPassword = async (password: string): Promise<boolean> => {
+    if (!user?.email) return false;
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password,
+    });
+
+    return !error;
+  };
+
+  const handlePasswordConfirm = async () => {
+    if (!confirmPassword) {
+      setPasswordError('Please enter your password');
+      return;
+    }
+
+    const isValid = await verifyCurrentUserPassword(confirmPassword);
+    
+    if (!isValid) {
+      setPasswordError('Invalid password. Please try again.');
+      return;
+    }
+
+    // Password verified, execute the pending action
+    if (pendingAction) {
+      switch (pendingAction.type) {
+        case 'role_change':
+          await executeRoleChange(pendingAction.userId, pendingAction.newRole!);
+          break;
+        case 'delete':
+          await executeDeleteUser(pendingAction.userId);
+          break;
+        case 'reset_password':
+          await executeResetPassword(pendingAction.userId, pendingAction.userEmail, pendingAction.newPassword!);
+          break;
+      }
+    }
+
+    // Reset modal state
+    setShowPasswordModal(false);
+    setConfirmPassword('');
+    setPasswordError('');
+    setPendingAction(null);
+  };
+
+  const closePasswordModal = () => {
+    setShowPasswordModal(false);
+    setConfirmPassword('');
+    setPasswordError('');
+    setPendingAction(null);
+  };
+
   const getRoleBadge = (role: string) => {
     const styles = {
       PLATFORM_ADMIN: 'bg-red-100 text-red-800 border-red-200',
@@ -100,20 +156,24 @@ export const UsersManagementPage: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .insert([{
-          full_name: newUserData.full_name,
-          email: newUserData.email.toLowerCase(),
-          phone: newUserData.phone || null,
-          password: newUserData.password,
-          role: newUserData.role,
-          company_id: newUserData.company_id || null
-        }]);
+      const { data: createResult, error: createError } =
+        await supabase.functions.invoke('user-admin', {
+          body: {
+            action: 'createUser',
+            full_name: newUserData.full_name,
+            email: newUserData.email.toLowerCase(),
+            phone: newUserData.phone || null,
+            password: newUserData.password,
+            role: newUserData.role,
+            company_id: newUserData.company_id || null,
+          },
+        });
 
-      if (error) throw error;
+      if (createError || !createResult?.success)
+        throw new Error(createResult?.error || 'Failed to create user');
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'CREATE_USER',
         entity_type: 'USER',
         description: `Created user: ${newUserData.email}`,
@@ -130,7 +190,7 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
-  const handleResetPassword = async (userId: string, userEmail: string) => {
+  const handleResetPassword = (userId: string, userEmail: string) => {
     const newPassword = prompt('Enter new password for ' + userEmail + ':');
 
     if (!newPassword) return;
@@ -144,15 +204,28 @@ export const UsersManagementPage: React.FC = () => {
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ password: newPassword })
-        .eq('id', userId);
+    // Show password confirmation modal
+    setPendingAction({
+      type: 'reset_password',
+      userId,
+      userEmail,
+      newPassword
+    });
+    setShowPasswordModal(true);
+  };
 
-      if (error) throw error;
+  const executeResetPassword = async (userId: string, userEmail: string, newPassword: string) => {
+    try {
+      const { data: resetResult, error: resetError } =
+        await supabase.functions.invoke('user-admin', {
+          body: { action: 'resetPassword', userId, password: newPassword },
+        });
+
+      if (resetError || !resetResult?.success)
+        throw new Error(resetResult?.error || 'Failed to reset password');
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'RESET_PASSWORD',
         entity_type: 'USER',
         entity_id: userId,
@@ -166,11 +239,22 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = (userId: string, newRole: string, userEmail: string) => {
     if (!confirm('Are you sure you want to change this user\'s role?')) {
       return;
     }
 
+    // Show password confirmation modal
+    setPendingAction({
+      type: 'role_change',
+      userId,
+      userEmail,
+      newRole
+    });
+    setShowPasswordModal(true);
+  };
+
+  const executeRoleChange = async (userId: string, newRole: string) => {
     try {
       const { error } = await supabase
         .from('users')
@@ -180,6 +264,7 @@ export const UsersManagementPage: React.FC = () => {
       if (error) throw error;
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'ROLE_CHANGE',
         entity_type: 'USER',
         entity_id: userId,
@@ -195,20 +280,32 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
+  const handleDeleteUser = (userId: string, userEmail: string) => {
     if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId);
+    // Show password confirmation modal
+    setPendingAction({
+      type: 'delete',
+      userId,
+      userEmail
+    });
+    setShowPasswordModal(true);
+  };
 
-      if (error) throw error;
+  const executeDeleteUser = async (userId: string) => {
+    try {
+      const { data: delResult, error: delError } =
+        await supabase.functions.invoke('user-admin', {
+          body: { action: 'deleteUser', userId },
+        });
+
+      if (delError || !delResult?.success)
+        throw new Error(delResult?.error || 'Failed to delete user');
 
       await supabase.from('audit_logs').insert([{
+        user_id: user?.id,
         action_type: 'DELETE_USER',
         entity_type: 'USER',
         entity_id: userId,
@@ -284,26 +381,29 @@ export const UsersManagementPage: React.FC = () => {
           return;
         }
 
-        const { error } = await supabase
-          .from('users')
-          .insert(employees);
+        const { data: bulkResult, error: bulkError } =
+          await supabase.functions.invoke('user-admin', {
+            body: { action: 'bulkCreate', users: employees },
+          });
 
-        if (error) throw error;
+        if (bulkError) throw bulkError;
 
         await supabase.from('audit_logs').insert([{
+          user_id: user?.id,
           action_type: 'UPLOAD_EMPLOYEES',
           entity_type: 'EMPLOYEE',
-          description: `Uploaded ${employees.length} employees from Excel`,
-          new_value: { count: employees.length, company_id: uploadCompanyId }
+          description: `Uploaded ${bulkResult?.succeeded ?? 0} employees from CSV`,
+          new_value: { count: bulkResult?.succeeded ?? 0, company_id: uploadCompanyId }
         }]);
 
         setShowUploadModal(false);
         setUploadCompanyId('');
         await loadData();
 
-        const message = failedRows.length > 0
-          ? `Added ${employees.length} employees successfully.\nFailed rows: ${failedRows.join(', ')}`
-          : `Added ${employees.length} employees successfully!`;
+        const serverFailed = bulkResult?.failed ?? 0;
+        const message = (failedRows.length > 0 || serverFailed > 0)
+          ? `Added ${bulkResult?.succeeded ?? 0} employees successfully.\nCSV row failures: ${failedRows.length > 0 ? failedRows.join(', ') : 'none'}. Server failures: ${serverFailed}.`
+          : `Added ${bulkResult?.succeeded ?? 0} employees successfully!`;
 
         alert(message);
       } catch (error) {
@@ -333,13 +433,13 @@ export const UsersManagementPage: React.FC = () => {
   };
 
   const getFilteredUsers = () => {
-    return users.filter(user => {
+    return users.filter(u => {
       const matchesSearch =
-        user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase());
+        u.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesCompany = !selectedCompany || user.company_id === selectedCompany;
-      const matchesRole = !selectedRole || user.role === selectedRole;
+      const matchesCompany = !selectedCompany || u.company_id === selectedCompany;
+      const matchesRole = !selectedRole || u.role === selectedRole;
 
       return matchesSearch && matchesCompany && matchesRole;
     });
@@ -451,38 +551,38 @@ export const UsersManagementPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+              {filteredUsers.map((listUser) => (
+                <tr key={listUser.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-slate-900">{user.full_name}</div>
+                    <div className="font-medium text-slate-900">{listUser.full_name}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
-                    {user.email}
+                    {listUser.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
-                    {user.phone || '-'}
+                    {listUser.phone || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getRoleBadge(user.role)}
+                    {getRoleBadge(listUser.role)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2 text-slate-600">
                       <Building2 className="h-4 w-4" />
-                      {getCompanyName(user.company_id)}
+                      {getCompanyName(listUser.company_id)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleResetPassword(user.id, user.email)}
+                        onClick={() => handleResetPassword(listUser.id, listUser.email)}
                         className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                         title="Reset Password"
                       >
                         <Key className="h-4 w-4" />
                       </button>
                       <select
-                        value={user.role}
-                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                        value={listUser.role}
+                        onChange={(e) => handleRoleChange(listUser.id, e.target.value, listUser.email)}
                         className="px-3 py-1 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="PLATFORM_ADMIN">Platform Admin</option>
@@ -490,7 +590,7 @@ export const UsersManagementPage: React.FC = () => {
                         <option value="EMPLOYEE">Employee</option>
                       </select>
                       <button
-                        onClick={() => handleDeleteUser(user.id)}
+                        onClick={() => handleDeleteUser(listUser.id, listUser.email)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Delete"
                       >
@@ -679,6 +779,60 @@ export const UsersManagementPage: React.FC = () => {
                 className="flex-1 py-3 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors font-medium"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Confirmation Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Confirm Your Identity</h2>
+            <p className="text-slate-600 mb-4">
+              Please enter your password to confirm this action.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setPasswordError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePasswordConfirm();
+                  }
+                }}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter your password"
+                autoFocus
+              />
+              {passwordError && (
+                <p className="mt-2 text-sm text-red-600">{passwordError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                className="flex-1 py-3 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePasswordConfirm}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+              >
+                Confirm
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -17,9 +18,11 @@ interface FraudAlert {
 
 export const FraudAlertsPage: React.FC = () => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(['common', 'employee']);
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [acknowledging, setAcknowledging] = useState<string | null>(null);
+  const isRtl = i18n.dir() === 'rtl';
 
   useEffect(() => {
     if (!user) return;
@@ -102,27 +105,35 @@ export const FraudAlertsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Fraud Alerts</h1>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {t('fraudAlerts.title', { ns: 'employee' })}
+        </h1>
         <p className="text-gray-600 mt-2">
-          Stay informed about active scams and learn how to protect yourself.
+          {t('fraudAlerts.subtitle', { ns: 'employee' })}
         </p>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading alerts...</div>
+        <div className="text-center py-12 text-gray-500">
+          {t('fraudAlerts.loading', { ns: 'employee' })}
+        </div>
       ) : alerts.length === 0 ? (
         <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
           <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-          <p className="text-green-800 font-medium">No active fraud alerts</p>
+          <p className="text-green-800 font-medium">
+            {t('fraudAlerts.empty', { ns: 'employee' })}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
           {alerts.map((alert) => (
             <div
               key={alert.id}
-              className={`border-l-4 rounded-lg p-6 transition-all ${getSeverityColor(
-                alert.severity
-              )} ${alert.acknowledged ? 'opacity-75' : ''}`}
+              className={`rounded-lg p-6 transition-all ${
+                getSeverityColor(alert.severity)
+              } ${alert.acknowledged ? 'opacity-75' : ''} ${
+                isRtl ? 'border-r-4' : 'border-l-4'
+              }`}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -134,20 +145,23 @@ export const FraudAlertsPage: React.FC = () => {
                     {alert.acknowledged && (
                       <span className="flex items-center gap-1 text-xs text-green-700 font-medium bg-green-200 px-2 py-1 rounded">
                         <CheckCircle className="w-3 h-3" />
-                        Acknowledged
+                        {t('fraudAlerts.acknowledged', { ns: 'employee' })}
                       </span>
                     )}
                   </div>
                   <p className="text-sm text-gray-600">
-                    Channel: <span className="font-medium">{alert.fraud_type}</span>
+                    {t('labels.channel', { ns: 'common' })}:{' '}
+                    <span className="font-medium">{alert.fraud_type}</span>
                     {' • '}
-                    Severity:{' '}
+                    {t('labels.severity', { ns: 'common' })}:{' '}
                     <span
                       className={`font-medium px-2 py-0.5 rounded text-xs ${getSeverityBadgeColor(
                         alert.severity
                       )}`}
                     >
-                      {alert.severity}
+                      {t(`fraudAlerts.severityLevels.${alert.severity}`, {
+                        ns: 'employee',
+                      })}
                     </span>
                   </p>
                 </div>
@@ -160,7 +174,7 @@ export const FraudAlertsPage: React.FC = () => {
               {alert.video_url && (
                 <div className="mb-4 bg-white rounded-lg p-4 border border-gray-200">
                   <p className="text-sm font-medium text-gray-700 mb-3">
-                    Awareness Video:
+                    {t('fraudAlerts.awarenessVideo', { ns: 'employee' })}
                   </p>
                   {alert.video_url.includes('youtube') ||
                   alert.video_url.includes('youtu.be') ? (
@@ -175,7 +189,7 @@ export const FraudAlertsPage: React.FC = () => {
                   ) : (
                     <video width="100%" height="300" controls className="rounded">
                       <source src={alert.video_url} type="video/mp4" />
-                      Your browser does not support the video tag.
+                      {t('fraudAlerts.videoUnsupported', { ns: 'employee' })}
                     </video>
                   )}
                 </div>
@@ -184,7 +198,7 @@ export const FraudAlertsPage: React.FC = () => {
               {alert.internal_steps && alert.internal_steps.length > 0 && (
                 <div className="mb-4 bg-white bg-opacity-70 rounded-lg p-4 border border-gray-200">
                   <p className="text-sm font-semibold text-gray-900 mb-3">
-                    Action Steps:
+                    {t('fraudAlerts.actionSteps', { ns: 'employee' })}
                   </p>
                   <ol className="space-y-2">
                     {alert.internal_steps.map((step, idx) => (
@@ -208,12 +222,12 @@ export const FraudAlertsPage: React.FC = () => {
                   {acknowledging === alert.id ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Acknowledging...
+                      {t('fraudAlerts.acknowledging', { ns: 'employee' })}
                     </>
                   ) : (
                     <>
                       <CheckCircle className="w-4 h-4" />
-                      I Understand This Alert
+                      {t('fraudAlerts.understandAlert', { ns: 'employee' })}
                     </>
                   )}
                 </button>

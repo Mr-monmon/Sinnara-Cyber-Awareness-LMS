@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CheckCircle, Circle, PlayCircle, FileText, ClipboardCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatLocalizedNumber } from '../../i18n/utils';
+import ArticlePreview from './ArticlePreview';
 
 interface CourseSection {
   id: string;
@@ -29,12 +32,16 @@ interface CourseViewerProps {
 
 export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, courseTitle, onBack }) => {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation(['common', 'employee']);
   const [sections, setSections] = useState<CourseSection[]>([]);
   const [progress, setProgress] = useState<Record<string, SectionProgress>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
+  const currentLanguage = i18n.resolvedLanguage;
+  const isRtl = i18n.dir() === 'rtl';
 
   useEffect(() => {
     loadCourseData();
@@ -43,6 +50,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
   const loadCourseData = async () => {
     if (!user) return;
 
+    setIsLoading(true);
     const [sectionsRes, progressRes, newProgressRes] = await Promise.all([
       supabase
         .from('course_sections')
@@ -61,6 +69,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
         .eq('course_id', courseId)
     ]);
 
+    setIsLoading(false);
     if (sectionsRes.data) setSections(sectionsRes.data);
 
     const progressMap: Record<string, SectionProgress> = {};
@@ -112,7 +121,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
 
     if (error) {
       console.error('Error marking section complete:', error);
-      alert('Failed to mark section as complete');
+      alert(t('courseViewer.completionFailed', { ns: 'employee', message: error.message }));
       return;
     }
 
@@ -177,7 +186,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
     const allCompleted = sections.every(section => progress[section.id]?.completed);
 
     if (!allCompleted) {
-      alert('Please complete all sections before finishing the course');
+      alert(t('courseViewer.completeAllSections', { ns: 'employee' }));
       return;
     }
 
@@ -192,12 +201,12 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
 
     if (checkError) {
       console.error('Error checking course enrollment:', checkError);
-      alert('Error: ' + checkError.message);
+      alert(t('courseViewer.checkEnrollmentError', { ns: 'employee', message: checkError.message }));
       return;
     }
 
     if (existing?.status === 'COMPLETED') {
-      alert('You have already completed this course!');
+      alert(t('courseViewer.alreadyCompleted', { ns: 'employee' }));
       onBack();
       return;
     }
@@ -217,7 +226,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
 
     if (updateError) {
       console.error('Error completing course:', updateError);
-      alert('Failed to mark course as complete: ' + updateError.message);
+      alert(t('courseViewer.completionFailed', { ns: 'employee', message: updateError.message }));
       return;
     }
 
@@ -231,7 +240,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
       .maybeSingle();
 
     if (certificate) {
-      alert('🎉 Congratulations! Course completed successfully. Your certificate is ready!');
+      alert(t('courseViewer.certificateReady', { ns: 'employee' }));
     } else {
       const { data: employeeData } = await supabase
         .from('users')
@@ -254,15 +263,18 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
           employee_id: user.id,
           course_id: courseId,
           employee_name: employeeData?.full_name || user.full_name,
-          course_name: courseData?.title || 'Course',
+          course_name: courseData?.title || t('courseViewer.fallbackCourseName', { ns: 'employee' }),
           completion_date: new Date().toISOString().split('T')[0],
           issued_at: new Date().toISOString(),
           issued_by: user.id
         });
 
-      alert('🎉 Congratulations! You have successfully completed the course! Your certificate has been generated.');
+      alert(t('courseViewer.certificateGenerated', { ns: 'employee' }));
+      onBack();
+      return;
     }
 
+    alert(t('courseViewer.certificateReady', { ns: 'employee' }));
     onBack();
   };
 
@@ -319,11 +331,21 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
     return url;
   };
 
-  if (!currentSection) {
+  if (!currentSection && isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-slate-600">جاري تحميل الدورة...</p>
+          <p className="text-slate-600">{t('courseViewer.loading', { ns: 'employee' })}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentSection && !isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-slate-600">{t('courseViewer.noContent', { ns: 'employee' })}</p>
         </div>
       </div>
     );
@@ -338,11 +360,11 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
               onClick={onBack}
               className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
             >
-              <ArrowLeft className="h-5 w-5" />
-              العودة للدورات
+              <ArrowLeft className={`h-5 w-5 ${isRtl ? 'rotate-180' : ''}`} />
+              {t('courseViewer.backToCourses', { ns: 'employee' })}
             </button>
             <div className="text-sm text-slate-600">
-              التقدم: {progressPercentage}%
+              {t('courseViewer.progress', { ns: 'employee' })}: {formatLocalizedNumber(progressPercentage, currentLanguage)}%
             </div>
           </div>
 
@@ -360,7 +382,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-1 space-y-3">
-            <h2 className="font-semibold text-slate-900 mb-3">محتويات الدورة</h2>
+            <h2 className="font-semibold text-slate-900 mb-3">
+              {t('courseViewer.contentsTitle', { ns: 'employee' })}
+            </h2>
             {sections.map((section, index) => {
               const Icon = section.section_type === 'VIDEO' ? PlayCircle : section.section_type === 'ARTICLE' ? FileText : ClipboardCheck;
               const completed = isSectionCompleted(section.id);
@@ -372,7 +396,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                   key={section.id}
                   onClick={() => accessible && setCurrentSectionIndex(index)}
                   disabled={!accessible}
-                  className={`w-full text-right p-3 rounded-lg transition-all ${
+                  className={`w-full p-3 rounded-lg transition-all ${
+                    isRtl ? 'text-right' : 'text-left'
+                  } ${
                     isCurrent
                       ? 'bg-blue-50 border-2 border-blue-500'
                       : completed
@@ -392,7 +418,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                     </div>
                     <div className="flex-1 text-sm">
                       <div className="font-medium text-slate-900">{section.title}</div>
-                      <div className="text-xs text-slate-600">{section.duration_minutes} دقيقة</div>
+                      <div className="text-xs text-slate-600">
+                        {formatLocalizedNumber(section.duration_minutes, currentLanguage)} {t('labels.minutes', { ns: 'common' })}
+                      </div>
                     </div>
                     {completed ? (
                       <CheckCircle className="h-5 w-5 text-green-600" />
@@ -414,7 +442,11 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">{currentSection.title}</h2>
                   <p className="text-sm text-slate-600">
-                    القسم {currentSectionIndex + 1} من {totalSections}
+                    {t('courseViewer.sectionOf', {
+                      ns: 'employee',
+                      current: formatLocalizedNumber(currentSectionIndex + 1, currentLanguage),
+                      total: formatLocalizedNumber(totalSections, currentLanguage),
+                    })}
                   </p>
                 </div>
               </div>
@@ -433,7 +465,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                       <div className="flex items-center justify-center h-full text-white">
                         <div className="text-center">
                           <PlayCircle className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                          <p>رابط الفيديو:</p>
+                          <p>{t('courseViewer.videoLink', { ns: 'employee' })}</p>
                           <a href={currentSection.content} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
                             {currentSection.content}
                           </a>
@@ -447,7 +479,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                       onClick={() => markSectionComplete(currentSection.id)}
                       className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
                     >
-                      Mark as Complete
+                      {t('courseViewer.markComplete', { ns: 'employee' })}
                     </button>
                   )}
                 </div>
@@ -455,18 +487,14 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
 
               {currentSection.section_type === 'ARTICLE' && (
                 <div>
-                  <div className="prose max-w-none mb-6">
-                    <div className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-                      {currentSection.content}
-                    </div>
-                  </div>
+                  <ArticlePreview html={currentSection.content} />
 
                   {!isSectionCompleted(currentSection.id) && (
                     <button
                       onClick={() => markSectionComplete(currentSection.id)}
                       className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
                     >
-                      Mark as Complete
+                      {t('courseViewer.markComplete', { ns: 'employee' })}
                     </button>
                   )}
                 </div>
@@ -507,7 +535,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                         disabled={Object.keys(quizAnswers).length !== currentSection.content_data?.questions?.length}
                         className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
                       >
-                        إرسال الإجابات
+                        {t('courseViewer.submitAnswers', { ns: 'employee' })}
                       </button>
                     </div>
                   ) : (
@@ -518,18 +546,20 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                         <span className={`text-3xl font-bold ${
                           quizScore >= 60 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {quizScore}%
+                          {formatLocalizedNumber(quizScore, currentLanguage)}%
                         </span>
                       </div>
                       <h3 className={`text-2xl font-bold mb-2 ${
                         quizScore >= 60 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {quizScore >= 60 ? 'ممتاز! نجحت في الاختبار' : 'للأسف، لم تنجح'}
+                        {quizScore >= 60
+                          ? t('courseViewer.passedQuiz', { ns: 'employee' })
+                          : t('courseViewer.failedQuiz', { ns: 'employee' })}
                       </h3>
                       <p className="text-slate-600 mb-6">
                         {quizScore >= 60
-                          ? 'يمكنك المتابعة للقسم التالي'
-                          : 'يجب الحصول على 60% على الأقل للمتابعة'
+                          ? t('courseViewer.continueNext', { ns: 'employee' })
+                          : t('courseViewer.minimumScore', { ns: 'employee' })
                         }
                       </p>
                       {quizScore < 60 && (
@@ -540,7 +570,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                           }}
                           className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                         >
-                          إعادة المحاولة
+                          {t('courseViewer.retry', { ns: 'employee' })}
                         </button>
                       )}
                     </div>
@@ -555,14 +585,14 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({ courseId, course
                       onClick={handleNextSection}
                       className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
                     >
-                      الانتقال للقسم التالي
+                      {t('courseViewer.nextSection', { ns: 'employee' })}
                     </button>
                   ) : (
                     <button
                       onClick={updateCourseCompletion}
                       className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
                     >
-                      إنهاء الدورة 🎉
+                      {t('courseViewer.finishCourse', { ns: 'employee' })} 🎉
                     </button>
                   )}
                 </div>

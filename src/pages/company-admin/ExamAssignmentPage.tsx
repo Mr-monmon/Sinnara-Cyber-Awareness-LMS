@@ -91,8 +91,6 @@ export const ExamAssignmentPage: React.FC = () => {
       return;
     }
 
-    console.log('Loading assignments for company:', user.company_id);
-
     const { data: rawData, error } = await supabase
       .from('assigned_exams')
       .select('*')
@@ -105,8 +103,6 @@ export const ExamAssignmentPage: React.FC = () => {
       setError('Failed to load assignments: ' + error.message);
       return;
     }
-
-    console.log('Loaded raw assignments:', rawData);
 
     if (!rawData || rawData.length === 0) {
       console.log('No assignments found');
@@ -157,7 +153,6 @@ export const ExamAssignmentPage: React.FC = () => {
       };
     }));
 
-    console.log('Enriched assignments:', enrichedAssignments);
     setAssignments(enrichedAssignments as any);
   };
 
@@ -343,7 +338,7 @@ export const ExamAssignmentPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium">
-                      {assignment.max_attempts} {assignment.max_attempts === 1 ? 'attempt' : 'attempts'}
+                      {assignment.max_attempts} 
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center text-sm text-slate-600">

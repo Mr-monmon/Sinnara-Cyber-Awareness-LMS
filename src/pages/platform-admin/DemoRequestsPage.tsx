@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Mail, Phone, Building, Calendar, CheckCircle, Clock, XCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useEffect } from "react";
+import {
+  Users,
+  Mail,
+  Phone,
+  Building,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Download,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 interface DemoRequest {
   id: string;
@@ -18,7 +27,9 @@ interface DemoRequest {
 export const DemoRequestsPage: React.FC = () => {
   const [requests, setRequests] = useState<DemoRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'CONTACTED' | 'COMPLETED'>('ALL');
+  const [filter, setFilter] = useState<
+    "ALL" | "PENDING" | "CONTACTED" | "COMPLETED"
+  >("ALL");
 
   useEffect(() => {
     loadRequests();
@@ -27,14 +38,14 @@ export const DemoRequestsPage: React.FC = () => {
   const loadRequests = async () => {
     try {
       const { data, error } = await supabase
-        .from('demo_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .from("demo_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       if (data) setRequests(data);
     } catch (error) {
-      console.error('Error loading demo requests:', error);
+      console.error("Error loading demo requests:", error);
     } finally {
       setLoading(false);
     }
@@ -43,27 +54,27 @@ export const DemoRequestsPage: React.FC = () => {
   const updateStatus = async (id: string, status: string) => {
     try {
       const { error } = await supabase
-        .from('demo_requests')
+        .from("demo_requests")
         .update({ status })
-        .eq('id', id);
+        .eq("id", id);
 
       if (error) throw error;
       loadRequests();
     } catch (error) {
-      console.error('Error updating status:', error);
-      alert('Failed to update status');
+      console.error("Error updating status:", error);
+      alert("Failed to update status");
     }
   };
 
-  const filteredRequests = requests.filter(req =>
-    filter === 'ALL' ? true : req.status === filter
+  const filteredRequests = requests.filter((req) =>
+    filter === "ALL" ? true : req.status === filter
   );
 
   const statusCounts = {
     all: requests.length,
-    pending: requests.filter(r => r.status === 'PENDING').length,
-    contacted: requests.filter(r => r.status === 'CONTACTED').length,
-    completed: requests.filter(r => r.status === 'COMPLETED').length,
+    pending: requests.filter((r) => r.status === "PENDING").length,
+    contacted: requests.filter((r) => r.status === "CONTACTED").length,
+    completed: requests.filter((r) => r.status === "COMPLETED").length,
   };
 
   if (loading) {
@@ -74,59 +85,140 @@ export const DemoRequestsPage: React.FC = () => {
     );
   }
 
+  const exportToCSV = () => {
+    const rows = filteredRequests.map((request) => ({
+      full_name: request.full_name,
+      status: request.status,
+      email: request.email,
+      phone: request.phone ?? "",
+      company_name: request.company_name ?? "",
+      employee_count:
+        request.employee_count !== null ? request.employee_count : "",
+      created_at: new Date(request.created_at).toLocaleDateString(),
+      message: request.message ?? "",
+    }));
+
+    const headers = [
+      "full_name",
+      "status",
+      "email",
+      "phone",
+      "company_name",
+      "employee_count",
+      "created_at",
+      "message",
+    ];
+
+    const escapeCSV = (value: string | number) => {
+      const stringValue = String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const usesCommaDecimal = (1.1).toLocaleString().includes(",");
+    const separator = usesCommaDecimal ? ";" : ",";
+
+    const csvLines = [
+      headers.join(separator),
+      ...rows.map((row) =>
+        headers
+          .map((header) => escapeCSV(row[header as keyof typeof row]))
+          .join(separator)
+      ),
+    ];
+
+    const csvContent = csvLines.join("\r\n");
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `demo_requests_${filter}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Demo Requests</h1>
-        <p className="text-slate-600">Manage incoming demo requests from potential customers</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+              Demo Requests
+            </h1>
+            <p className="text-slate-600">
+              Manage incoming demo requests from potential customers
+            </p>
+          </div>
+          <button
+            onClick={exportToCSV}
+            className="px-4 py-2 bg-red-700 text-white rounded-lg font-medium flex items-center gap-2"
+          >
+            <Download className="h-5 w-5" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <button
-          onClick={() => setFilter('ALL')}
+          onClick={() => setFilter("ALL")}
           className={`p-4 rounded-xl border-2 transition-all ${
-            filter === 'ALL'
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-slate-200 bg-white hover:border-slate-300'
+            filter === "ALL"
+              ? "border-blue-500 bg-blue-50"
+              : "border-slate-200 bg-white hover:border-slate-300"
           }`}
         >
-          <div className="text-2xl font-bold text-slate-900">{statusCounts.all}</div>
+          <div className="text-2xl font-bold text-slate-900">
+            {statusCounts.all}
+          </div>
           <div className="text-sm text-slate-600">All Requests</div>
         </button>
 
         <button
-          onClick={() => setFilter('PENDING')}
+          onClick={() => setFilter("PENDING")}
           className={`p-4 rounded-xl border-2 transition-all ${
-            filter === 'PENDING'
-              ? 'border-orange-500 bg-orange-50'
-              : 'border-slate-200 bg-white hover:border-slate-300'
+            filter === "PENDING"
+              ? "border-orange-500 bg-orange-50"
+              : "border-slate-200 bg-white hover:border-slate-300"
           }`}
         >
-          <div className="text-2xl font-bold text-orange-600">{statusCounts.pending}</div>
+          <div className="text-2xl font-bold text-orange-600">
+            {statusCounts.pending}
+          </div>
           <div className="text-sm text-slate-600">Pending</div>
         </button>
 
         <button
-          onClick={() => setFilter('CONTACTED')}
+          onClick={() => setFilter("CONTACTED")}
           className={`p-4 rounded-xl border-2 transition-all ${
-            filter === 'CONTACTED'
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-slate-200 bg-white hover:border-slate-300'
+            filter === "CONTACTED"
+              ? "border-blue-500 bg-blue-50"
+              : "border-slate-200 bg-white hover:border-slate-300"
           }`}
         >
-          <div className="text-2xl font-bold text-blue-600">{statusCounts.contacted}</div>
+          <div className="text-2xl font-bold text-blue-600">
+            {statusCounts.contacted}
+          </div>
           <div className="text-sm text-slate-600">Contacted</div>
         </button>
 
         <button
-          onClick={() => setFilter('COMPLETED')}
+          onClick={() => setFilter("COMPLETED")}
           className={`p-4 rounded-xl border-2 transition-all ${
-            filter === 'COMPLETED'
-              ? 'border-green-500 bg-green-50'
-              : 'border-slate-200 bg-white hover:border-slate-300'
+            filter === "COMPLETED"
+              ? "border-green-500 bg-green-50"
+              : "border-slate-200 bg-white hover:border-slate-300"
           }`}
         >
-          <div className="text-2xl font-bold text-green-600">{statusCounts.completed}</div>
+          <div className="text-2xl font-bold text-green-600">
+            {statusCounts.completed}
+          </div>
           <div className="text-sm text-slate-600">Completed</div>
         </button>
       </div>
@@ -136,7 +228,9 @@ export const DemoRequestsPage: React.FC = () => {
           <Users className="h-16 w-16 text-slate-300 mx-auto mb-4" />
           <p className="text-slate-600 font-medium">No demo requests found</p>
           <p className="text-sm text-slate-500 mt-2">
-            {filter !== 'ALL' ? `No ${filter.toLowerCase()} requests` : 'Demo requests will appear here'}
+            {filter !== "ALL"
+              ? `No ${filter.toLowerCase()} requests`
+              : "Demo requests will appear here"}
           </p>
         </div>
       ) : (
@@ -149,14 +243,18 @@ export const DemoRequestsPage: React.FC = () => {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-bold text-slate-900">{request.full_name}</h3>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      request.status === 'PENDING'
-                        ? 'bg-orange-100 text-orange-800'
-                        : request.status === 'CONTACTED'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
+                    <h3 className="text-xl font-bold text-slate-900">
+                      {request.full_name}
+                    </h3>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        request.status === "PENDING"
+                          ? "bg-orange-100 text-orange-800"
+                          : request.status === "CONTACTED"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
                       {request.status}
                     </span>
                   </div>
@@ -190,13 +288,17 @@ export const DemoRequestsPage: React.FC = () => {
 
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-slate-400" />
-                      <span>{new Date(request.created_at).toLocaleDateString()}</span>
+                      <span>
+                        {new Date(request.created_at).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
 
                   {request.message && (
                     <div className="p-3 bg-slate-50 rounded-lg mb-3">
-                      <p className="text-sm text-slate-700">{request.message}</p>
+                      <p className="text-sm text-slate-700">
+                        {request.message}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -204,8 +306,8 @@ export const DemoRequestsPage: React.FC = () => {
 
               <div className="flex items-center gap-2 pt-3 border-t border-slate-200">
                 <button
-                  onClick={() => updateStatus(request.id, 'PENDING')}
-                  disabled={request.status === 'PENDING'}
+                  onClick={() => updateStatus(request.id, "PENDING")}
+                  disabled={request.status === "PENDING"}
                   className="px-4 py-2 text-sm rounded-lg border-2 border-orange-200 text-orange-700 hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Clock className="h-4 w-4" />
@@ -213,8 +315,8 @@ export const DemoRequestsPage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => updateStatus(request.id, 'CONTACTED')}
-                  disabled={request.status === 'CONTACTED'}
+                  onClick={() => updateStatus(request.id, "CONTACTED")}
+                  disabled={request.status === "CONTACTED"}
                   className="px-4 py-2 text-sm rounded-lg border-2 border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Mail className="h-4 w-4" />
@@ -222,8 +324,8 @@ export const DemoRequestsPage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => updateStatus(request.id, 'COMPLETED')}
-                  disabled={request.status === 'COMPLETED'}
+                  onClick={() => updateStatus(request.id, "COMPLETED")}
+                  disabled={request.status === "COMPLETED"}
                   className="px-4 py-2 text-sm rounded-lg border-2 border-green-200 text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <CheckCircle className="h-4 w-4" />

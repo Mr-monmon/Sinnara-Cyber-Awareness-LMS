@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User } from '../types';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { User } from "../lib/types";
+import { supabase } from "../lib/supabase";
 
 interface AuthContextType {
   user: User | null;
@@ -11,37 +12,66 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+async function fetchProfile(userId: string): Promise<User | null> {
+  try {
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('sinnara_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    const syncUserFromSession = async (session: Session | null) => {
+      if (!session?.user) {
+        setUser(null);
+        return;
+      }
+
+      const profile = await fetchProfile(session.user.id);
+      setUser(profile);
+    };
+
+    const init = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await syncUserFromSession(session);
+      } catch {
+        // Session restore failed — continue as logged out
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void init();
   }, []);
 
   const login = async (email: string, password: string) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .eq('password', password)
-      .maybeSingle();
-
-    if (error || !data) {
-      throw new Error('Invalid email or password');
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      throw new Error("Invalid email or password");
     }
-
-    setUser(data);
-    localStorage.setItem('sinnara_user', JSON.stringify(data));
+    window.location.href = "/dashboard";
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('sinnara_user');
   };
 
   return (
@@ -54,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

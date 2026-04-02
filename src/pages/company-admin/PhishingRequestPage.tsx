@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, ArrowLeft, Calendar, Users, FileText, Send, Eye, Mail, Globe, Lock, Activity } from 'lucide-react';
+import { Shield, ArrowLeft, FileText, Send, Eye, Mail, Globe, Lock, Activity, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { PhishingTemplate, PhishingCampaignQuota } from '../../types';
+import { PhishingTemplate, PhishingCampaignQuota } from '../../lib/types';
+
+const ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT = 'Request Additional Phishing Campaigns';
 
 export const PhishingRequestPage: React.FC = () => {
   const { user } = useAuth();
@@ -13,6 +15,8 @@ export const PhishingRequestPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<PhishingTemplate | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'email' | 'landing' | 'tracking'>('basic');
+  const [requestingAdditionalCampaigns, setRequestingAdditionalCampaigns] = useState(false);
+  const [additionalCampaignsTicketError, setAdditionalCampaignsTicketError] = useState('');
 
   const [formData, setFormData] = useState({
     campaign_name: '',
@@ -172,6 +176,35 @@ export const PhishingRequestPage: React.FC = () => {
     }));
   };
 
+  const handleRequestAdditionalPhishingCampaigns = async () => {
+    if (!user?.id) {
+      setAdditionalCampaignsTicketError('Unable to identify the current user. Please sign in again.');
+      return;
+    }
+
+    setRequestingAdditionalCampaigns(true);
+    setAdditionalCampaignsTicketError('');
+
+    try {
+      const { error: createError } = await supabase
+        .from('support_ticket')
+        .insert([{ user_id: user.id, subject: ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT }])
+        .select('id')
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      alert('Support request submitted successfully.');
+    } catch (submitError) {
+      console.error('Error creating support ticket:', submitError);
+      setAdditionalCampaignsTicketError('Failed to create support request. Please try again.');
+    } finally {
+      setRequestingAdditionalCampaigns(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -182,6 +215,59 @@ export const PhishingRequestPage: React.FC = () => {
 
   const remainingQuota = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
   const selectedTemplate = templates.find(t => t.id === formData.template_id);
+  const annualQuotaIsZero = quota !== null && quota.annual_quota === 0;
+
+  if (annualQuotaIsZero) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => (window.location.href = '/company/phishing-dashboard')}
+          className="mb-6 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </button>
+
+        <div className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-amber-50/80 p-8 shadow-sm">
+          <div className="mb-6 flex justify-center">
+            <div className="rounded-full bg-amber-100 p-4 text-amber-700">
+              <Shield className="h-10 w-10" />
+            </div>
+          </div>
+          <h1 className="mb-3 text-center text-2xl font-bold text-slate-900">
+            Phishing campaign quota exhausted
+          </h1>
+          <p className="mb-6 text-center text-slate-700">
+            Your organization has used all phishing campaigns included in your current plan for this year. You cannot
+            create a new campaign until your quota is increased or renewed.
+          </p>
+          {additionalCampaignsTicketError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {additionalCampaignsTicketError}
+            </div>
+          )}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleRequestAdditionalPhishingCampaigns}
+              disabled={requestingAdditionalCampaigns}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {requestingAdditionalCampaigns ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending request...
+                </>
+              ) : (
+                ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

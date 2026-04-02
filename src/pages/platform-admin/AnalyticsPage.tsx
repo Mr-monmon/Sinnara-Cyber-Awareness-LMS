@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Users, Building2, BookOpen, Target, Award, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Building2, BookOpen, Target, Award, Activity, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface AnalyticsData {
@@ -75,7 +75,7 @@ export const AnalyticsPage: React.FC = () => {
       const completedCourses = employeeCourses.filter(ec => ec.status === 'COMPLETED').length;
       const passedExams = examResults.filter(er => er.passed).length;
       const avgScore = examResults.length > 0
-        ? examResults.reduce((sum, er) => sum + (er.score || 0), 0) / examResults.length
+        ? examResults.reduce((sum, er) => sum + (er.percentage || 0), 0) / examResults.length
         : 0;
 
       setAnalytics({
@@ -129,7 +129,7 @@ export const AnalyticsPage: React.FC = () => {
           if (!companyExamScores.has(employee.company_id)) {
             companyExamScores.set(employee.company_id, []);
           }
-          companyExamScores.get(employee.company_id)!.push(er.score || 0);
+          companyExamScores.get(employee.company_id)!.push(er.percentage || 0);
         }
       });
 
@@ -149,10 +149,10 @@ export const AnalyticsPage: React.FC = () => {
   };
 
   const getAwarenessLevel = (score: number) => {
-    if (score >= 90) return { label: 'ممتاز', color: 'text-green-600', bg: 'bg-green-100' };
-    if (score >= 70) return { label: 'جيد', color: 'text-blue-600', bg: 'bg-blue-100' };
-    if (score >= 50) return { label: 'متوسط', color: 'text-yellow-600', bg: 'bg-yellow-100' };
-    return { label: 'ضعيف', color: 'text-red-600', bg: 'bg-red-100' };
+    if (score >= 90) return { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-100' };
+    if (score >= 70) return { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-100' };
+    if (score >= 50) return { label: 'Average', color: 'text-yellow-600', bg: 'bg-yellow-100' };
+    return { label: 'Poor', color: 'text-red-600', bg: 'bg-red-100' };
   };
 
   const awarenessLevel = getAwarenessLevel(analytics.averageScore);
@@ -168,8 +168,8 @@ export const AnalyticsPage: React.FC = () => {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">التحليلات والتقارير</h1>
-        <p className="text-slate-600">نظرة شاملة على أداء المنصة ومستوى الوعي</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Analytics and Reports</h1>
+        <p className="text-slate-600">A comprehensive view of the platform's performance and awareness level</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -180,9 +180,9 @@ export const AnalyticsPage: React.FC = () => {
             </div>
             <span className="text-3xl font-bold text-slate-900">{analytics.totalCompanies}</span>
           </div>
-          <div className="text-sm font-medium text-slate-600">إجمالي الشركات</div>
+          <div className="text-sm font-medium text-slate-600">Total Companies</div>
           <div className="mt-2 text-xs text-slate-500">
-            {analytics.activeCompanies} نشطة
+            {analytics.activeCompanies} Active
           </div>
         </div>
 
@@ -193,9 +193,9 @@ export const AnalyticsPage: React.FC = () => {
             </div>
             <span className="text-3xl font-bold text-slate-900">{analytics.totalEmployees}</span>
           </div>
-          <div className="text-sm font-medium text-slate-600">إجمالي الموظفين</div>
+          <div className="text-sm font-medium text-slate-600">Total Employees</div>
           <div className="mt-2 text-xs text-slate-500">
-            {analytics.totalUsers} مستخدم كلي
+            {analytics.totalUsers} Total Users
           </div>
         </div>
 
@@ -206,9 +206,9 @@ export const AnalyticsPage: React.FC = () => {
             </div>
             <span className="text-3xl font-bold text-slate-900">{analytics.completedCourses}</span>
           </div>
-          <div className="text-sm font-medium text-slate-600">دورات مكتملة</div>
+          <div className="text-sm font-medium text-slate-600">Completed Courses</div>
           <div className="mt-2 text-xs text-slate-500">
-            من أصل {analytics.totalCourses} دورة
+            From {analytics.totalCourses} Courses
           </div>
         </div>
 
@@ -219,9 +219,9 @@ export const AnalyticsPage: React.FC = () => {
             </div>
             <span className="text-3xl font-bold text-slate-900">{analytics.passedExams}</span>
           </div>
-          <div className="text-sm font-medium text-slate-600">اختبارات ناجحة</div>
+          <div className="text-sm font-medium text-slate-600">Passed Exams</div>
           <div className="mt-2 text-xs text-slate-500">
-            من أصل {analytics.totalExams} اختبار
+            From {analytics.totalExams} Exams
           </div>
         </div>
       </div>
@@ -229,7 +229,7 @@ export const AnalyticsPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl shadow-lg p-6 text-white">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold">مستوى الوعي العام</h3>
+            <h3 className="text-xl font-bold">General Awareness Level</h3>
             <Target className="h-8 w-8 opacity-80" />
           </div>
 
@@ -240,7 +240,7 @@ export const AnalyticsPage: React.FC = () => {
                 {awarenessLevel.label}
               </span>
             </div>
-            <p className="text-blue-100 text-sm">متوسط درجات جميع الاختبارات</p>
+            <p className="text-blue-100 text-sm">Average Score of All Exams</p>
           </div>
 
           <div className="w-full bg-white/20 rounded-full h-3">
@@ -253,14 +253,14 @@ export const AnalyticsPage: React.FC = () => {
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-900">استخدام المنصة</h3>
+            <h3 className="text-lg font-bold text-slate-900">Platform Usage</h3>
             <Activity className="h-6 w-6 text-slate-400" />
           </div>
 
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-600">إكمال الدورات</span>
+                <span className="text-slate-600">Complete Courses</span>
                 <span className="font-medium text-slate-900">
                   {analytics.totalCourses > 0
                     ? Math.round((analytics.completedCourses / analytics.totalCourses) * 100)
@@ -281,7 +281,7 @@ export const AnalyticsPage: React.FC = () => {
 
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-600">نجاح الاختبارات</span>
+                <span className="text-slate-600">Passed Exams</span>
                 <span className="font-medium text-slate-900">
                   {analytics.totalExams > 0
                     ? Math.round((analytics.passedExams / analytics.totalExams) * 100)
@@ -302,7 +302,7 @@ export const AnalyticsPage: React.FC = () => {
 
             <div className="pt-4 border-t border-slate-200">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">إجمالي النشاطات</span>
+                <span className="text-sm text-slate-600">Total Activities</span>
                 <span className="text-2xl font-bold text-slate-900">{analytics.platformUsage}</span>
               </div>
             </div>
@@ -312,7 +312,7 @@ export const AnalyticsPage: React.FC = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold text-slate-900">إحصائيات الشركات</h3>
+          <h3 className="text-lg font-bold text-slate-900">Company Statistics</h3>
           <BarChart3 className="h-6 w-6 text-slate-400" />
         </div>
 
@@ -320,12 +320,13 @@ export const AnalyticsPage: React.FC = () => {
           <table className="w-full">
             <thead className="border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">الشركة</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">الموظفين</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">دورات مكتملة</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">اختبارات ناجحة</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">المتوسط</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">مستوى الوعي</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Company</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Employees</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Completed Courses</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Passed Exams</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Average Score</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Awareness Level</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -344,6 +345,19 @@ export const AnalyticsPage: React.FC = () => {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${level.bg} ${level.color}`}>
                         {level.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <button
+                        title="Issue certificate"
+                        disabled={stat.average_score < 80}
+                        className={`p-2 rounded-lg transition-colors ${
+                          stat.average_score >= 80
+                            ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
+                            : 'text-slate-300 cursor-not-allowed'
+                        }`}
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -365,13 +379,13 @@ export const AnalyticsPage: React.FC = () => {
             <TrendingUp className="h-6 w-6 text-blue-600" />
           </div>
           <div>
-            <h4 className="font-semibold text-blue-900 mb-2">ملخص الأداء</h4>
+            <h4 className="font-semibold text-blue-900 mb-2">Performance Summary</h4>
             <p className="text-sm text-blue-800 leading-relaxed">
-              تشير البيانات إلى أن المنصة تحتوي على <strong>{analytics.totalCompanies}</strong> شركة
-              مع <strong>{analytics.totalEmployees}</strong> موظف نشط.
-              تم إكمال <strong>{analytics.completedCourses}</strong> دورة تدريبية
-              وإجراء <strong>{analytics.passedExams}</strong> اختبار ناجح.
-              مستوى الوعي العام للمنصة هو <strong>{analytics.averageScore}%</strong> وهو مستوى <strong>{awarenessLevel.label}</strong>.
+              The data shows that the platform has <strong>{analytics.totalCompanies}</strong> companies
+              with <strong>{analytics.totalEmployees}</strong> active employees.
+              <strong>{analytics.completedCourses}</strong> courses have been completed
+              and <strong>{analytics.passedExams}</strong> exams have been passed.
+              The general awareness level of the platform is <strong>{analytics.averageScore}%</strong> and it is at <strong>{awarenessLevel.label}</strong> level.
             </p>
           </div>
         </div>

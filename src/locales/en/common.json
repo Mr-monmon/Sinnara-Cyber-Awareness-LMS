@@ -1,0 +1,106 @@
+{
+  "app": {
+    "name": "Sinnara Cyber Awareness LMS"
+  },
+  "auth": {
+    "signedInAs": "Signed in as",
+    "logout": "Logout"
+  },
+  "language": {
+    "english": "English",
+    "arabic": "Arabic",
+    "switcherLabel": "Language"
+  },
+  "portal": {
+    "employee": "Employee Portal",
+    "companyAdmin": "Company Admin Panel",
+    "platformAdmin": "Platform Admin Panel"
+  },
+  "sidebar": {
+    "sections": {
+      "overview": "Overview",
+      "management": "Management",
+      "data": "Data",
+      "system": "System",
+      "people": "People",
+      "training": "Training",
+      "reports": "Reports",
+      "account": "Account",
+      "learning": "Learning",
+      "awareness": "Awareness"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "companyManagement": "Company Management",
+      "companies": "Companies",
+      "users": "Users",
+      "subscriptionsAndBills": "Subscriptions & Bills",
+      "trainingContent": "Training Content",
+      "courses": "Courses",
+      "tests": "Tests",
+      "certificateTemplates": "Certificate Templates",
+      "phishingCampaigns": "Phishing Campaigns",
+      "campaignRequests": "Campaign Requests",
+      "emailTemplates": "Email Templates",
+      "campaignResults": "Campaign Results",
+      "analysisAndReports": "Analysis & Reports",
+      "fraudAlerts": "Fraud Alerts",
+      "partners": "Partners",
+      "contentManagement": "Content Management",
+      "activityLog": "Activity Log",
+      "demoRequests": "Demo Requests",
+      "publicSubmissions": "Public Submissions",
+      "employees": "Employees",
+      "departments": "Departments",
+      "courseAssignment": "Course Assignment",
+      "testAssignments": "Test Assignments",
+      "campaignBoard": "Campaign Board",
+      "requestCampaign": "Request Campaign",
+      "analytics": "Analytics",
+      "accountSettings": "Account Settings",
+      "myCourses": "My Courses",
+      "assessments": "Assessments",
+      "certificates": "Certificates"
+    }
+  },
+  "actions": {
+    "acknowledge": "Acknowledge",
+    "back": "Back",
+    "cancel": "Cancel",
+    "close": "Close",
+    "continue": "Continue",
+    "download": "Download",
+    "goBack": "Go Back",
+    "loading": "Loading...",
+    "next": "Next",
+    "previous": "Previous",
+    "retake": "Retake",
+    "save": "Save",
+    "start": "Start",
+    "submit": "Submit"
+  },
+  "labels": {
+    "active": "Active",
+    "certificateNumber": "Certificate #:",
+    "channel": "Channel",
+    "completed": "Completed",
+    "completedOn": "Completed",
+    "dueDate": "Due Date",
+    "issued": "Issued",
+    "latestYear": "Latest Year",
+    "mandatory": "Mandatory",
+    "minutes": "minutes",
+    "passing": "Passing",
+    "progress": "Progress",
+    "remaining": "Remaining",
+    "score": "Score",
+    "severity": "Severity",
+    "total": "Total",
+    "used": "Used"
+  },
+  "states": {
+    "empty": "No data available",
+    "error": "Something went wrong",
+    "loading": "Loading..."
+  }
+}

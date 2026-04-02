@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Shield, ChevronRight, ArrowLeft, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -93,10 +94,6 @@ interface FraudAlert {
   video_url?: string;
 }
 
-interface PublicFraudAlertsPageProps {
-  onNavigate: (page: string) => void;
-}
-
 /* ─────────────────────────────────────────
    SHARED ATOMS
 ───────────────────────────────────────── */
@@ -137,11 +134,11 @@ const BackBtn: React.FC<{ label: string; onClick: () => void }> = ({ label, onCl
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
-export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ onNavigate }) => {
+export const PublicFraudAlertsPage = () => {
   const [alerts, setAlerts]             = useState<FraudAlert[]>([]);
   const [loading, setLoading]           = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<FraudAlert | null>(null);
-
+  const navigate = useNavigate();
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -233,7 +230,7 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
             {/* CTA */}
             <div style={{ paddingTop: 20, borderTop: `1px solid ${T.borderFaint}` }}>
               <button
-                onClick={() => onNavigate('login')}
+                onClick={() => navigate('/login')}
                 style={{
                   width: '100%', padding: '14px 24px', fontSize: 15, fontWeight: 700,
                   background: T.accent, color: T.accentDark, borderRadius: 10, border: 'none',
@@ -260,7 +257,7 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
   return (
     <div style={pageStyle}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <BackBtn label="Back to Home" onClick={() => onNavigate('landing')} />
+        <BackBtn label="Back to Home" onClick={() => navigate('/')} />
 
         {/* Page header */}
         <div style={{ textAlign: 'center', marginBottom: 64 }}>
@@ -387,7 +384,7 @@ export const PublicFraudAlertsPage: React.FC<PublicFraudAlertsPageProps> = ({ on
               Want full threat intelligence, employee guidelines, and incident reporting tools?
             </p>
             <button
-              onClick={() => onNavigate('login')}
+              onClick={() => navigate('/login')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 28px', background: T.accent, color: T.accentDark, fontSize: 14, fontWeight: 700, borderRadius: 10, border: 'none', cursor: 'pointer', boxShadow: '0 0 20px rgba(200,255,0,0.20)', transition: 'opacity 0.2s, transform 0.15s', fontFamily: 'inherit' }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}

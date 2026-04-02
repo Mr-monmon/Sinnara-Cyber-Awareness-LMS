@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Award } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { ExamResult, User as UserType } from '../../types';
+import { User as UserType } from '../../lib/types';
 import { ExamAttemptsAnalytics } from '../../components/ExamAttemptsAnalytics';
 
 interface EmployeePerformance {
@@ -51,6 +51,27 @@ export const AnalyticsPage: React.FC = () => {
     if (!user?.company_id) return;
 
     try {
+      // First get all employees for this company
+      const { data: allEmployees } = await supabase
+        .from('users')
+        .select('id, full_name, email, department:departments(name)')
+        .eq('company_id', user.company_id)
+        .eq('role', 'EMPLOYEE');
+
+      if (!allEmployees || allEmployees.length === 0) {
+        setCourseStats({
+          totalAssigned: 0,
+          totalCompleted: 0,
+          completionRate: 0,
+          employeesCompleted: [],
+          employeesIncomplete: []
+        });
+        return;
+      }
+
+      const employeeIds = allEmployees.map(e => e.id);
+
+      // Filter employee_courses by company employees
       const { data: completions, count: completedCount } = await supabase
         .from('employee_courses')
         .select(`
@@ -60,11 +81,13 @@ export const AnalyticsPage: React.FC = () => {
           employee:users!employee_courses_employee_id_fkey(id, full_name, email, department:departments(name)),
           course:courses(id, title)
         `, { count: 'exact' })
+        .in('employee_id', employeeIds)
         .eq('status', 'COMPLETED');
 
-      const { data: assigned, count: assignedCount } = await supabase
+      const { count: assignedCount } = await supabase
         .from('employee_courses')
-        .select('id, employee_id, course_id', { count: 'exact' });
+        .select('id', { count: 'exact', head: true })
+        .in('employee_id', employeeIds);
 
       const completionRate = assignedCount && assignedCount > 0
         ? (completedCount || 0) / assignedCount * 100
@@ -72,15 +95,9 @@ export const AnalyticsPage: React.FC = () => {
 
       const completedEmployeeIds = [...new Set(completions?.map(c => c.employee_id))];
 
-      const { data: allEmployees } = await supabase
-        .from('users')
-        .select('id, full_name, email, department:departments(name)')
-        .eq('company_id', user.company_id)
-        .eq('role', 'EMPLOYEE');
-
-      const incompleteEmployees = allEmployees?.filter(
+      const incompleteEmployees = allEmployees.filter(
         emp => !completedEmployeeIds.includes(emp.id)
-      ) || [];
+      );
 
       setCourseStats({
         totalAssigned: assignedCount || 0,
@@ -98,9 +115,32 @@ export const AnalyticsPage: React.FC = () => {
     if (!user?.company_id) return;
 
     try {
+      // First get all employees for this company
+      const { data: employees } = await supabase
+        .from('users')
+        .select('id')
+        .eq('company_id', user.company_id)
+        .eq('role', 'EMPLOYEE');
+
+      if (!employees || employees.length === 0) {
+        setExamStats({
+          totalAttempts: 0,
+          uniqueEmployees: 0,
+          passedCount: 0,
+          failedCount: 0,
+          passRate: 0,
+          avgScore: 0
+        });
+        return;
+      }
+
+      const employeeIds = employees.map(e => e.id);
+
+      // Filter exam_results by company employees
       const { data: attempts } = await supabase
         .from('exam_results')
-        .select('id, employee_id, exam_id, passed, percentage');
+        .select('id, employee_id, exam_id, passed, percentage')
+        .in('employee_id', employeeIds);
 
       if (!attempts) return;
 
