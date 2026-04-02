@@ -53,7 +53,7 @@ interface FooterSettings {
    FIGMA ASSETS
 ───────────────────────────────────────── */
 const LOGO =
-  "https://www.figma.com/api/mcp/asset/f7badfce-8bdc-4ae5-9ad9-e5af67dfd195";
+  "https://raw.githubusercontent.com/Mr-monmon/Sinnara-Cyber-Awareness-LMS/main/supabase/without%20bg%202.png";
 const DASH =
   "https://www.figma.com/api/mcp/asset/086116a6-2692-4da2-b352-59aa6654cad8";
 const PLAY =
