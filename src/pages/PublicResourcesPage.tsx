@@ -308,7 +308,7 @@ export const PublicResourcesPage = () => {
             <div style={{ display: "flex", gap: 12 }}>
               {([
                 ["LinkedIn", Linkedin, "https://www.linkedin.com/company/awareone/"],
-                ["X (Twitter)", Twitter, "https://twitter.com/awareone"],
+                ["X (Twitter)", Twitter, "https://x.com/AwareOne_net"],
                 ["YouTube", Youtube, "https://www.youtube.com/@awareone-net"],
               ] as const).map(([label, Icon, href]) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label}
