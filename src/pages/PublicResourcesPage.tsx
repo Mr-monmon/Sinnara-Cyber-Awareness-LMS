@@ -336,7 +336,7 @@ export const PublicResourcesPage = () => {
           <nav aria-label="Resources links">
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Resources</h3>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-              {["Security Blog","Case Studies","Compliance Guide","Support Center","Legal"].map((label) => (
+              {["Legal"].map((label) => (
                 <li key={label}>
                   <button onClick={() => navigate(label === "Legal" ? "/legal" : "/resources")}
                     style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
