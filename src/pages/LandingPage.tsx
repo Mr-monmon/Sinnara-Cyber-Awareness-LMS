@@ -300,7 +300,7 @@ export const LandingPage = () => {
         <div className="aw-container" style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
           <a href="#" aria-label="AwareOne" style={{ textDecoration: "none", flexShrink: 0 }}>
-            <img src={LOGO} alt="AwareOne" style={{ height: 52, width: "auto", display: "block" }}/>
+            <img src={LOGO} alt="AwareOne" style={{ height: 130, width: "auto", display: "block" }}/>
           </a>
 
           <nav className="aw-desk-nav" style={{ alignItems: "center", gap: 32 }}>
@@ -550,7 +550,7 @@ export const LandingPage = () => {
             {/* Brand */}
             <div>
               <div style={{ marginBottom: 40 }}>
-                <img src={LOGO} alt="AwareOne" style={{ height: 52, width: "auto", display: "block" }}/>
+                <img src={LOGO} alt="AwareOne" style={{ height: 130, width: "auto", display: "block" }}/>
               </div>
               <p style={{ fontSize: 14, color: T.textBody, lineHeight: "22.75px", margin: "0 0 40px" }}>{footerSettings.tagline}</p>
               {/* ★ Social links */}

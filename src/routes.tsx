@@ -12,8 +12,8 @@ import { LegalPage } from "./pages/LegalPage";
 const routes: RouteObject[] = [
   { path: "/", element: <LandingPage /> },
   { path: "/assessment", element: <PublicAssessment /> },
-  { path: "/fraud", element: <PublicFraudAlertsPage /> },
-  // { path: "/login", element: <LoginPage /> },
+  { path: "/fraud-alerts", element: <PublicFraudAlertsPage /> },
+  { path: "/login", element: <LoginPage /> },
   { path: "/resources", element: <PublicResourcesPage /> },
   { path: "/legal", element: <LegalPage /> },
   {
