@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
    TOKENS
 ───────────────────────────────────────── */
 const T = {
-  bg:          '#12140a',
+  bg:          '#0f200a',
   bgCard:      '#1a1e0e',
   accent:      '#c8ff00',
   accentDark:  '#12140a',
