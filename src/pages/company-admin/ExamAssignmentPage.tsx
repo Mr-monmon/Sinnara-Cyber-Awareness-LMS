@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Calendar, Users, ClipboardList, History, AlertCircle } from 'lucide-react';
+import { Send, Calendar, Users, ClipboardList, AlertCircle, Undo2, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -14,6 +14,7 @@ interface Employee {
   id: string;
   full_name: string;
   email: string;
+  department_id: string | null;
 }
 
 interface Department {
@@ -24,13 +25,50 @@ interface Department {
 interface AssignedExam {
   id: string;
   exams?: { title: string };
-  assigned_to_employee: { full_name: string } | null;
-  assigned_to_department: { name: string } | null;
+  assigned_to_employee: { full_name: string; email: string } | null;
+  assigned_to_department: { id: string; name: string } | null;
   due_date: string | null;
   max_attempts: number;
   status: string;
   assigned_at: string;
 }
+
+const actionButtonBaseClass =
+  'group relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
+
+const actionTooltipClass =
+  'pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-all duration-200 group-hover:-translate-y-[calc(100%+0.5rem)] group-hover:opacity-100 group-focus:-translate-y-[calc(100%+0.5rem)] group-focus:opacity-100';
+
+const sendEmail = async (
+  to: string,
+  fullName: string,
+  subject: string,
+  title: string,
+  description: string,
+) => {
+  return await supabase.functions.invoke("send-email", {
+    body: {
+      to: to,
+      subject: subject,
+      html: `
+        <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
+          <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
+            <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+              <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+              <h1 style="margin:0; font-size:28px; line-height:1.3;">${title}, ${fullName}</h1>
+            </div>
+
+            <div style="padding:32px;">
+              <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
+                ${description}
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+    },
+  });
+};
 
 export const ExamAssignmentPage: React.FC = () => {
   const { user } = useAuth();
@@ -68,7 +106,7 @@ export const ExamAssignmentPage: React.FC = () => {
     if (!user?.company_id) return;
     const { data } = await supabase
       .from('users')
-      .select('id, full_name, email')
+      .select('id, full_name, email, department_id')
       .eq('company_id', user.company_id)
       .eq('role', 'EMPLOYEE')
       .order('full_name');
@@ -116,7 +154,7 @@ export const ExamAssignmentPage: React.FC = () => {
 
     const [examsRes, usersRes, deptsRes, resultsRes] = await Promise.all([
       supabase.from('exams').select('id, title').in('id', examIds),
-      employeeIds.length > 0 ? supabase.from('users').select('id, full_name').in('id', employeeIds) : Promise.resolve({ data: [] }),
+      employeeIds.length > 0 ? supabase.from('users').select('id, full_name, email').in('id', employeeIds) : Promise.resolve({ data: [] }),
       departmentIds.length > 0 ? supabase.from('departments').select('id, name').in('id', departmentIds) : Promise.resolve({ data: [] }),
       supabase.from('exam_results').select('assignment_id, employee_id, passed').eq('passed', true)
     ]);
@@ -225,6 +263,74 @@ export const ExamAssignmentPage: React.FC = () => {
     }
 
     loadAssignments();
+  };
+
+  const handleSendReminder = async (assignment: AssignedExam) => {
+    setError(null);
+
+    const examTitle = assignment.exams?.title || 'your assigned exam';
+    const dueDateText = assignment.due_date
+      ? ` Please complete it before ${new Date(assignment.due_date).toLocaleDateString()}.`
+      : '';
+
+    let recipients: Array<{ email: string; full_name: string }> = [];
+    let targetName = 'this assignee';
+
+    if (assignment.assigned_to_employee?.email) {
+      recipients = [{
+        email: assignment.assigned_to_employee.email,
+        full_name: assignment.assigned_to_employee.full_name
+      }];
+      targetName = assignment.assigned_to_employee.full_name;
+    } else if (assignment.assigned_to_department?.id) {
+      recipients = employees
+        .filter((employee) => employee.department_id === assignment.assigned_to_department?.id && employee.email)
+        .map((employee) => ({
+          email: employee.email,
+          full_name: employee.full_name
+        }));
+      targetName = `Dept: ${assignment.assigned_to_department.name}`;
+    }
+
+    if (recipients.length === 0) {
+      setError('No email recipients found for this assignment.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send ${recipients.length > 1 ? 'reminders' : 'a reminder'} for "${examTitle}" to ${targetName}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const results = await Promise.all(
+        recipients.map((recipient) =>
+          sendEmail(
+            recipient.email,
+            recipient.full_name,
+            `Exam Reminder: ${examTitle}`,
+            'Exam Reminder',
+            `This is a reminder that "${examTitle}" is still assigned to you.${dueDateText} Please log in to your Awareone account to complete it.`
+          )
+        )
+      );
+
+      const failedResult = results.find((result) => result.error);
+
+      if (failedResult?.error) {
+        throw failedResult.error;
+      }
+
+      window.alert(
+        recipients.length > 1
+          ? `Reminder emails sent to ${recipients.length} employees.`
+          : 'Reminder email sent successfully.'
+      );
+    } catch (reminderError) {
+      console.error('Error sending reminder:', reminderError);
+      setError('Failed to send reminder email.');
+    }
   };
 
   return (
@@ -361,21 +467,39 @@ export const ExamAssignmentPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     {assignment.status === 'active' && (
-                      <button
-                        onClick={() => {
-                          const targetName = assignment.assigned_to_employee?.full_name
-                            ? assignment.assigned_to_employee.full_name
-                            : `Dept: ${assignment.assigned_to_department?.name || 'Unknown'}`;
-                          handleWithdrawAssignment(
-                            assignment.id,
-                            assignment.exams?.title || 'Unknown Exam',
-                            targetName
-                          );
-                        }}
-                        className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
-                      >
-                        Withdraw
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSendReminder(assignment)}
+                          aria-label="Send remainder"
+                          className={`${actionButtonBaseClass} border-blue-200 bg-blue-50 text-blue-600 hover:border-blue-300 hover:bg-blue-100 focus-visible:ring-blue-500`}
+                        >
+                          <Mail className="h-4 w-4" />
+                          <span className={actionTooltipClass}>
+                            Send remainder
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetName = assignment.assigned_to_employee?.full_name
+                              ? assignment.assigned_to_employee.full_name
+                              : `Dept: ${assignment.assigned_to_department?.name || 'Unknown'}`;
+                            handleWithdrawAssignment(
+                              assignment.id,
+                              assignment.exams?.title || 'Unknown Exam',
+                              targetName
+                            );
+                          }}
+                          aria-label="Withdraw assignment"
+                          className={`${actionButtonBaseClass} border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 focus-visible:ring-red-500`}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                          <span className={actionTooltipClass}>
+                            Withdraw
+                          </span>
+                        </button>
+                      </div>
                     )}
                     {assignment.status !== 'active' && (
                       <span className="text-slate-400 text-sm">-</span>
