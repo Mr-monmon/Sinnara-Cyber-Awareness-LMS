@@ -84,11 +84,6 @@ if (
   document.head.appendChild(tag);
 }
 
-/* ─────────────────────────────────────────
-   LOGO  (reuse asset from session)
-───────────────────────────────────────── */
-const LOGO =
-  "https://www.figma.com/api/mcp/asset/f7badfce-8bdc-4ae5-9ad9-e5af67dfd195";
 
 
 /* ═══════════════════════════════════════════
@@ -115,24 +110,7 @@ export const LoginPage = () => {
     }
   };
 
-  const quickLogin = (e: string, p: string) => {
-    setEmail(e);
-    setPassword(p);
-  };
-
-  const demoAccounts = [
-    {
-      role: "Platform Admin",
-      email: "admin@sinnara.com",
-      password: "admin123",
-    },
-    { role: "Company Admin", email: "teemo@teemo.com", password: "company123" },
-    {
-      role: "Employee",
-      email: "mohammed@techcorp.com",
-      password: "employee123",
-    },
-  ];
+ 
 
   return (
     <div
@@ -230,9 +208,9 @@ export const LoginPage = () => {
               <Shield size={30} style={{ color: T.accent }} />
             </div>
             <img
-              src={LOGO}
+              src={"logo.svg"}
               alt="AwareOne"
-              style={{ height: 28, width: "auto", marginBottom: 20 }}
+              style={{ height: 130, width: "auto", marginBottom: 20 }}
             />
             <h1
               style={{
@@ -390,58 +368,6 @@ export const LoginPage = () => {
               {loading ? "Signing in…" : "Sign In"}
             </button>
           </form>
-
-          {/* ── Demo Accounts ── */}
-          <div
-            style={{
-              marginTop: 28,
-              paddingTop: 24,
-              borderTop: `1px solid ${T.borderFaint}`,
-            }}
-          >
-            <p
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: T.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: "1.2px",
-                textAlign: "center",
-                marginBottom: 12,
-              }}
-            >
-              Demo Accounts
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {demoAccounts.map(({ role, email: e, password: p }) => (
-                <button
-                  key={role}
-                  className="aw-demo-btn"
-                  onClick={() => quickLogin(e, p)}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: T.white,
-                      marginBottom: 2,
-                    }}
-                  >
-                    {role}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: T.textMuted,
-                      fontFamily: "'Inter', monospace",
-                    }}
-                  >
-                    {e}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* ── Footer note ── */}
