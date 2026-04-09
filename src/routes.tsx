@@ -1,5 +1,6 @@
 import { Navigate, RouteObject } from "react-router-dom";
 
+import { RouteShell } from "./components/RouteShell";
 import { LandingPage } from "./pages/LandingPage";
 import { PublicFraudAlertsPage } from "./pages/PublicFraudAlertsPage";
 import { PublicAssessment } from "./pages/PublicAssessment";
@@ -10,18 +11,22 @@ import { PublicResourcesPage } from "./pages/PublicResourcesPage";
 import { LegalPage } from "./pages/LegalPage";
 
 const routes: RouteObject[] = [
-  { path: "/", element: <LandingPage /> },
-  { path: "/assessment", element: <PublicAssessment /> },
-  { path: "/fraud-alerts", element: <PublicFraudAlertsPage /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/resources", element: <PublicResourcesPage /> },
-  { path: "/legal", element: <LegalPage /> },
   {
-    element: <ProtectedRoute />,
-    children: [{ path: "/dashboard", element: <MainDashboard /> }],
+    element: <RouteShell />,
+    children: [
+      { path: "/", element: <LandingPage /> },
+      { path: "/assessment", element: <PublicAssessment /> },
+      { path: "/fraud", element: <PublicFraudAlertsPage /> },
+      { path: "/login", element: <LoginPage /> },
+      { path: "/resources", element: <PublicResourcesPage /> },
+      { path: "/legal", element: <LegalPage /> },
+      {
+        element: <ProtectedRoute />,
+        children: [{ path: "/dashboard", element: <MainDashboard /> }],
+      },
+      { path: "*", element: <Navigate to="/" replace /> },
+    ],
   },
-
-  { path: "*", element: <Navigate to="/" replace /> },
 ];
 
 export default routes;

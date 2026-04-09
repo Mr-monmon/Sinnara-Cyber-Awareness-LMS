@@ -1,9 +1,54 @@
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import { Building2, Loader2, Mail, Send } from "lucide-react";
+import Quill from "quill";
 import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
 
 type TargetScope = "all" | "department";
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+];
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+const EMAIL_BODY_ALLOWED_TAGS = [
+  "a",
+  "blockquote",
+  "br",
+  "code",
+  "div",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "i",
+  "img",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "span",
+  "strong",
+  "u",
+  "ul",
+];
+
+const EMAIL_BODY_ALLOWED_ATTR = [
+  "alt",
+  "height",
+  "href",
+  "rel",
+  "src",
+  "style",
+  "target",
+  "width",
+];
 
 interface DepartmentRow {
   id: string;
@@ -21,12 +66,21 @@ function escapeHtml(text: string) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/\n/g, "<br/>");
+    .replace(/"/g, "&quot;");
 }
 
-function buildMessageHtml(fullName: string, bodyText: string) {
-  const safeBody = escapeHtml(bodyText);
+function sanitizeEmailBody(html: string) {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: EMAIL_BODY_ALLOWED_TAGS,
+    ALLOWED_ATTR: EMAIL_BODY_ALLOWED_ATTR,
+  });
+}
+
+function normalizeEditorHtml(html: string, plainText: string) {
+  return plainText.trim().length > 0 || /<img\b/i.test(html) ? html : "";
+}
+
+function buildMessageHtml(fullName: string, bodyHtml: string) {
   return `
      <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
         <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
@@ -35,7 +89,7 @@ function buildMessageHtml(fullName: string, bodyText: string) {
             <h1 style="margin:0; font-size:22px; line-height:1.3;">Hello, ${escapeHtml(fullName)}</h1>
           </div>
           <div style="padding:32px;">
-            <div style="margin:0; font-size:15px; line-height:1.8; color:#94a3b8;">${safeBody}</div>
+            <div style="margin:0; font-size:15px; line-height:1.8; color:#94a3b8;">${bodyHtml}</div>
           </div>
       </div>
     </div>
@@ -49,17 +103,23 @@ const EmailPage = () => {
   const [departmentId, setDepartmentId] = useState("");
   const [targetScope, setTargetScope] = useState<TargetScope>("all");
   const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
+  const [messageHtml, setMessageHtml] = useState("");
+  const [messagePlainText, setMessagePlainText] = useState("");
 
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [sending, setSending] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [sendProgress, setSendProgress] = useState<{
     done: number;
     total: number;
   } | null>(null);
+  const quillHostRef = useRef<HTMLDivElement | null>(null);
+  const quillInstanceRef = useRef<Quill | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const selectionIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     const loadCompanies = async () => {
@@ -125,13 +185,187 @@ const EmailPage = () => {
     setDepartmentId("");
   }, [targetScope, loadingDepartments, companyId, departments.length]);
 
+  useEffect(() => {
+    if (!quillHostRef.current || quillInstanceRef.current) {
+      return;
+    }
+
+    const host = quillHostRef.current;
+    host.innerHTML = "";
+
+    const editorElement = document.createElement("div");
+    editorElement.className = "min-h-[280px] bg-white";
+    host.appendChild(editorElement);
+
+    const quill = new Quill(editorElement, {
+      theme: "snow",
+      placeholder: "Write your email here...",
+      modules: {
+        toolbar: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          ["link", "blockquote", "image"],
+          ["clean"],
+        ],
+      },
+    });
+
+    quill.on("text-change", () => {
+      const plainText = quill.getText().trim();
+      const html = normalizeEditorHtml(quill.root.innerHTML, plainText);
+      setMessageHtml((prev) => (prev === html ? prev : html));
+      setMessagePlainText((prev) => (prev === plainText ? prev : plainText));
+    });
+
+    quill.on("selection-change", (range) => {
+      if (range) {
+        selectionIndexRef.current = range.index;
+      }
+    });
+
+    const toolbar = quill.getModule("toolbar") as {
+      addHandler: (name: string, handler: () => void) => void;
+    };
+    toolbar.addHandler("image", () => {
+      imageInputRef.current?.click();
+    });
+
+    quillInstanceRef.current = quill;
+
+    return () => {
+      if (quillHostRef.current) {
+        quillHostRef.current.innerHTML = "";
+      }
+      quillInstanceRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const quill = quillInstanceRef.current;
+    if (!quill) {
+      return;
+    }
+
+    const currentHtml = normalizeEditorHtml(
+      quill.root.innerHTML,
+      quill.getText().trim()
+    );
+
+    if (!messageHtml) {
+      if (currentHtml) {
+        quill.setText("");
+      }
+      return;
+    }
+
+    if (currentHtml !== messageHtml) {
+      quill.clipboard.dangerouslyPasteHTML(messageHtml);
+    }
+  }, [messageHtml]);
+
+  useEffect(() => {
+    const quill = quillInstanceRef.current;
+    if (!quill) {
+      return;
+    }
+
+    quill.enable(!(sending || uploadingImage));
+  }, [sending, uploadingImage]);
+
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setError("Please upload a PNG, JPG, GIF, or WebP image.");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError("Images must be 5 MB or smaller.");
+      return;
+    }
+
+    const quill = quillInstanceRef.current;
+    if (!quill) {
+      setError("The email editor is not ready yet.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setUploadingImage(true);
+
+    try {
+      const fallbackExtension = file.type.split("/")[1] || "png";
+      const rawExtension = file.name.split(".").pop() || fallbackExtension;
+      const extension =
+        rawExtension.toLowerCase().replace(/[^a-z0-9]/g, "") ||
+        fallbackExtension;
+      const filePath = `platform-admin/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("emails")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("emails")
+        .getPublicUrl(filePath);
+
+      if (!publicUrlData.publicUrl) {
+        throw new Error("Could not get the uploaded image URL.");
+      }
+
+      const insertIndex =
+        selectionIndexRef.current ?? Math.max(quill.getLength() - 1, 0);
+      quill.focus();
+      quill.setSelection(insertIndex, 0, "silent");
+      quill.insertEmbed(insertIndex, "image", publicUrlData.publicUrl, "api");
+
+      const [leaf] = quill.getLeaf(insertIndex);
+      if (leaf?.domNode instanceof HTMLImageElement) {
+        leaf.domNode.setAttribute("alt", file.name || "Uploaded image");
+        leaf.domNode.setAttribute("width", "560");
+        leaf.domNode.setAttribute(
+          "style",
+          "max-width:100%;height:auto;display:block;margin:16px auto;border-radius:12px;"
+        );
+      }
+
+      quill.insertText(insertIndex + 1, "\n", "api");
+      quill.setSelection(insertIndex + 2, 0, "silent");
+      selectionIndexRef.current = insertIndex + 2;
+    } catch (uploadError) {
+      console.error(uploadError);
+      setError("Failed to upload the image. Please try again.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
 
     const trimmedSubject = subject.trim();
-    const trimmedMessage = message.trim();
+    const sanitizedMessageHtml = sanitizeEmailBody(messageHtml);
+    const hasMessageContent =
+      messagePlainText.trim().length > 0 || /<img\b/i.test(sanitizedMessageHtml);
 
     if (!companyId) {
       setError("Please select a company.");
@@ -141,7 +375,7 @@ const EmailPage = () => {
       setError("Please enter a message subject.");
       return;
     }
-    if (!trimmedMessage) {
+    if (!hasMessageContent) {
       setError("Please enter message content.");
       return;
     }
@@ -197,7 +431,10 @@ const EmailPage = () => {
             body: {
               to: r.email,
               subject: trimmedSubject,
-              html: buildMessageHtml(r.full_name || "there", trimmedMessage),
+              html: buildMessageHtml(
+                r.full_name || "there",
+                sanitizedMessageHtml
+              ),
             },
           }
         );
@@ -215,7 +452,8 @@ const EmailPage = () => {
       } else {
         setSuccess(`Sent to ${recipients.length} recipient(s).`);
         setSubject("");
-        setMessage("");
+        setMessageHtml("");
+        setMessagePlainText("");
       }
     } catch (err) {
       console.error(err);
@@ -278,7 +516,7 @@ const EmailPage = () => {
               id="email-company"
               value={companyId}
               onChange={(ev) => setCompanyId(ev.target.value)}
-              disabled={loadingCompanies || sending}
+              disabled={loadingCompanies || sending || uploadingImage}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
               required
             >
@@ -304,7 +542,7 @@ const EmailPage = () => {
                   name="targetScope"
                   checked={targetScope === "all"}
                   onChange={() => setTargetScope("all")}
-                  disabled={sending}
+                  disabled={sending || uploadingImage}
                   className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 All company users
@@ -323,6 +561,7 @@ const EmailPage = () => {
                   onChange={() => setTargetScope("department")}
                   disabled={
                     sending ||
+                    uploadingImage ||
                     !companyId ||
                     loadingDepartments ||
                     departments.length === 0
@@ -347,7 +586,9 @@ const EmailPage = () => {
               id="email-department"
               value={departmentId}
               onChange={(ev) => setDepartmentId(ev.target.value)}
-              disabled={!companyId || loadingDepartments || sending}
+              disabled={
+                !companyId || loadingDepartments || sending || uploadingImage
+              }
               className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
             >
               <option value="">
@@ -386,28 +627,35 @@ const EmailPage = () => {
             type="text"
             value={subject}
             onChange={(ev) => setSubject(ev.target.value)}
-            disabled={sending}
+            disabled={sending || uploadingImage}
             placeholder="Subject line"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
           />
         </div>
 
         <div className="space-y-2">
-          <label
-            htmlFor="email-body"
-            className="text-sm font-medium text-slate-700"
-          >
-            Message content
-          </label>
-          <textarea
-            id="email-body"
-            value={message}
-            onChange={(ev) => setMessage(ev.target.value)}
-            disabled={sending}
-            rows={10}
-            placeholder="Plain text message"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="text-sm font-medium text-slate-700">
+              Message content
+            </label>
+            <span className="text-xs text-slate-500">
+              Use the toolbar image button to upload PNG, JPG, GIF, or WebP
+              files up to 5 MB.
+            </span>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+            <div ref={quillHostRef} />
+          </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept={ALLOWED_IMAGE_TYPES.join(",")}
+            className="hidden"
+            onChange={handleImageUpload}
           />
+          {uploadingImage ? (
+            <p className="text-sm text-slate-600">Uploading image…</p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
@@ -415,18 +663,19 @@ const EmailPage = () => {
             type="submit"
             disabled={
               sending ||
+              uploadingImage ||
               loadingCompanies ||
               !companyId ||
               (targetScope === "department" && !departmentId)
             }
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {sending ? (
+            {sending || uploadingImage ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
             )}
-            {sending ? "Sending…" : "Send"}
+            {sending ? "Sending…" : uploadingImage ? "Uploading image…" : "Send"}
           </button>
           {sendProgress ? (
             <span className="text-sm text-slate-600">
