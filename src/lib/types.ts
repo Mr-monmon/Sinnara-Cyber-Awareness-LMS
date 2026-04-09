@@ -131,6 +131,7 @@ export interface PhishingCampaignQuota {
 export interface Company {
   id: string;
   name: string;
+  subdomain: string;
   admin_name?: string;
   admin_email?: string;
   subscription_start?: string;

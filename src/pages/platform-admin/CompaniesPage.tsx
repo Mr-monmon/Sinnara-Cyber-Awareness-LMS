@@ -472,6 +472,7 @@ export const CompaniesPage: React.FC = () => {
             setEditingCompany(null);
           }}
           onSave={handleSaveCompany}
+          companies={companies}
         />
       )}
 

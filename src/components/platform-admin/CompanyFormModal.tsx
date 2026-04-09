@@ -6,11 +6,15 @@ interface CompanyFormModalProps {
   company: Company | null;
   onClose: () => void;
   onSave: (data: any) => Promise<void>;
+  companies: Company[];
 }
 
-export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onClose, onSave }) => {
+const sanitizeSubdomain = (value: string) => value.toLowerCase().replace(/[^a-z]/g, '');
+
+export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onClose, onSave, companies }) => {
   const [formData, setFormData] = useState({
     name: '',
+    subdomain: '',
     admin_name: '',
     admin_email: '',
     admin_phone: '',
@@ -23,10 +27,20 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
     status: 'ACTIVE'
   });
 
+  const normalizedSubdomain = sanitizeSubdomain(formData.subdomain);
+  const isDuplicateSubdomain =
+    normalizedSubdomain.length > 0 &&
+    companies.some(
+      (existingCompany) =>
+        existingCompany.id !== company?.id &&
+        sanitizeSubdomain(existingCompany.subdomain || '') === normalizedSubdomain
+    );
+
   useEffect(() => {
     if (company) {
       setFormData({
         name: company.name || '',
+        subdomain: sanitizeSubdomain(company.subdomain || ''),
         admin_name: (company as any).admin_name || '',
         admin_email: (company as any).admin_email || '',
         admin_phone: (company as any).admin_phone || '',
@@ -72,7 +86,15 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSave(formData);
+
+    if (isDuplicateSubdomain) {
+      return;
+    }
+
+    await onSave({
+      ...formData,
+      subdomain: normalizedSubdomain
+    });
   };
 
   return (
@@ -103,6 +125,39 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Example: Advanced Technology Company"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Subdomain *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.subdomain}
+                  onChange={(e) => setFormData({ ...formData, subdomain: sanitizeSubdomain(e.target.value) })}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                    isDuplicateSubdomain
+                      ? 'border-red-300 focus:ring-red-500'
+                      : 'border-slate-300 focus:ring-blue-500'
+                  }`}
+                  placeholder="examplecompany"
+                  pattern="[a-z]+"
+                  title="Subdomain can only contain lowercase letters."
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={isDuplicateSubdomain}
+                />
+                {isDuplicateSubdomain ? (
+                  <p className="mt-1 text-xs text-red-600">
+                    This subdomain is already in use. Please choose a different one.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Letters only. Numbers, spaces, and special characters are removed automatically.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -277,7 +332,8 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({ company, onC
           <div className="flex gap-3 pt-4">
             <button
               type="submit"
-              className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-lg transition-all duration-300"
+              disabled={isDuplicateSubdomain}
+              className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all duration-300"
             >
               {company ? 'Save Changes' : 'Add Company'}
             </button>

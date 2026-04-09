@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { User } from "../lib/types";
+import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
+import { buildTenantRedirectUrl } from "../lib/browserTenant";
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +21,20 @@ async function fetchProfile(userId: string): Promise<User | null> {
       .eq("id", userId)
       .maybeSingle();
     return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCompanySubdomain(companyId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from("companies")
+      .select("subdomain")
+      .eq("id", companyId)
+      .maybeSingle();
+
+    return data?.subdomain ?? null;
   } catch {
     return null;
   }
@@ -59,13 +74,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const login = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     if (error) {
       throw new Error("Invalid email or password");
     }
+
+    const profile = data.user ? await fetchProfile(data.user.id) : null;
+    setUser(profile);
+
+    if (profile?.role !== "PLATFORM_ADMIN" && profile?.company_id) {
+      const subdomain = await fetchCompanySubdomain(profile.company_id);
+      const tenantDashboardUrl =
+        subdomain && buildTenantRedirectUrl(window.location.href, subdomain);
+
+      if (tenantDashboardUrl) {
+        window.location.href = tenantDashboardUrl;
+        return;
+      }
+    }
+
     window.location.href = "/dashboard";
   };
 
