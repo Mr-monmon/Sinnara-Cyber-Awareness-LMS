@@ -34,7 +34,6 @@ export const useTenantAccess = () => {
       const currentUrl = new URL(window.location.href);
       const hostMode = getHostAccessMode(currentUrl.hostname);
       const tenantSubdomain = extractTenantSubdomain(currentUrl.hostname);
-      const queryTenant = currentUrl.searchParams.get("tenant")?.trim().toLowerCase();
 
       if (hostMode === "invalid") {
         setState({
@@ -56,16 +55,6 @@ export const useTenantAccess = () => {
         return;
       }
 
-      if (queryTenant && queryTenant !== tenantSubdomain) {
-        setState({
-          company: null,
-          hostMode: "invalid",
-          loading: false,
-          tenantSubdomain: null,
-        });
-        return;
-      }
-
       setState({
         company: null,
         hostMode,
@@ -73,11 +62,15 @@ export const useTenantAccess = () => {
         tenantSubdomain,
       });
 
+      console.log("Fetching company data");
+      console.log("tenantSubdomain", tenantSubdomain);
       const { data, error } = await supabase
         .from("companies")
         .select("*")
         .eq("subdomain", tenantSubdomain)
         .maybeSingle();
+
+      console.log("Company data", data);
 
       if (isCancelled) {
         return;
