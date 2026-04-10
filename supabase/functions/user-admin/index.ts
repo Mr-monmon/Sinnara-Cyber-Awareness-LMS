@@ -86,7 +86,6 @@ async function handleCreateUser(payload: CreateUserPayload) {
   const { error: profileError } = await supabaseAdmin.from("users").insert({
     id: userId,
     email,
-    password, // kept in sync until the column is dropped
     full_name,
     phone: phone ?? null,
     employee_id: employee_id ?? null,
@@ -128,11 +127,6 @@ async function handleResetPassword(userId: string, password: string) {
   const { error: authError } =
     await supabaseAdmin.auth.admin.updateUserById(userId, { password });
   if (authError) return { success: false, error: authError.message };
-
-  await supabaseAdmin
-    .from("users")
-    .update({ password })
-    .eq("id", userId);
 
   return { success: true };
 }

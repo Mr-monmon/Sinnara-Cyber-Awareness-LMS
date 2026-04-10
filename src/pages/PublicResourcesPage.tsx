@@ -254,7 +254,6 @@ export const PublicResourcesPage = () => {
           <button className="aw-fraud-btn" onClick={() => navigate("/fraud-alerts")}>
             <span className="aw-fraud-dot"/><AlertTriangle size={12}/>Live Fraud Alerts
           </button>
-          <button onClick={() => navigate("/login")} style={{ fontSize: 14, fontWeight: 700, color: T.white, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Login</button>
           <button onClick={() => setShowDemoModal(true)}
             style={{ padding: "10px 24px", background: T.accent, color: T.bg, fontSize: 14, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer", boxShadow: "0 0 20px rgba(200,255,0,0.30)", transition: "opacity 0.2s" }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
@@ -284,8 +283,6 @@ export const PublicResourcesPage = () => {
             style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 600, color: "#fca5a5", background: "none", border: "none", borderBottom: `1px solid ${T.borderFaint}`, cursor: "pointer" }}>
             <span className="aw-fraud-dot"/><AlertTriangle size={12}/>Live Fraud Alerts
           </button>
-          <button onClick={() => { navigate("/login"); setMenuOpen(false); }}
-            style={{ display: "block", width: "100%", textAlign: "left", padding: "12px 0", fontSize: 16, fontWeight: 500, color: T.textNav, background: "none", border: "none", borderBottom: `1px solid ${T.borderFaint}`, cursor: "pointer" }}>Login</button>
           <button onClick={() => { setShowDemoModal(true); setMenuOpen(false); }}
             style={{ display: "block", width: "100%", marginTop: 12, padding: "14px 24px", background: T.accent, color: T.bg, fontSize: 16, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer" }}>Request Demo</button>
         </div>
@@ -324,7 +321,7 @@ export const PublicResourcesPage = () => {
           <nav aria-label="Company links">
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Company</h3>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-              {[{label:"Free Assessment",page:"/assessment"},{label:"Fraud Alerts",page:"/fraud-alerts"},{label:"Resources",page:"/resources"},{label:"Login",page:"/login"}].map(({label,page}) => (
+              {[{label:"Free Assessment",page:"/assessment"},{label:"Fraud Alerts",page:"/fraud-alerts"},{label:"Resources",page:"/resources"}].map(({label,page}) => (
                 <li key={page}>
                   <button onClick={() => navigate(page)} style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>{label}</button>
@@ -560,11 +557,11 @@ export const PublicResourcesPage = () => {
               <p style={{ fontSize: 15, color: T.textBody, lineHeight: "24px", marginBottom: 28, maxWidth: 520, margin: "0 auto 28px" }}>
                 {selectedArticle.cta_text}
               </p>
-              <button onClick={() => navigate("/login")}
+              <button onClick={() => setShowDemoModal(true)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 32px", background: T.accent, color: T.bg, fontSize: 15, fontWeight: 700, borderRadius: 10, border: "none", cursor: "pointer", boxShadow: "0 0 20px rgba(200,255,0,0.25)", transition: "opacity 0.2s, transform 0.15s", fontFamily: "inherit" }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity="0.88"; e.currentTarget.style.transform="translateY(-1px)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity="1"; e.currentTarget.style.transform="none"; }}>
-                Get Started <ArrowRight size={16}/>
+                Request Demo <ArrowRight size={16}/>
               </button>
             </div>
           </article>
@@ -721,11 +718,11 @@ export const PublicResourcesPage = () => {
                 Join leading organizations improving their cybersecurity posture with our comprehensive training platform.
               </p>
               <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-                <button onClick={() => navigate("/login")}
+                <button onClick={() => setShowDemoModal(true)}
                   style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 32px", background: T.accent, color: T.bg, fontSize: 15, fontWeight: 700, borderRadius: 10, border: "none", cursor: "pointer", boxShadow: "0 0 20px rgba(200,255,0,0.25)", transition: "opacity 0.2s, transform 0.15s", fontFamily: "inherit" }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity="0.88"; e.currentTarget.style.transform="translateY(-1px)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.opacity="1"; e.currentTarget.style.transform="none"; }}>
-                  Get Started <ArrowRight size={16}/>
+                  Request Demo <ArrowRight size={16}/>
                 </button>
                 <button onClick={() => navigate("/assessment")}
                   style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 32px", background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, color: T.white, fontSize: 15, fontWeight: 700, borderRadius: 10, cursor: "pointer", transition: "background 0.2s, transform 0.15s", fontFamily: "inherit" }}

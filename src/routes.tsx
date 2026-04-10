@@ -1,10 +1,9 @@
 import { Navigate, RouteObject } from "react-router-dom";
 
+import { HomeRoute, LoginRoute } from "./components/HostAwarePublicRoutes";
 import { RouteShell } from "./components/RouteShell";
-import { LandingPage } from "./pages/LandingPage";
 import { PublicFraudAlertsPage } from "./pages/PublicFraudAlertsPage";
 import { PublicAssessment } from "./pages/PublicAssessment";
-import { LoginPage } from "./pages/LoginPage";
 import MainDashboard from "./pages/MainDashboard";
 import ProtectedRoute from "./ProtectedRoute";
 import { PublicResourcesPage } from "./pages/PublicResourcesPage";
@@ -14,10 +13,10 @@ const routes: RouteObject[] = [
   {
     element: <RouteShell />,
     children: [
-      { path: "/", element: <LandingPage /> },
+      { path: "/", element: <HomeRoute /> },
       { path: "/assessment", element: <PublicAssessment /> },
-      { path: "/fraud", element: <PublicFraudAlertsPage /> },
-      { path: "/login", element: <LoginPage /> },
+      { path: "/fraud-alerts", element: <PublicFraudAlertsPage /> },
+      { path: "/login", element: <LoginRoute /> },
       { path: "/resources", element: <PublicResourcesPage /> },
       { path: "/legal", element: <LegalPage /> },
       {

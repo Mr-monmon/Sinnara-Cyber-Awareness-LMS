@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
 
 import type { Company } from "../lib/types";
-import { supabase } from "../lib/supabase";
+import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
 import {
   extractTenantSubdomain,
   getHostAccessMode,
@@ -24,7 +23,6 @@ const INITIAL_STATE: TenantAccessState = {
 };
 
 export const useTenantAccess = () => {
-  const location = useLocation();
   const [state, setState] = useState<TenantAccessState>(INITIAL_STATE);
 
   useEffect(() => {
@@ -35,7 +33,7 @@ export const useTenantAccess = () => {
       const hostMode = getHostAccessMode(currentUrl.hostname);
       const tenantSubdomain = extractTenantSubdomain(currentUrl.hostname);
 
-      if (hostMode === "invalid") {
+      if (hostMode === "invalid" || hostMode === "admin") {
         setState({
           company: null,
           hostMode,
@@ -62,22 +60,14 @@ export const useTenantAccess = () => {
         tenantSubdomain,
       });
 
-      console.log("Fetching company data");
-      console.log("tenantSubdomain", tenantSubdomain);
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*")
-        .eq("subdomain", tenantSubdomain)
-        .maybeSingle();
-
-      console.log("Company data", data);
+      const company = await fetchTenantCompanyBySubdomain(tenantSubdomain);
 
       if (isCancelled) {
         return;
       }
 
       setState({
-        company: error ? null : data ?? null,
+        company,
         hostMode,
         loading: false,
         tenantSubdomain,
@@ -89,7 +79,7 @@ export const useTenantAccess = () => {
     return () => {
       isCancelled = true;
     };
-  }, [location.pathname, location.search]);
+  }, []);
 
   return state;
 };

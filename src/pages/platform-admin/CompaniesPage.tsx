@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { Company, Course, Exam } from '../../lib/types';
 import { CompanyFormModal } from '../../components/platform-admin/CompanyFormModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { buildTenantRedirectUrl } from '../../lib/browserTenant';
 
 interface CompanyWithQuota extends Company {
   annual_quota?: number;
@@ -12,7 +13,6 @@ interface CompanyWithQuota extends Company {
 
 export const CompaniesPage: React.FC = () => {
   const { user } = useAuth();
-  const loginUrl = import.meta.env.VITE_SITE_URL_LOGIN || '';
   const [companies, setCompanies] = useState<CompanyWithQuota[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -144,8 +144,6 @@ export const CompaniesPage: React.FC = () => {
           .select()
           .single();
 
-        
-
         if (companyError) throw companyError;
 
         const { data: adminResult, error: adminError } =
@@ -182,6 +180,10 @@ export const CompaniesPage: React.FC = () => {
           description: `Create new company: ${formData.name}`,
           new_value: formData
         }]);
+
+        const loginUrl = newCompany.subdomain
+          ? buildTenantRedirectUrl(window.location.href, newCompany.subdomain, '/login')
+          : null;
 
 
         await supabase.functions.invoke('send-email', {

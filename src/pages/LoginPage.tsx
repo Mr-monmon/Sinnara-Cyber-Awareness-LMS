@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowLeft, Shield, Lock, Mail } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { buildApexRedirectUrl } from "../lib/browserTenant";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -83,34 +84,58 @@ if (
   tag.textContent = STYLES;
   document.head.appendChild(tag);
 }
-
-
-
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
-export const LoginPage = () => {
+interface LoginPageProps {
+  backLabel?: string;
+  backTo?: string;
+}
+
+export const LoginPage = ({
+  backLabel = "Back to Home",
+  backTo = "/",
+}: LoginPageProps) => {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  
+
+  const handleBack = () => {
+    if (/^https?:\/\//.test(backTo)) {
+      window.location.href = backTo;
+      return;
+    }
+
+    navigate(backTo);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      const result = await login(email, password);
+
+      if (result === "success") {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      if (result === "wrong_tenant") {
+        window.location.replace(buildApexRedirectUrl(window.location.href, "/"));
+        return;
+      }
+
+      setError("Invalid email or password. Please try again.");
     } catch {
       setError("Invalid email or password. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
- 
 
   return (
     <div
@@ -141,7 +166,7 @@ export const LoginPage = () => {
       <div style={{ position: "relative", width: "100%", maxWidth: 440 }}>
         {/* ── Back button ── */}
         <button
-          onClick={() => navigate("/")}
+          onClick={handleBack}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -158,7 +183,7 @@ export const LoginPage = () => {
           onMouseEnter={(e) => (e.currentTarget.style.color = T.white)}
           onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}
         >
-          <ArrowLeft size={16} /> Back to Home
+          <ArrowLeft size={16} /> {backLabel}
         </button>
 
         {/* ── Card ── */}

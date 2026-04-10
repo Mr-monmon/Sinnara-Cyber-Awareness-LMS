@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, User, Eye, Key, Upload } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { User as UserType } from "../../lib/types";
+import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 
 interface EmployeesPageProps {
   onViewEmployee?: (employeeId: string) => void;
@@ -98,7 +99,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   onViewEmployee,
 }) => {
   const { user: currentUser } = useAuth();
-  const loginUrl = import.meta.env.VITE_SITE_URL_LOGIN || "";
+  const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [showModal, setShowModal] = useState(false);

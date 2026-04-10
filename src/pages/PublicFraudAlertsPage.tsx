@@ -230,7 +230,7 @@ export const PublicFraudAlertsPage = () => {
             {/* CTA */}
             <div style={{ paddingTop: 20, borderTop: `1px solid ${T.borderFaint}` }}>
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/')}
                 style={{
                   width: '100%', padding: '14px 24px', fontSize: 15, fontWeight: 700,
                   background: T.accent, color: T.accentDark, borderRadius: 10, border: 'none',
@@ -241,7 +241,7 @@ export const PublicFraudAlertsPage = () => {
                 onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
               >
-                Login to See Employee Guidelines
+                Explore the Platform
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -384,12 +384,12 @@ export const PublicFraudAlertsPage = () => {
               Want full threat intelligence, employee guidelines, and incident reporting tools?
             </p>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 28px', background: T.accent, color: T.accentDark, fontSize: 14, fontWeight: 700, borderRadius: 10, border: 'none', cursor: 'pointer', boxShadow: '0 0 20px rgba(200,255,0,0.20)', transition: 'opacity 0.2s, transform 0.15s', fontFamily: 'inherit' }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
             >
-              Login to Dashboard <ChevronRight size={15} />
+              Explore the Platform <ChevronRight size={15} />
             </button>
           </div>
         )}

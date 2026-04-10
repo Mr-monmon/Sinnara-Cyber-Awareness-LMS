@@ -321,8 +321,7 @@ export const LegalPage: React.FC = () => {
 
   const toggle = (id: string) => setOpenId((prev) => (prev === id ? null : id));
 
-  /* ★ الرابط الصحيح للـ Fraud Alerts */
-  const FRAUD_ALERTS_PATH = "/employee/fraud-alerts";
+  const FRAUD_ALERTS_PATH = "/fraud-alerts";
 
   return (
     <div dir="ltr" style={{ minHeight: "100vh", background: T.bg, fontFamily: "'Inter', sans-serif", color: T.white }}>
@@ -424,7 +423,6 @@ export const LegalPage: React.FC = () => {
             <button className="aw-fraud-btn" onClick={() => navigate(FRAUD_ALERTS_PATH)}>
               <span className="aw-fraud-dot"/><AlertTriangle size={12}/>Live Fraud Alerts
             </button>
-            <button onClick={() => navigate("/login")} style={{ fontSize: 14, fontWeight: 700, color: T.white, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Login</button>
             <button onClick={() => setShowDemoModal(true)}
               style={{ padding: "10px 24px", background: T.accent, color: T.bg, fontSize: 14, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer", boxShadow: "0 0 20px rgba(200,255,0,0.30)", transition: "opacity 0.2s" }}
               onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
@@ -455,8 +453,6 @@ export const LegalPage: React.FC = () => {
               style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "12px 0", fontSize: 14, fontWeight: 600, color: "#fca5a5", background: "none", border: "none", borderBottom: `1px solid rgba(255,255,255,0.05)`, cursor: "pointer" }}>
               <span className="aw-fraud-dot"/><AlertTriangle size={12}/>Live Fraud Alerts
             </button>
-            <button onClick={() => { navigate("/login"); setMenuOpen(false); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "12px 0", fontSize: 16, fontWeight: 500, color: T.textNav, background: "none", border: "none", borderBottom: `1px solid rgba(255,255,255,0.05)`, cursor: "pointer" }}>Login</button>
             <button onClick={() => { setShowDemoModal(true); setMenuOpen(false); }}
               style={{ display: "block", width: "100%", marginTop: 12, padding: "14px 24px", background: T.accent, color: T.bg, fontSize: 16, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer" }}>Request Demo</button>
           </div>
@@ -557,7 +553,6 @@ export const LegalPage: React.FC = () => {
                   { label: "Free Assessment", path: "/assessment" },
                   { label: "Fraud Alerts",    path: FRAUD_ALERTS_PATH },
                   { label: "Resources",       path: "/resources" },
-                  { label: "Login",           path: "/login" },
                 ].map(({ label, path }) => (
                   <li key={path}>
                     <button onClick={() => navigate(path)}

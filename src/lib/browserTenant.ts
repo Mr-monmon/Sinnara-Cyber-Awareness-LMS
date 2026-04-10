@@ -1,36 +1,18 @@
-import { buildApexUrl, buildTenantUrl } from "./tenant";
+import { buildAdminUrl, buildApexUrl, buildTenantUrl } from "./tenant";
 
-const getConfiguredLoginOrigin = () => {
-  const configuredLoginUrl = import.meta.env.VITE_SITE_URL_LOGIN?.trim();
+export const buildSameHostRedirectUrl = (currentUrl: string, pathname: string) =>
+  new URL(pathname, currentUrl).toString();
 
-  if (!configuredLoginUrl) {
-    return null;
-  }
+export const buildApexRedirectUrl = (currentUrl: string, pathname = "/") =>
+  buildApexUrl(currentUrl, pathname);
 
-  try {
-    return new URL(configuredLoginUrl).origin;
-  } catch {
-    return null;
-  }
-};
-
-export const buildApexRedirectUrl = (currentUrl: string, pathname = "/") => {
-  const configuredOrigin = getConfiguredLoginOrigin();
-
-  if (configuredOrigin) {
-    return new URL(pathname, `${configuredOrigin}/`).toString();
-  }
-
-  return buildApexUrl(currentUrl, pathname);
-};
+export const buildAdminRedirectUrl = (currentUrl: string, pathname = "/login") =>
+  buildAdminUrl(currentUrl, pathname);
 
 export const buildTenantRedirectUrl = (
   currentUrl: string,
   subdomain: string,
   pathname = "/dashboard"
 ) => {
-  const configuredOrigin = getConfiguredLoginOrigin();
-  const baseUrl = configuredOrigin ?? currentUrl;
-
-  return buildTenantUrl(baseUrl, subdomain, pathname);
+  return buildTenantUrl(currentUrl, subdomain, pathname);
 };

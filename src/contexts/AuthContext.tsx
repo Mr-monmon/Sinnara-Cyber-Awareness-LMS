@@ -2,13 +2,16 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
-import { buildTenantRedirectUrl } from "../lib/browserTenant";
+import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
+import { extractTenantSubdomain, getHostAccessMode } from "../lib/tenant";
+
+export type LoginResult = "success" | "invalid_credentials" | "wrong_tenant";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,20 +24,6 @@ async function fetchProfile(userId: string): Promise<User | null> {
       .eq("id", userId)
       .maybeSingle();
     return data ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchCompanySubdomain(companyId: string): Promise<string | null> {
-  try {
-    const { data } = await supabase
-      .from("companies")
-      .select("subdomain")
-      .eq("id", companyId)
-      .maybeSingle();
-
-    return data?.subdomain ?? null;
   } catch {
     return null;
   }
@@ -73,30 +62,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     void init();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<LoginResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) {
-      throw new Error("Invalid email or password");
+
+    if (error || !data.user) {
+      return "invalid_credentials";
     }
 
     const profile = data.user ? await fetchProfile(data.user.id) : null;
-    setUser(profile);
 
-    if (profile?.role !== "PLATFORM_ADMIN" && profile?.company_id) {
-      const subdomain = await fetchCompanySubdomain(profile.company_id);
-      const tenantDashboardUrl =
-        subdomain && buildTenantRedirectUrl(window.location.href, subdomain);
+    const currentUrl = new URL(window.location.href);
+    const hostMode = getHostAccessMode(currentUrl.hostname);
+    const tenantSubdomain = extractTenantSubdomain(currentUrl.hostname);
 
-      if (tenantDashboardUrl) {
-        window.location.href = tenantDashboardUrl;
-        return;
+    if (hostMode === "tenant" && tenantSubdomain) {
+      const company = await fetchTenantCompanyBySubdomain(tenantSubdomain);
+
+      if (!company || profile?.company_id !== company.id) {
+        await supabase.auth.signOut();
+        setUser(null);
+        return "wrong_tenant";
       }
     }
 
-    window.location.href = "/dashboard";
+    setUser(profile);
+    return "success";
   };
 
   const logout = async () => {

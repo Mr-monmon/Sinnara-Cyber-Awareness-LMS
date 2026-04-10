@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 
 const initialForm = {
   currentPassword: "",
@@ -90,8 +91,11 @@ const AccountSettings = () => {
 
       setFormData(initialForm);
       alert("Password updated successfully. Please sign in again.");
-      logout();
-      window.location.href = "/login";
+      await logout();
+      window.location.href = buildSameHostRedirectUrl(
+        window.location.href,
+        "/login"
+      );
       return;
     } catch (submitError) {
       console.error("Error updating password:", submitError);
