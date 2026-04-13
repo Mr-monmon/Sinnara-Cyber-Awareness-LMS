@@ -2,23 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Award, Plus, Edit2, Trash2, Eye } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { CertificateTemplate } from '../../lib/types';
 
-interface CertificateTemplate {
-  id: string;
-  name: string;
-  course_id: string | null;
-  courses?: { title: string };
-  template_html: string;
-  background_image_url: string | null;
-  logo_url: string | null;
-  signature_image_url: string | null;
-  created_at: string;
-}
-
-interface Course {
-  id: string;
-  title: string;
-}
 
 const DEFAULT_TEMPLATE = `
 <div style="width: 800px; height: 600px; padding: 60px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-family: 'Arial', sans-serif; position: relative; border: 10px solid gold;">
@@ -41,16 +26,37 @@ const DEFAULT_TEMPLATE = `
 </div>
 `;
 
+const buildPreviewDocument = (content: string) => `
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      body {
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>${content}</body>
+</html>
+`;
+
 export const CertificateTemplatesPage: React.FC = () => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<CertificateTemplate[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CertificateTemplate | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    course_id: '',
     template_html: DEFAULT_TEMPLATE,
     background_image_url: '',
     logo_url: '',
@@ -59,25 +65,15 @@ export const CertificateTemplatesPage: React.FC = () => {
 
   useEffect(() => {
     loadTemplates();
-    loadCourses();
   }, []);
 
   const loadTemplates = async () => {
     const { data } = await supabase
       .from('certificate_templates')
-      .select('*, courses(title)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (data) setTemplates(data);
-  };
-
-  const loadCourses = async () => {
-    const { data } = await supabase
-      .from('courses')
-      .select('id, title')
-      .order('title');
-
-    if (data) setCourses(data);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,7 +82,6 @@ export const CertificateTemplatesPage: React.FC = () => {
     try {
       const templateData = {
         ...formData,
-        course_id: formData.course_id || null,
         created_by: user?.id
       };
 
@@ -122,7 +117,6 @@ export const CertificateTemplatesPage: React.FC = () => {
     setSelectedTemplate(template);
     setFormData({
       name: template.name,
-      course_id: template.course_id || '',
       template_html: template.template_html,
       background_image_url: template.background_image_url || '',
       logo_url: template.logo_url || '',
@@ -134,7 +128,6 @@ export const CertificateTemplatesPage: React.FC = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      course_id: '',
       template_html: DEFAULT_TEMPLATE,
       background_image_url: '',
       logo_url: '',
@@ -142,10 +135,10 @@ export const CertificateTemplatesPage: React.FC = () => {
     });
   };
 
-  const getPreviewHtml = () => {
-    return formData.template_html
+  const getPreviewHtml = (templateHtml: string) => {
+    return templateHtml
       .replace(/\{\{employee_name\}\}/g, 'أحمد محمد')
-      .replace(/\{\{course_name\}\}/g, 'الأمن السيبراني المتقدم')
+      .replace(/\{\{course_name\}\}/g, 'اسم الدورة')
       .replace(/\{\{completion_date\}\}/g, new Date().toLocaleDateString('ar'))
       .replace(/\{\{score\}\}/g, '95');
   };
@@ -160,7 +153,7 @@ export const CertificateTemplatesPage: React.FC = () => {
         <button
           onClick={() => {
             setSelectedTemplate(null);
-            resetForm();
+            resetForm();  
             setShowModal(true);
           }}
           className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -178,25 +171,34 @@ export const CertificateTemplatesPage: React.FC = () => {
                 <Award className="h-8 w-8" />
                 <div>
                   <h3 className="font-bold text-lg">{template.name}</h3>
-                  {template.courses && (
-                    <p className="text-amber-100 text-sm">{template.courses.title}</p>
-                  )}
                 </div>
               </div>
             </div>
 
             <div className="p-4">
-              <div className="mb-4 bg-slate-50 rounded-lg p-3 text-center text-sm text-slate-600">
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: template.template_html
-                      .replace(/\{\{employee_name\}\}/g, 'اسم الموظف')
-                      .replace(/\{\{course_name\}\}/g, template.courses?.title || 'اسم الدورة')
-                      .replace(/\{\{completion_date\}\}/g, 'التاريخ')
-                      .replace(/\{\{score\}\}/g, '95')
-                  }}
-                  style={{ transform: 'scale(0.2)', transformOrigin: 'top left', height: '120px', overflow: 'hidden' }}
-                />
+              <div className="mb-4 bg-slate-50 rounded-lg p-3 text-center text-sm text-slate-600 overflow-hidden">
+                <div style={{ height: '120px', overflow: 'hidden' }}>
+                  <iframe
+                    title={`${template.name} preview`}
+                    srcDoc={buildPreviewDocument(
+                      template.template_html
+                        .replace(/\{\{employee_name\}\}/g, 'اسم الموظف')
+                        .replace(/\{\{course_name\}\}/g, 'اسم الدورة')
+                        .replace(/\{\{completion_date\}\}/g, 'التاريخ')
+                        .replace(/\{\{score\}\}/g, '95')
+                    )}
+                    sandbox=""
+                    style={{
+                      width: '800px',
+                      height: '600px',
+                      border: '0',
+                      display: 'block',
+                      pointerEvents: 'none',
+                      transform: 'scale(0.2)',
+                      transformOrigin: 'top left'
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -205,7 +207,6 @@ export const CertificateTemplatesPage: React.FC = () => {
                     setSelectedTemplate(template);
                     setFormData({
                       name: template.name,
-                      course_id: template.course_id || '',
                       template_html: template.template_html,
                       background_image_url: template.background_image_url || '',
                       logo_url: template.logo_url || '',
@@ -250,13 +251,15 @@ export const CertificateTemplatesPage: React.FC = () => {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-6 my-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              {selectedTemplate ? 'Edit Template' : 'Certificate Template'}
-            </h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+            <div className="px-6 pt-6 pb-4 border-b border-slate-200 bg-white">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {selectedTemplate ? 'Edit Template' : 'Certificate Template'}
+              </h2>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -269,22 +272,6 @@ export const CertificateTemplatesPage: React.FC = () => {
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Course (optional)
-                  </label>
-                  <select
-                    value={formData.course_id}
-                    onChange={(e) => setFormData({ ...formData, course_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">General for all courses</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.id}>{course.title}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
@@ -347,11 +334,22 @@ export const CertificateTemplatesPage: React.FC = () => {
 
               <div className="bg-slate-50 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Preview:</h3>
-                <div
-                  dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
-                  className="bg-white rounded-lg overflow-hidden"
-                  style={{ transform: 'scale(0.5)', transformOrigin: 'top left', height: '300px' }}
-                />
+                <div className="bg-white rounded-lg overflow-hidden" style={{ height: '300px' }}>
+                  <iframe
+                    title="Certificate editor preview"
+                    srcDoc={buildPreviewDocument(getPreviewHtml(formData.template_html))}
+                    sandbox=""
+                    style={{
+                      width: '800px',
+                      height: '600px',
+                      border: '0',
+                      display: 'block',
+                      pointerEvents: 'none',
+                      transform: 'scale(0.5)',
+                      transformOrigin: 'top left'
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -389,10 +387,15 @@ export const CertificateTemplatesPage: React.FC = () => {
                 Close
               </button>
             </div>
-            <div
-              dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
-              className="flex items-center justify-center"
-            />
+            <div className="bg-slate-50 rounded-lg overflow-auto p-4">
+              <iframe
+                title="Certificate full preview"
+                srcDoc={buildPreviewDocument(getPreviewHtml(formData.template_html))}
+                sandbox=""
+                className="mx-auto block bg-white"
+                style={{ width: '800px', height: '600px', border: '0' }}
+              />
+            </div>
           </div>
         </div>
       )}

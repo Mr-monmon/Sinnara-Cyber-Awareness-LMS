@@ -8,7 +8,7 @@ import {
   Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { Course, EmployeeCourse } from "../../lib/types";
+import { CertificateTemplate, Course, EmployeeCourse } from "../../lib/types";
 import { CourseContentManager } from "./CourseContentManager";
 
 export const CoursesPage: React.FC = () => {
@@ -17,30 +17,33 @@ export const CoursesPage: React.FC = () => {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [managingCourse, setManagingCourse] = useState<Course | null>(null);
   const [employeeCourses, setEmployeeCourses] = useState<EmployeeCourse[]>([]);
+  const [certificateTemplates, setCertificateTemplates] = useState<CertificateTemplate[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     content_type: "TEXT" as "VIDEO" | "SLIDES" | "TEXT",
     duration_minutes: 30,
     order_index: 0,
+    certificate_id: "",
   });
 
   useEffect(() => {
     loadCourses();
     loadEmployeeCourses();
+    loadCertificateTemplates();
   }, []);
 
   const loadCourses = async () => {
     const { data } = await supabase
       .from("courses")
-      .select("*")
+      .select("*, certificate_templates(id,name)")
       .order("order_index");
 
     if (data) setCourses(data);
   };
 
   const loadEmployeeCourses = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
     .from("employee_courses")
     .select(`
       *,
@@ -59,19 +62,32 @@ export const CoursesPage: React.FC = () => {
     if (data) setEmployeeCourses(data as unknown as EmployeeCourse[]);
   };
 
+  const loadCertificateTemplates = async () => {
+    const { data } = await supabase
+      .from("certificate_templates")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (data) setCertificateTemplates(data as unknown as CertificateTemplate[]);
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
+      const coursePayload = {
+        ...formData,
+        certificate_id: formData.certificate_id || null,
+      };
+
       if (editingCourse) {
         const { error } = await supabase
           .from("courses")
-          .update(formData)
+          .update(coursePayload)
           .eq("id", editingCourse.id);
 
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("courses").insert([formData]);
+        const { error } = await supabase.from("courses").insert([coursePayload]);
 
         if (error) throw error;
       }
@@ -84,6 +100,7 @@ export const CoursesPage: React.FC = () => {
         content_type: "TEXT",
         duration_minutes: 30,
         order_index: 0,
+        certificate_id: "",
       });
       await loadCourses();
     } catch (error) {
@@ -100,6 +117,7 @@ export const CoursesPage: React.FC = () => {
       content_type: course.content_type,
       duration_minutes: course.duration_minutes,
       order_index: course.order_index,
+      certificate_id: course.certificate_id || "",
     });
     setShowModal(true);
   };
@@ -202,6 +220,7 @@ export const CoursesPage: React.FC = () => {
               content_type: "TEXT",
               duration_minutes: 30,
               order_index: courses.length,
+              certificate_id: "",
             });
             setShowModal(true);
           }}
@@ -359,6 +378,29 @@ export const CoursesPage: React.FC = () => {
                   }
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Certificate Template
+                </label>
+                <select
+                  value={formData.certificate_id}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      certificate_id: e.target.value,
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No certificate template</option>
+                  {certificateTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">

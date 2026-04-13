@@ -129,7 +129,7 @@ export const CompanyDashboard = () => {
     try {
       const { data: company } = await supabase
         .from("companies")
-        .select("id , name, is_active")
+        .select("id , name, is_active, subdomain")
         .eq("id", user.company_id)
         .single();
       setCompany(company);

@@ -42,6 +42,11 @@ export interface Course {
   duration_minutes: number;
   order_index: number;
   created_at: string;
+  certificate_id: string | null;
+  certificate_templates:{
+    id: string;
+    name: string;
+  }
 }
 
 export interface CourseSection {
@@ -214,4 +219,14 @@ export interface EmployeeAvailableExam {
   attempts_used: number;
   has_passed: boolean;
   is_mandatory: boolean;
+}
+
+export interface CertificateTemplate {
+  id: string;
+  name: string;
+  template_html: string;
+  background_image_url: string | null;
+  logo_url: string | null;
+  signature_image_url: string | null;
+  created_at: string;
 }

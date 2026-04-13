@@ -134,9 +134,9 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({
             const totalSections = sections?.length || 0;
 
             const { data: completedSections } = await supabase
-              .from("employee_section_progress")
+              .from("course_section_progress")
               .select("section_id")
-              .eq("user_id", employeeId)
+              .eq("employee_id", employeeId)
               .eq("course_id", ec.course_id)
               .eq("completed", true);
 

@@ -107,6 +107,8 @@
       "active": "Active"
     },
     "download": "Download Certificate",
+    "downloading": "Generating PDF...",
+    "downloadFailed": "Failed to generate your certificate PDF. Please try again.",
     "empty": {
       "title": "No Certificates Yet",
       "description": "Complete your training courses and pass assessments to earn certificates. Certificates are automatically issued upon course completion.",
