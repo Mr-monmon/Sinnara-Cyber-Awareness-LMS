@@ -760,7 +760,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
-          background: "#edeef0",
+          background: "#12140a",
         }}
       >
         {/* Top bar */}
