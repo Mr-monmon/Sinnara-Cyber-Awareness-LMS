@@ -35,8 +35,8 @@ const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
   .aw-fa-card {
-    background: rgba(255,255,255,0.025);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: #1a1e0e;
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: 14px;
     overflow: hidden;
     transition: border-color 0.2s;
@@ -79,7 +79,7 @@ const STYLES = `
     padding: 3px 10px; border-radius: 9999px;
     font-size: 11px; font-weight: 500;
     background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
     color: #64748b;
   }
 
