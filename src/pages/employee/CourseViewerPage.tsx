@@ -20,7 +20,7 @@ const T = {
   accent:      '#c8ff00',
   accentDark:  '#12140a',
   white:       '#ffffff',
-  textBody:    '#94a3b8',
+  textBody:    '#ffffff',
   textLabel:   '#cbd5e1',
   textMuted:   '#64748b',
   border:      'rgba(255,255,255,0.09)',
