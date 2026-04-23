@@ -69,7 +69,7 @@ const STYLES = `
     padding: 13px 16px; border-radius: 10px; cursor: pointer;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.02);
-    font-family: 'Inter', sans-serif; font-size: 14px; color: #cbd5e1;
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #ffffff;
     transition: all 0.18s; text-align: left;
   }
   .aw-quiz-option:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.13); }
@@ -463,7 +463,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
             {/* ── ARTICLE ── */}
             {currentSection.section_type === "ARTICLE" && (
               <div style={{ padding: '24px' }}>
-                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20 }}>
+                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20, color: '#ffffff' }}>
                   <ArticlePreview html={currentSection.content} />
                 </div>
                 {!isSectionCompleted(currentSection.id) && (
