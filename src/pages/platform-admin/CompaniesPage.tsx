@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Building2, Settings, Shield } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { Company, Course, Exam } from '../../lib/types';
-import { CompanyFormModal } from '../../components/platform-admin/CompanyFormModal';
-import { useAuth } from '../../contexts/AuthContext';
-import { buildTenantRedirectUrl } from '../../lib/browserTenant';
+import React, { useState, useEffect } from "react";
+import { Plus, Edit2, Trash2, Building2, Settings, Shield } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { Company, Course, Exam } from "../../lib/types";
+import { CompanyFormModal } from "../../components/platform-admin/CompanyFormModal";
+import { useAuth } from "../../contexts/AuthContext";
+import { buildTenantRedirectUrl } from "../../lib/browserTenant";
 
 interface CompanyWithQuota extends Company {
   annual_quota?: number;
@@ -17,10 +17,12 @@ export const CompaniesPage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-  const [assigningCompany, setAssigningCompany] = useState<Company | null>(null);
+  const [assigningCompany, setAssigningCompany] = useState<Company | null>(
+    null
+  );
   const [editingQuota, setEditingQuota] = useState<string | null>(null);
   const [quotaValue, setQuotaValue] = useState<number>(4);
-  
+
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
@@ -33,9 +35,9 @@ export const CompaniesPage: React.FC = () => {
 
   const loadCompanies = async () => {
     const { data: companiesData } = await supabase
-      .from('companies')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .from("companies")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (companiesData) {
       const currentYear = new Date().getFullYear();
@@ -43,16 +45,16 @@ export const CompaniesPage: React.FC = () => {
       const companiesWithQuota = await Promise.all(
         companiesData.map(async (company) => {
           const { data: quota } = await supabase
-            .from('phishing_campaign_quotas')
-            .select('annual_quota, used_campaigns')
-            .eq('company_id', company.id)
-            .eq('quota_year', currentYear)
+            .from("phishing_campaign_quotas")
+            .select("annual_quota, used_campaigns")
+            .eq("company_id", company.id)
+            .eq("quota_year", currentYear)
             .maybeSingle();
 
           return {
             ...company,
             annual_quota: quota?.annual_quota || 4,
-            used_campaigns: quota?.used_campaigns || 0
+            used_campaigns: quota?.used_campaigns || 0,
           };
         })
       );
@@ -66,41 +68,39 @@ export const CompaniesPage: React.FC = () => {
       const currentYear = new Date().getFullYear();
 
       const { data: existingQuota } = await supabase
-        .from('phishing_campaign_quotas')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('quota_year', currentYear)
+        .from("phishing_campaign_quotas")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("quota_year", currentYear)
         .maybeSingle();
 
       if (existingQuota) {
         await supabase
-          .from('phishing_campaign_quotas')
+          .from("phishing_campaign_quotas")
           .update({ annual_quota: quotaValue })
-          .eq('id', existingQuota.id);
+          .eq("id", existingQuota.id);
       } else {
-        await supabase
-          .from('phishing_campaign_quotas')
-          .insert({
-            company_id: companyId,
-            annual_quota: quotaValue,
-            quota_year: currentYear,
-            used_campaigns: 0
-          });
+        await supabase.from("phishing_campaign_quotas").insert({
+          company_id: companyId,
+          annual_quota: quotaValue,
+          quota_year: currentYear,
+          used_campaigns: 0,
+        });
       }
 
       setEditingQuota(null);
       await loadCompanies();
-      alert('Campaign quota updated successfully!');
+      alert("Campaign quota updated successfully!");
     } catch (error) {
-      console.error('Error updating quota:', error);
-      alert('Failed to update campaign quota');
+      console.error("Error updating quota:", error);
+      alert("Failed to update campaign quota");
     }
   };
 
   const loadAllContent = async () => {
     const [coursesRes, examsRes] = await Promise.all([
-      supabase.from('courses').select('*').order('order_index'),
-      supabase.from('exams').select('*').order('created_at')
+      supabase.from("courses").select("*").order("order_index"),
+      supabase.from("exams").select("*").order("created_at"),
     ]);
 
     if (coursesRes.data) setAllCourses(coursesRes.data);
@@ -111,35 +111,37 @@ export const CompaniesPage: React.FC = () => {
     try {
       if (editingCompany) {
         const { error: companyError } = await supabase
-          .from('companies')
+          .from("companies")
           .update(formData)
-          .eq('id', editingCompany.id);
+          .eq("id", editingCompany.id);
 
         if (companyError) throw companyError;
 
         const { error: userError } = await supabase
-          .from('users')
+          .from("users")
           .update({
             full_name: formData.admin_name,
-            phone: formData.admin_phone
+            phone: formData.admin_phone,
           })
-          .eq('company_id', editingCompany.id)
-          .eq('role', 'COMPANY_ADMIN');
+          .eq("company_id", editingCompany.id)
+          .eq("role", "COMPANY_ADMIN");
 
         if (userError) throw userError;
 
-        await supabase.from('audit_logs').insert([{
-          user_id: user?.id,
-          action_type: 'UPDATE_COMPANY',
-          entity_type: 'COMPANY',
-          entity_id: editingCompany.id,
-          entity_name: formData.name,
-          description: `Update company: ${formData.name}`,
-          new_value: formData
-        }]);
+        await supabase.from("audit_logs").insert([
+          {
+            user_id: user?.id,
+            action_type: "UPDATE_COMPANY",
+            entity_type: "COMPANY",
+            entity_id: editingCompany.id,
+            entity_name: formData.name,
+            description: `Update company: ${formData.name}`,
+            new_value: formData,
+          },
+        ]);
       } else {
         const { data: newCompany, error: companyError } = await supabase
-          .from('companies')
+          .from("companies")
           .insert([formData])
           .select()
           .single();
@@ -147,57 +149,70 @@ export const CompaniesPage: React.FC = () => {
         if (companyError) throw companyError;
 
         const { data: adminResult, error: adminError } =
-          await supabase.functions.invoke('user-admin', {
+          await supabase.functions.invoke("user-admin", {
             body: {
-              action: 'createUser',
+              action: "createUser",
               email: formData.admin_email,
-              password: 'Admin123!',
+              password: "Admin123!",
               full_name: formData.admin_name,
               phone: formData.admin_phone || null,
-              role: 'COMPANY_ADMIN',
+              role: "COMPANY_ADMIN",
               company_id: newCompany.id,
             },
           });
 
         if (adminError || !adminResult?.success)
-          throw new Error(adminResult?.error || 'Failed to create company admin');
+          throw new Error(
+            adminResult?.error || "Failed to create company admin"
+          );
 
-        await supabase.from('subscriptions').insert([{
-          company_id: newCompany.id,
-          subscription_type: formData.subscription_type,
-          start_date: formData.subscription_start,
-          end_date: formData.subscription_end,
-          license_count: formData.license_limit,
-          status: formData.is_active ? 'ACTIVE' : 'PENDING'
-        }]);
+        await supabase.from("subscriptions").insert([
+          {
+            company_id: newCompany.id,
+            subscription_type: formData.subscription_type,
+            start_date: formData.subscription_start,
+            end_date: formData.subscription_end,
+            license_count: formData.license_limit,
+            status: formData.is_active ? "ACTIVE" : "PENDING",
+          },
+        ]);
 
-        await supabase.from('audit_logs').insert([{
-          user_id: user?.id,
-          action_type: 'CREATE_COMPANY',
-          entity_type: 'COMPANY',
-          entity_id: newCompany.id,
-          entity_name: formData.name,
-          description: `Create new company: ${formData.name}`,
-          new_value: formData
-        }]);
+        await supabase.from("audit_logs").insert([
+          {
+            user_id: user?.id,
+            action_type: "CREATE_COMPANY",
+            entity_type: "COMPANY",
+            entity_id: newCompany.id,
+            entity_name: formData.name,
+            description: `Create new company: ${formData.name}`,
+            new_value: formData,
+          },
+        ]);
 
         const loginUrl = newCompany.subdomain
-          ? buildTenantRedirectUrl(window.location.href, newCompany.subdomain, '/login')
+          ? buildTenantRedirectUrl(
+              window.location.href,
+              newCompany.subdomain,
+              "/login"
+            )
           : null;
 
-
-        await supabase.functions.invoke('send-email', {
+        await supabase.functions.invoke("send-email", {
           body: {
             to: formData.admin_email,
-            subject: 'Welcome to Awareone',
+            subject: "Welcome to Awareone",
             html: `
               <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
                 <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
                   <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
                     <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
-                    <h1 style="margin:0; font-size:28px; line-height:1.3;">Welcome aboard, ${formData.admin_name}</h1>
+                    <h1 style="margin:0; font-size:28px; line-height:1.3;">Welcome aboard, ${
+                      formData.admin_name
+                    }</h1>
                     <p style="margin:12px 0 0; font-size:15px; line-height:1.7; color:#cbd5e1;">
-                      Your company workspace for <strong>${formData.name}</strong> is ready.
+                      Your company workspace for <strong>${
+                        formData.name
+                      }</strong> is ready.
                     </p>
                   </div>
 
@@ -210,12 +225,16 @@ export const CompaniesPage: React.FC = () => {
                       <p style="margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#c8ff00;">
                         Account Details
                       </p>
-                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${formData.admin_email}</p>
+                      <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${
+                        formData.admin_email
+                      }</p>
                       <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> Admin123!</p>
                       <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> Company Admin</p>
                     </div>
 
-                    ${loginUrl ? `
+                    ${
+                      loginUrl
+                        ? `
                     <div style="margin:24px 0;">
                       <a
                         href="${loginUrl}"
@@ -227,7 +246,9 @@ export const CompaniesPage: React.FC = () => {
                         Website link: <a href="${loginUrl}" style="color:#c8ff00; text-decoration:none;">${loginUrl}</a>
                       </p>
                     </div>
-                    ` : ''}
+                    `
+                        : ""
+                    }
 
                     <div style="margin:24px 0; padding:18px 20px; background:rgba(255,255,255,0.03); border-left:4px solid #c8ff00; border-radius:10px;">
                       <p style="margin:0; font-size:14px; line-height:1.7; color:#cbd5e1;">
@@ -241,18 +262,24 @@ export const CompaniesPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-            `
-          }
+            `,
+          },
         });
       }
 
       setShowModal(false);
       setEditingCompany(null);
       await loadCompanies();
-      alert(editingCompany ? 'Company updated successfully' : 'Company created successfully!\nEmail: ' + formData.admin_email + '\nPassword: Admin123!');
+      alert(
+        editingCompany
+          ? "Company updated successfully"
+          : "Company created successfully!\nEmail: " +
+              formData.admin_email +
+              "\nPassword: Admin123!"
+      );
     } catch (error) {
-      console.error('Error saving company:', error);
-      alert('Failed to save company: ' + (error as any).message);
+      console.error("Error saving company:", error);
+      alert("Failed to save company: " + (error as any).message);
     }
   };
 
@@ -262,17 +289,44 @@ export const CompaniesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this company? All associated users will be deleted.')) {
+    if (
+      !confirm(
+        "Are you sure you want to delete this company? All associated users will be deleted."
+      )
+    ) {
       return;
     }
 
     try {
-      const { error } = await supabase.from('companies').delete().eq('id', id);
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("company_id", id);
+
+      if (usersError) throw usersError;
+
+      if (usersData && usersData.length > 0) {
+        for (const user of usersData) {
+          const { data: deleteResult, error: deleteError } =
+            await supabase.functions.invoke("user-admin", {
+              body: {
+                action: "deleteUser",
+                userId: user.id,
+              },
+            });
+
+          if (deleteError || !deleteResult?.success) {
+            throw new Error(deleteResult?.error || "Failed to delete user");
+          }
+        }
+      }
+
+      const { error } = await supabase.from("companies").delete().eq("id", id);
       if (error) throw error;
       await loadCompanies();
     } catch (error) {
-      console.error('Error deleting company:', error);
-      alert('Failed to delete company');
+      console.error("Error deleting company:", error);
+      alert("Failed to delete company");
     }
   };
 
@@ -280,12 +334,18 @@ export const CompaniesPage: React.FC = () => {
     setAssigningCompany(company);
 
     const [coursesRes, examsRes] = await Promise.all([
-      supabase.from('company_courses').select('course_id').eq('company_id', company.id),
-      supabase.from('company_exams').select('exam_id').eq('company_id', company.id)
+      supabase
+        .from("company_courses")
+        .select("course_id")
+        .eq("company_id", company.id),
+      supabase
+        .from("company_exams")
+        .select("exam_id")
+        .eq("company_id", company.id),
     ]);
 
-    setSelectedCourses(coursesRes.data?.map(c => c.course_id) || []);
-    setSelectedExams(examsRes.data?.map(e => e.exam_id) || []);
+    setSelectedCourses(coursesRes.data?.map((c) => c.course_id) || []);
+    setSelectedExams(examsRes.data?.map((e) => e.exam_id) || []);
     setShowAssignModal(true);
   };
 
@@ -293,33 +353,39 @@ export const CompaniesPage: React.FC = () => {
     if (!assigningCompany) return;
 
     try {
-      await supabase.from('company_courses').delete().eq('company_id', assigningCompany.id);
-      await supabase.from('company_exams').delete().eq('company_id', assigningCompany.id);
+      await supabase
+        .from("company_courses")
+        .delete()
+        .eq("company_id", assigningCompany.id);
+      await supabase
+        .from("company_exams")
+        .delete()
+        .eq("company_id", assigningCompany.id);
 
       if (selectedCourses.length > 0) {
-        await supabase.from('company_courses').insert(
-          selectedCourses.map(courseId => ({
+        await supabase.from("company_courses").insert(
+          selectedCourses.map((courseId) => ({
             company_id: assigningCompany.id,
-            course_id: courseId
+            course_id: courseId,
           }))
         );
       }
 
       if (selectedExams.length > 0) {
-        await supabase.from('company_exams').insert(
-          selectedExams.map(examId => ({
+        await supabase.from("company_exams").insert(
+          selectedExams.map((examId) => ({
             company_id: assigningCompany.id,
-            exam_id: examId
+            exam_id: examId,
           }))
         );
       }
 
       setShowAssignModal(false);
       setAssigningCompany(null);
-      alert('Assignments saved successfully');
+      alert("Assignments saved successfully");
     } catch (error) {
-      console.error('Error saving assignments:', error);
-      alert('Failed to save assignments');
+      console.error("Error saving assignments:", error);
+      alert("Failed to save assignments");
     }
   };
 
@@ -357,7 +423,7 @@ export const CompaniesPage: React.FC = () => {
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Campaign Quota
-              </th> 
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Created
               </th>
@@ -374,16 +440,22 @@ export const CompaniesPage: React.FC = () => {
                     <div className="p-2 bg-blue-50 rounded-lg">
                       <Building2 className="h-5 w-5 text-blue-600" />
                     </div>
-                    <span className="font-medium text-slate-900">{company.name}</span>
+                    <span className="font-medium text-slate-900">
+                      {company.name}
+                    </span>
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    company.package_type === 'TYPE_A'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {company.package_type === 'TYPE_A' ? 'Full Courses' : 'Exams Only'}
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      company.package_type === "TYPE_A"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}
+                  >
+                    {company.package_type === "TYPE_A"
+                      ? "Full Courses"
+                      : "Exams Only"}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-slate-900">
@@ -396,7 +468,9 @@ export const CompaniesPage: React.FC = () => {
                         type="number"
                         min="0"
                         value={quotaValue}
-                        onChange={(e) => setQuotaValue(parseInt(e.target.value) || 0)}
+                        onChange={(e) =>
+                          setQuotaValue(parseInt(e.target.value) || 0)
+                        }
                         className="w-20 px-2 py-1 border border-slate-300 rounded text-sm"
                         autoFocus
                       />
@@ -423,13 +497,16 @@ export const CompaniesPage: React.FC = () => {
                     >
                       <Shield className="h-4 w-4 text-slate-600" />
                       <span className="text-sm font-medium text-slate-900">
-                        {company.used_campaigns || 0} / {company.annual_quota || 4}
+                        {company.used_campaigns || 0} /{" "}
+                        {company.annual_quota || 4}
                       </span>
                     </button>
                   )}
                 </td>
                 <td className="px-6 py-4 text-slate-600">
-                  {company.created_at ? new Date(company.created_at).toLocaleDateString() : 'N/A'}
+                  {company.created_at
+                    ? new Date(company.created_at).toLocaleDateString()
+                    : "N/A"}
                 </td>
                 <td className="px-6 py-4 text-left">
                   <div className="flex items-center justify-start gap-2">
@@ -487,10 +564,15 @@ export const CompaniesPage: React.FC = () => {
 
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">Training Courses</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                  Training Courses
+                </h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {allCourses.map(course => (
-                    <label key={course.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
+                  {allCourses.map((course) => (
+                    <label
+                      key={course.id}
+                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    >
                       <input
                         type="checkbox"
                         checked={selectedCourses.includes(course.id)}
@@ -498,7 +580,9 @@ export const CompaniesPage: React.FC = () => {
                           if (e.target.checked) {
                             setSelectedCourses([...selectedCourses, course.id]);
                           } else {
-                            setSelectedCourses(selectedCourses.filter(id => id !== course.id));
+                            setSelectedCourses(
+                              selectedCourses.filter((id) => id !== course.id)
+                            );
                           }
                         }}
                         className="w-4 h-4 text-blue-600 rounded"
@@ -510,10 +594,15 @@ export const CompaniesPage: React.FC = () => {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">Exams</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                  Exams
+                </h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {allExams.map(exam => (
-                    <label key={exam.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer">
+                  {allExams.map((exam) => (
+                    <label
+                      key={exam.id}
+                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    >
                       <input
                         type="checkbox"
                         checked={selectedExams.includes(exam.id)}
@@ -521,7 +610,9 @@ export const CompaniesPage: React.FC = () => {
                           if (e.target.checked) {
                             setSelectedExams([...selectedExams, exam.id]);
                           } else {
-                            setSelectedExams(selectedExams.filter(id => id !== exam.id));
+                            setSelectedExams(
+                              selectedExams.filter((id) => id !== exam.id)
+                            );
                           }
                         }}
                         className="w-4 h-4 text-blue-600 rounded"
