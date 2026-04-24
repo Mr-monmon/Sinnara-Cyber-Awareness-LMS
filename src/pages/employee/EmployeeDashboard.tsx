@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   BookOpen, ClipboardCheck, Award, Shield,
-  TrendingUp, ChevronRight, AlertTriangle,
-  CheckCircle, BarChart2, Lock, Eye, Wifi,
-  Smartphone, Key, Globe, UserX, Bell,
+  TrendingUp, ChevronRight, CheckCircle, BarChart2,
+  Wifi, Smartphone, Key, Globe, UserX,
+  Bell, AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
@@ -36,231 +36,183 @@ const T = {
   green:       '#34d399',
   greenBg:     'rgba(52,211,153,0.08)',
   blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
   orange:      '#fb923c',
   orangeBg:    'rgba(251,146,60,0.08)',
   purple:      '#a78bfa',
   purpleBg:    'rgba(167,139,250,0.08)',
+  red:         '#f87171',
 } as const;
 
 /* ─────────────────────────────────────────
-   CSS
+   GLOBAL STYLES
 ───────────────────────────────────────── */
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
-  @keyframes aw-tip-fade-in  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:translateY(0); } }
-  @keyframes aw-tip-fade-out { from { opacity:1; transform:translateY(0);    } to { opacity:0; transform:translateY(-8px); } }
-  @keyframes aw-spin          { to { transform: rotate(360deg); } }
-  @keyframes aw-fade-up       { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes aw-bar-grow      { from { width:0%; } to { width:var(--bar-w); } }
-
-  .aw-tip-in  { animation: aw-tip-fade-in  0.45s ease both; }
-  .aw-tip-out { animation: aw-tip-fade-out 0.35s ease both; }
-  .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
-
-  .aw-quick-btn {
+  @keyframes aw-d-fade-in  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:translateY(0);     } }
+  @keyframes aw-d-fade-out { from { opacity:1; transform:translateY(0);    } to { opacity:0; transform:translateY(-8px); } }
+  @keyframes aw-d-fade-up  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0);     } }
+  .aw-d-tip-in  { animation: aw-d-fade-in  0.45s ease both; }
+  .aw-d-tip-out { animation: aw-d-fade-out 0.35s ease both; }
+  .aw-d-fade-up { animation: aw-d-fade-up  0.40s ease both; }
+  .aw-d-qbtn {
     width:100%; display:flex; align-items:center; justify-content:space-between;
-    padding:14px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.07);
-    background:rgba(255,255,255,0.03); cursor:pointer;
-    font-family:'Inter',sans-serif; transition:background 0.18s, border-color 0.18s, transform 0.15s;
-    text-align:left;
+    padding:13px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.03); cursor:pointer; font-family:'Inter',sans-serif;
+    text-align:left; transition:background 0.18s, border-color 0.18s, transform 0.15s;
   }
-  .aw-quick-btn:hover { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.13); transform:translateX(3px); }
-
-  .aw-bar-fill { height:100%; border-radius:9999px; animation: aw-bar-grow 0.8s ease both; }
+  .aw-d-qbtn:hover { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.13); transform:translateX(3px); }
 `;
-
-if (typeof document !== 'undefined' && !document.getElementById('aw-emp-dash-styles')) {
-  const tag = document.createElement('style');
-  tag.id = 'aw-emp-dash-styles';
-  tag.textContent = STYLES;
-  document.head.appendChild(tag);
+if (typeof document !== 'undefined' && !document.getElementById('aw-d-styles')) {
+  const s = document.createElement('style'); s.id = 'aw-d-styles'; s.textContent = STYLES; document.head.appendChild(s);
 }
 
 /* ─────────────────────────────────────────
    SECURITY TIPS
 ───────────────────────────────────────── */
 const TIPS = [
-  { icon: Key,        color: T.accent,  title: 'Never Share Your OTP', body: 'One-Time Passwords are confidential. No bank, government body, or colleague should ever ask for them.' },
-  { icon: Globe,      color: T.blue,    title: 'Verify Links Before Clicking', body: 'Always inspect URLs carefully. Attackers use lookalike domains like "arnazon.com" instead of "amazon.com".' },
-  { icon: Lock,       color: T.green,   title: 'Use Strong, Unique Passwords', body: 'Never reuse passwords across sites. Use a password manager to generate and store complex credentials.' },
-  { icon: Wifi,       color: T.purple,  title: 'Avoid Public Wi-Fi for Sensitive Tasks', body: 'Public networks can be monitored. Use a VPN or mobile data when accessing work systems remotely.' },
-  { icon: Smartphone, color: T.orange,  title: 'Enable Two-Factor Authentication', body: 'Add an extra layer of security to all your accounts. Even if your password leaks, attackers cannot log in.' },
-  { icon: Eye,        color: '#f87171', title: 'Be Aware of Shoulder Surfing', body: 'In public spaces, shield your screen and keyboard. Sensitive data can be stolen just by looking over your shoulder.' },
-  { icon: UserX,      color: T.accent,  title: 'Recognize Phishing Emails', body: 'Suspicious urgency, unknown senders, and unusual requests are red flags. When in doubt, report to IT.' },
-  { icon: Bell,       color: T.blue,    title: 'Report Suspicious Activity Immediately', body: 'If you receive an unusual login alert or suspect a breach, notify your security team without delay.' },
-  { icon: AlertTriangle, color: T.orange, title: 'Lock Your Screen When Away', body: 'Always lock your computer (Win+L or Cmd+Ctrl+Q) when stepping away, even for a few minutes.' },
+  { Icon: Key,           color: '#c8ff00', title: 'Never Share Your OTP',             body: 'One-Time Passwords are confidential. No bank, government body, or colleague should ever ask for them.' },
+  { Icon: Globe,         color: '#60a5fa', title: 'Verify Links Before Clicking',     body: 'Attackers use lookalike domains. Always inspect URLs carefully before clicking any link.' },
+  { Icon: Shield,        color: '#34d399', title: 'Use Strong Unique Passwords',      body: 'Never reuse passwords across sites. Use a password manager to generate complex credentials.' },
+  { Icon: Wifi,          color: '#a78bfa', title: 'Avoid Public Wi-Fi for Work',      body: 'Public networks can be monitored. Use a VPN or mobile data when accessing work systems.' },
+  { Icon: Smartphone,    color: '#fb923c', title: 'Enable Two-Factor Authentication', body: 'Even if your password leaks, attackers cannot log in without your second factor.' },
+  { Icon: UserX,         color: '#f87171', title: 'Beware of Shoulder Surfing',       body: 'In public spaces, shield your screen. Sensitive data can be stolen just by looking over your shoulder.' },
+  { Icon: Bell,          color: '#60a5fa', title: 'Report Suspicious Activity',       body: 'If you receive an unusual login alert or suspect a breach, notify your security team immediately.' },
+  { Icon: AlertTriangle, color: '#fb923c', title: 'Lock Your Screen When Away',       body: 'Always lock your computer when stepping away, even for a few minutes. Win+L or Cmd+Ctrl+Q.' },
+  { Icon: CheckCircle,   color: '#34d399', title: 'Recognize Phishing Emails',        body: 'Suspicious urgency, unknown senders, and unusual requests are red flags. When in doubt, report to IT.' },
 ];
 
-/* ─────────────────────────────────────────
-   SECURITY TIP CAROUSEL
-───────────────────────────────────────── */
-const SecurityTipCarousel: React.FC = () => {
-  const [current, setCurrent] = useState(0);
-  const [animClass, setAnimClass] = useState('aw-tip-in');
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+/* ── Tip carousel ── */
+const TipCarousel: React.FC = () => {
+  const [idx, setIdx]     = useState(0);
+  const [cls, setCls]     = useState('aw-d-tip-in');
+  const timer             = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const goTo = (index: number) => {
-    setAnimClass('aw-tip-out');
-    setTimeout(() => { setCurrent(index); setAnimClass('aw-tip-in'); }, 360);
+  const go = (next: number) => {
+    setCls('aw-d-tip-out');
+    setTimeout(() => { setIdx(next); setCls('aw-d-tip-in'); }, 370);
+  };
+
+  const reset = (next: number) => {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(() => go((next + 1) % TIPS.length), 5000);
   };
 
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      goTo((current + 1) % TIPS.length);
-    }, 5000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [current]);
+    reset(idx);
+    return () => { if (timer.current) clearInterval(timer.current); };
+  }, [idx]);
 
-  const tip = TIPS[current];
-  const Icon = tip.icon;
+  const tip = TIPS[idx];
+  const TipIcon = tip.Icon;
 
   return (
-    <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px', overflow: 'hidden', position: 'relative' }}>
-      {/* Header */}
+    <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Shield size={14} style={{ color: T.accent }} />
+        <Shield size={13} style={{ color: T.accent }} />
         <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Security Tip</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{current + 1} / {TIPS.length}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{idx + 1} / {TIPS.length}</span>
       </div>
 
-      {/* Tip content */}
-      <div className={animClass} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: `${tip.color}14`, border: `1px solid ${tip.color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon size={18} style={{ color: tip.color }} />
+      <div className={cls} style={{ display: 'flex', gap: 13, alignItems: 'flex-start', minHeight: 70 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: tip.color + '14', border: '1px solid ' + tip.color + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TipIcon size={16} style={{ color: tip.color }} />
         </div>
         <div>
-          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.white, margin: '0 0 5px' }}>{tip.title}</h4>
-          <p style={{ fontSize: 13, color: T.textBody, lineHeight: '20px', margin: 0 }}>{tip.body}</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 4px' }}>{tip.title}</p>
+          <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: '19px', margin: 0 }}>{tip.body}</p>
         </div>
       </div>
 
-      {/* Dots */}
-      <div style={{ display: 'flex', gap: 5, marginTop: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 4, marginTop: 14, flexWrap: 'wrap' }}>
         {TIPS.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => { if (timerRef.current) clearInterval(timerRef.current); goTo(i); }}
-            style={{
-              width: i === current ? 20 : 6, height: 6, borderRadius: 9999,
-              background: i === current ? T.accent : 'rgba(255,255,255,0.15)',
-              border: 'none', cursor: 'pointer', padding: 0,
-              transition: 'width 0.3s, background 0.3s',
-            }}
-          />
+          <button key={i} onClick={() => { reset(i); go(i); }} style={{
+            width: i === idx ? 18 : 6, height: 6, borderRadius: 9999, border: 'none', cursor: 'pointer', padding: 0,
+            background: i === idx ? T.accent : 'rgba(255,255,255,0.15)',
+            transition: 'width 0.3s, background 0.3s',
+          }} />
         ))}
       </div>
     </div>
   );
 };
 
-/* ─────────────────────────────────────────
-   MINI BAR CHART
-───────────────────────────────────────── */
-const MiniBarChart: React.FC<{ completed: number; total: number; label: string }> = ({ completed, total, label }) => {
+/* ── Bar chart ── */
+const BarChart: React.FC<{ completed: number; total: number }> = ({ completed, total }) => {
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const bars = [
-    { label: 'Completed', value: completed, color: T.green  },
-    { label: 'Remaining', value: total - completed, color: 'rgba(255,255,255,0.08)' },
-  ];
-  return (
-    <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <BarChart2 size={14} style={{ color: T.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>{label}</span>
-      </div>
-
-      {/* Big percent */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 16 }}>
-        <span style={{ fontSize: 36, fontWeight: 900, color: T.white, lineHeight: 1 }}>{pct}%</span>
-        <span style={{ fontSize: 13, color: T.textMuted, marginBottom: 4 }}>completion</span>
-      </div>
-
-      {/* Stacked bar */}
-      <div style={{ height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden', marginBottom: 14 }}>
-        <div
-          className="aw-bar-fill"
-          style={{
-            '--bar-w': `${pct}%`,
-            width: `${pct}%`,
-            background: `linear-gradient(90deg, ${T.green}, rgba(52,211,153,0.60))`,
-            boxShadow: '0 0 10px rgba(52,211,153,0.35)',
-          } as React.CSSProperties}
-        />
-      </div>
-
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16 }}>
-        {bars.map(b => (
-          <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textMuted }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: b.color }} />
-            {b.label}: <strong style={{ color: T.textBody }}>{b.value}</strong>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
-   MINI PIE CHART (SVG)
-───────────────────────────────────────── */
-const MiniPieChart: React.FC<{ completed: number; inProgress: number; notStarted: number }> = ({ completed, inProgress, notStarted }) => {
-  const total = completed + inProgress + notStarted || 1;
-  const slices = [
-    { value: completed,  color: T.green,  label: 'Completed'   },
-    { value: inProgress, color: T.blue,   label: 'In Progress' },
-    { value: notStarted, color: 'rgba(255,255,255,0.12)', label: 'Not Started' },
-  ];
-
-  let cumAngle = -90;
-  const R = 44, cx = 60, cy = 60;
-
-  const polarToXY = (angleDeg: number, r: number) => {
-    const rad = (angleDeg * Math.PI) / 180;
-    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-  };
-
-  const paths = slices.map(s => {
-    const angle = (s.value / total) * 360;
-    const start = polarToXY(cumAngle, R);
-    const end   = polarToXY(cumAngle + angle, R);
-    const large = angle > 180 ? 1 : 0;
-    const path  = `M ${cx} ${cy} L ${start.x} ${start.y} A ${R} ${R} 0 ${large} 1 ${end.x} ${end.y} Z`;
-    cumAngle += angle;
-    return { ...s, path };
-  }).filter(s => s.value > 0);
-
   return (
     <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <TrendingUp size={14} style={{ color: T.accent }} />
+        <BarChart2 size={13} style={{ color: T.accent }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Course Completion</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 14 }}>
+        <span style={{ fontSize: 34, fontWeight: 900, color: T.white, lineHeight: 1 }}>{pct}%</span>
+        <span style={{ fontSize: 12, color: T.textMuted, marginBottom: 4 }}>completed</span>
+      </div>
+      {[
+        { label: 'Completed', value: completed, color: T.green, p: total > 0 ? (completed / total) * 100 : 0 },
+        { label: 'Remaining', value: total - completed, color: 'rgba(255,255,255,0.08)', p: total > 0 ? ((total - completed) / total) * 100 : 0 },
+      ].map(b => (
+        <div key={b.label} style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMuted, marginBottom: 5 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: b.color, display: 'inline-block' }} />
+              {b.label}
+            </span>
+            <span style={{ color: '#94a3b8', fontWeight: 600 }}>{b.value}</span>
+          </div>
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 9999, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: b.p + '%', background: b.color === T.green ? 'linear-gradient(90deg,#34d399,rgba(52,211,153,0.55))' : b.color, borderRadius: 9999, transition: 'width 0.8s ease' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Donut chart ── */
+const Donut: React.FC<{ completed: number; inProgress: number; notStarted: number }> = ({ completed, inProgress, notStarted }) => {
+  const total = Math.max(completed + inProgress + notStarted, 1);
+  const slices = [
+    { v: completed,   c: T.green,                  label: 'Completed'   },
+    { v: inProgress,  c: T.blue,                   label: 'In Progress' },
+    { v: notStarted,  c: 'rgba(255,255,255,0.10)', label: 'Not Started' },
+  ].filter(s => s.v > 0);
+  const R = 42; const cx = 58; const cy = 58;
+  const toXY = (deg: number) => ({ x: cx + R * Math.cos((deg * Math.PI) / 180), y: cy + R * Math.sin((deg * Math.PI) / 180) });
+  let cum = -90;
+  const paths = slices.map(s => {
+    const a = (s.v / total) * 360;
+    const p1 = toXY(cum); const p2 = toXY(cum + a - 0.5);
+    const d = `M ${cx} ${cy} L ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} A ${R} ${R} 0 ${a > 180 ? 1 : 0} 1 ${p2.x.toFixed(1)} ${p2.y.toFixed(1)} Z`;
+    cum += a;
+    return { ...s, d };
+  });
+  return (
+    <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <TrendingUp size={13} style={{ color: T.accent }} />
         <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Courses Breakdown</span>
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-        {/* SVG pie */}
-        <svg width={120} height={120} viewBox="0 0 120 120" style={{ flexShrink: 0 }}>
-          {paths.map((s, i) => (
-            <path key={i} d={s.path} fill={s.color} style={{ opacity: 0.90 }} />
-          ))}
-          {/* Center hole */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <svg width={116} height={116} viewBox="0 0 116 116" style={{ flexShrink: 0 }}>
+          {paths.map((s, i) => <path key={i} d={s.d} fill={s.c} />)}
           <circle cx={cx} cy={cy} r={26} fill={T.bgCard} />
-          {/* Center text */}
-          <text x={cx} y={cy - 5}  textAnchor="middle" fill={T.white}    fontSize="13" fontWeight="800" fontFamily="Inter">{total}</text>
-          <text x={cx} y={cy + 10} textAnchor="middle" fill={T.textMuted} fontSize="9"  fontFamily="Inter">total</text>
+          <text x={cx} y={cy - 5} textAnchor="middle" fill={T.white} fontSize="14" fontWeight="800" fontFamily="Inter,sans-serif">{total}</text>
+          <text x={cx} y={cy + 9} textAnchor="middle" fill={T.textMuted} fontSize="9" fontFamily="Inter,sans-serif">total</text>
         </svg>
-
-        {/* Legend */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
-          {slices.map(s => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
+          {[
+            { label: 'Completed',   value: completed,   color: T.green },
+            { label: 'In Progress', value: inProgress,  color: T.blue  },
+            { label: 'Not Started', value: notStarted,  color: 'rgba(255,255,255,0.20)' },
+          ].map(s => (
             <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.textMuted }}>
                 <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
                 {s.label}
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.textBody }}>{s.value}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>{s.value}</span>
             </div>
           ))}
         </div>
@@ -269,12 +221,10 @@ const MiniPieChart: React.FC<{ completed: number; inProgress: number; notStarted
   );
 };
 
-/* ─────────────────────────────────────────
-   STAT CARD
-───────────────────────────────────────── */
-const StatCard: React.FC<{ icon: React.ElementType; color: string; bg: string; label: string; value: number | string; delay?: string }> = ({ icon: Icon, color, bg, label, value, delay = '0s' }) => (
-  <div className="aw-fade-up" style={{ animationDelay: delay, padding: '18px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
-    <div style={{ width: 44, height: 44, borderRadius: 11, background: bg, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+/* ── Stat card ── */
+const Stat: React.FC<{ Icon: React.ElementType; color: string; bg: string; label: string; value: string | number; delay: string }> = ({ Icon, color, bg, label, value, delay }) => (
+  <div className="aw-d-fade-up" style={{ animationDelay: delay, padding: '18px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
+    <div style={{ width: 44, height: 44, borderRadius: 11, background: bg, border: '1px solid ' + color + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
       <Icon size={20} style={{ color }} />
     </div>
     <div>
@@ -285,9 +235,9 @@ const StatCard: React.FC<{ icon: React.ElementType; color: string; bg: string; l
 );
 
 /* ═══════════════════════════════════════════
-   MAIN COMPONENT
+   MAIN
 ═══════════════════════════════════════════ */
-export const EmployeeDashboard = () => {
+export const EmployeeDashboard: React.FC = () => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation("employee");
   const [activePage, setActivePage]       = useState("dashboard");
@@ -295,7 +245,7 @@ export const EmployeeDashboard = () => {
   const [assignedExams, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
   const [company, setCompany]             = useState<Company | null>(null);
   const [stats, setStats] = useState({ assignedCourses: 0, completedCourses: 0, inProgressCourses: 0, pendingExams: 0, certificates: 0 });
-  const [userRank, setUserRank]           = useState(0);
+  const [userRank, setUserRank] = useState(0);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
 
@@ -321,138 +271,110 @@ export const EmployeeDashboard = () => {
     if (!user?.id) return;
     try {
       const { data: courses } = await supabase.from("employee_courses").select("*").eq("employee_id", user.id);
-      const { data: certificates } = await supabase.from("exam_attempts").select("id").eq("employee_id", user.id).eq("passed", true);
-      const { data: userRankData } = await supabase.functions.invoke("get_user_rank", { method: "POST", body: { company_id: user.company_id, employee_id: user.id } });
-      setUserRank(userRankData?.index || 0);
+      const { data: certs }   = await supabase.from("exam_attempts").select("id").eq("employee_id", user.id).eq("passed", true);
+      const { data: rankData } = await supabase.functions.invoke("get_user_rank", { method: "POST", body: { company_id: user.company_id, employee_id: user.id } });
+      setUserRank(rankData?.index || 0);
       setStats({
-        assignedCourses:  courses?.length || 0,
-        completedCourses: courses?.filter(c => c.status === "COMPLETED").length || 0,
-        inProgressCourses: courses?.filter(c => c.status === "IN_PROGRESS").length || 0,
-        pendingExams:     assignedExams.length,
-        certificates:     certificates?.length || 0,
+        assignedCourses:   courses?.length || 0,
+        completedCourses:  courses?.filter((c: any) => c.status === "COMPLETED").length   || 0,
+        inProgressCourses: courses?.filter((c: any) => c.status === "IN_PROGRESS").length || 0,
+        pendingExams:      assignedExams.length,
+        certificates:      certs?.length || 0,
       });
       setIsLoading(false);
     } catch { setIsLoading(false); }
   };
 
-  /* ── Dashboard home ── */
   const renderDashboard = () => {
-    const notStarted = stats.assignedCourses - stats.completedCourses - stats.inProgressCourses;
+    const notStarted = Math.max(0, stats.assignedCourses - stats.completedCourses - stats.inProgressCourses);
+    const pct = stats.assignedCourses > 0 ? Math.round((stats.completedCourses / stats.assignedCourses) * 100) : 0;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'Inter',sans-serif" }}>
 
-        {/* ── Welcome header ── */}
-        <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+        {/* Header */}
+        <div className="aw-d-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 900, color: T.white, margin: '0 0 6px', letterSpacing: '-0.3px' }}>
-              {t("dashboard.title")} 👋
-            </h1>
-            <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>{t("dashboard.subtitle")}</p>
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, margin: '0 0 5px', letterSpacing: '-0.3px' }}>{t("dashboard.title")} 👋</h1>
+            <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>{t("dashboard.subtitle")}</p>
           </div>
-
-          {/* Rank badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: T.bgCard, border: `1px solid rgba(200,255,0,0.18)`, borderRadius: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(200,255,0,0.10)', border: '2px solid rgba(200,255,0,0.30)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: T.accent }}>{formatLocalizedNumber(userRank, currentLanguage)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', background: T.bgCard, border: '1px solid rgba(200,255,0,0.18)', borderRadius: 11 }}>
+            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(200,255,0,0.10)', border: '2px solid rgba(200,255,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 15, fontWeight: 900, color: T.accent }}>{formatLocalizedNumber(userRank, currentLanguage)}</span>
             </div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{t("dashboard.rankLabel")}</div>
-              <div style={{ fontSize: 12, color: T.textBody }}>{t("dashboard.rankHint")}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>{t("dashboard.rankHint")}</div>
             </div>
           </div>
         </div>
 
-        {/* ── Stat cards ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-          <StatCard icon={BookOpen}      color={T.accent}  bg="rgba(200,255,0,0.08)"  label={t("dashboard.stats.assignedCourses")}    value={formatLocalizedNumber(stats.assignedCourses,  currentLanguage)} delay="0.00s" />
-          <StatCard icon={CheckCircle}   color={T.green}   bg={T.greenBg}             label={t("dashboard.stats.completedCourses")}   value={formatLocalizedNumber(stats.completedCourses, currentLanguage)} delay="0.05s" />
-          <StatCard icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}            label={t("dashboard.stats.pendingAssessments")} value={formatLocalizedNumber(stats.pendingExams,     currentLanguage)} delay="0.10s" />
-          <StatCard icon={Award}          color={T.purple} bg={T.purpleBg}            label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 12 }}>
+          <Stat Icon={BookOpen}       color={T.accent} bg="rgba(200,255,0,0.08)" label={t("dashboard.stats.assignedCourses")}    value={formatLocalizedNumber(stats.assignedCourses,  currentLanguage)} delay="0.00s" />
+          <Stat Icon={CheckCircle}    color={T.green}  bg={T.greenBg}            label={t("dashboard.stats.completedCourses")}   value={formatLocalizedNumber(stats.completedCourses, currentLanguage)} delay="0.05s" />
+          <Stat Icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label={t("dashboard.stats.pendingAssessments")} value={formatLocalizedNumber(stats.pendingExams,     currentLanguage)} delay="0.10s" />
+          <Stat Icon={Award}          color={T.purple} bg={T.purpleBg}           label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
         </div>
 
-        {/* ── Charts + tips row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          <MiniBarChart completed={stats.completedCourses} total={stats.assignedCourses} label="Course Completion" />
-          <MiniPieChart completed={stats.completedCourses} inProgress={stats.inProgressCourses} notStarted={notStarted} />
-          <SecurityTipCarousel />
+        {/* Charts + tip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
+          <BarChart completed={stats.completedCourses} total={stats.assignedCourses} />
+          <Donut completed={stats.completedCourses} inProgress={stats.inProgressCourses} notStarted={notStarted} />
+          <TipCarousel />
         </div>
 
-        {/* ── Fraud alert widget ── */}
+        {/* Fraud alerts */}
         <FraudAlertWidget onNavigate={setActivePage} />
 
-        {/* ── Quick actions + Progress card ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        {/* Quick actions + progress */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14 }}>
 
-          {/* Quick actions */}
           <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: T.white, marginBottom: 14 }}>
-              {t("dashboard.quickActions.title")}
-            </p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 14px' }}>{t("dashboard.quickActions.title")}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { page: 'my-courses',    color: T.accent,  icon: BookOpen,       titleKey: 'dashboard.quickActions.continueLearning.title',  subtitleKey: 'dashboard.quickActions.continueLearning.subtitle'  },
-                { page: 'my-exams',      color: T.orange,  icon: ClipboardCheck, titleKey: 'dashboard.quickActions.takeAssessments.title',   subtitleKey: 'dashboard.quickActions.takeAssessments.subtitle'   },
-                { page: 'certificates',  color: T.purple,  icon: Award,          titleKey: 'dashboard.quickActions.viewCertificates.title',  subtitleKey: 'dashboard.quickActions.viewCertificates.subtitle'  },
-              ].map(({ page, color, icon: Icon, titleKey, subtitleKey }) => (
-                <button
-                  key={page}
-                  className="aw-quick-btn"
-                  onClick={() => setActivePage(page)}
-                  style={{ textAlign: isRtl ? 'right' : 'left' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}14`, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Icon size={15} style={{ color }} />
+              {([
+                ['my-courses',   T.accent, BookOpen,       'dashboard.quickActions.continueLearning.title',  'dashboard.quickActions.continueLearning.subtitle'  ],
+                ['my-exams',     T.orange, ClipboardCheck, 'dashboard.quickActions.takeAssessments.title',   'dashboard.quickActions.takeAssessments.subtitle'   ],
+                ['certificates', T.purple, Award,          'dashboard.quickActions.viewCertificates.title',  'dashboard.quickActions.viewCertificates.subtitle'  ],
+              ] as [string, string, React.ElementType, string, string][]).map(([page, color, Icon, tk, sk]) => (
+                <button key={page} className="aw-d-qbtn" onClick={() => setActivePage(page)} style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 7, background: color + '14', border: '1px solid ' + color + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon size={14} style={{ color }} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: T.white }}>{t(titleKey)}</div>
-                      <div style={{ fontSize: 11, color: T.textMuted }}>{t(subtitleKey)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.white }}>{t(tk)}</div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>{t(sk)}</div>
                     </div>
                   </div>
-                  <ChevronRight size={14} style={{ color: T.textMuted, flexShrink: 0 }} />
+                  <ChevronRight size={13} style={{ color: T.textMuted, flexShrink: 0 }} />
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Progress summary card */}
-          <div style={{ background: T.bgCard, border: `1px solid rgba(200,255,0,0.14)`, borderRadius: 14, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}>
-            <div aria-hidden="true" style={{ position: 'absolute', top: -40, right: -40, width: 150, height: 150, borderRadius: '50%', background: 'radial-gradient(circle, rgba(200,255,0,0.07), transparent 70%)', pointerEvents: 'none' }} />
-            <p style={{ fontSize: 13, fontWeight: 700, color: T.white, marginBottom: 18, position: 'relative' }}>
-              {t("dashboard.progressCard.title")}
-            </p>
+          <div style={{ background: T.bgCard, border: '1px solid rgba(200,255,0,0.14)', borderRadius: 14, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}>
+            <div aria-hidden="true" style={{ position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle,rgba(200,255,0,0.07),transparent 70%)', pointerEvents: 'none' }} />
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 16px', position: 'relative' }}>{t("dashboard.progressCard.title")}</p>
             <div style={{ position: 'relative' }}>
-              {/* Course completion bar */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.textBody, marginBottom: 7 }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 7 }}>
                   <span>{t("dashboard.progressCard.courseCompletion")}</span>
-                  <span style={{ color: T.accent, fontWeight: 700 }}>
-                    {stats.assignedCourses > 0 ? Math.round((stats.completedCourses / stats.assignedCourses) * 100) : 0}%
-                  </span>
+                  <span style={{ color: T.accent, fontWeight: 700 }}>{pct}%</span>
                 </div>
                 <div style={{ height: 7, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-                  <div
-                    className="aw-bar-fill"
-                    style={{
-                      '--bar-w': `${stats.assignedCourses > 0 ? (stats.completedCourses / stats.assignedCourses) * 100 : 0}%`,
-                      width: `${stats.assignedCourses > 0 ? (stats.completedCourses / stats.assignedCourses) * 100 : 0}%`,
-                      background: `linear-gradient(90deg, ${T.accent}, rgba(200,255,0,0.55))`,
-                      boxShadow: '0 0 10px rgba(200,255,0,0.30)',
-                    } as React.CSSProperties}
-                  />
+                  <div style={{ height: '100%', width: pct + '%', background: 'linear-gradient(90deg,#c8ff00,rgba(200,255,0,0.55))', borderRadius: 9999, boxShadow: '0 0 10px rgba(200,255,0,0.28)', transition: 'width 0.8s ease' }} />
                 </div>
               </div>
-
-              {/* Stats list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12, borderTop: 'rgba(255,255,255,0.05) 1px solid' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12, borderTop: `1px solid ${T.borderFaint}` }}>
                 {[
                   { label: t("dashboard.progressCard.completedCourses"), value: stats.completedCourses, color: T.green  },
                   { label: t("dashboard.progressCard.certificates"),      value: stats.certificates,     color: T.purple },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, color: T.textBody }}>{label}</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color }}>{formatLocalizedNumber(value, currentLanguage)}</span>
+                    <span style={{ fontSize: 13, color: '#94a3b8' }}>{label}</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color }}>{formatLocalizedNumber(value, currentLanguage)}</span>
                   </div>
                 ))}
               </div>
@@ -465,12 +387,12 @@ export const EmployeeDashboard = () => {
 
   const renderContent = () => {
     switch (activePage) {
-      case "my-courses":    return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
-      case "my-exams":      return <MyExamsPage onExamCompleted={() => { loadAssignedExams(); loadStats(); }} />;
-      case "fraud-alerts":  return <FraudAlertsPage />;
-      case "certificates":  return <CertificatesPage />;
-      case "account":       return <AccountSettings />;
-      default:              return renderDashboard();
+      case "my-courses":   return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
+      case "my-exams":     return <MyExamsPage onExamCompleted={() => { loadAssignedExams(); loadStats(); }} />;
+      case "fraud-alerts": return <FraudAlertsPage />;
+      case "certificates": return <CertificatesPage />;
+      case "account":      return <AccountSettings />;
+      default:             return renderDashboard();
     }
   };
 
@@ -479,13 +401,7 @@ export const EmployeeDashboard = () => {
       {isLoading ? (
         <LoadingScreen />
       ) : company?.is_active ? (
-        <DashboardLayout
-          activePage={activePage}
-          onNavigate={(page) => {
-            if (assignedExams.length > 0 && page !== "my-exams") return;
-            setActivePage(page);
-          }}
-        >
+        <DashboardLayout activePage={activePage} onNavigate={(page) => { if (assignedExams.length > 0 && page !== "my-exams") return; setActivePage(page); }}>
           {renderContent()}
         </DashboardLayout>
       ) : (
