@@ -1,533 +1,661 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Target, TrendingUp, AlertCircle, Plus, Download, Calendar, Users, MousePointerClick, Flag, KeyRound, BarChart3, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import {
+  Shield, Target, TrendingUp, AlertCircle, Plus, Download,
+  Calendar, Users, MousePointerClick, Flag, KeyRound,
+  BarChart3, Building2, ArrowUpRight, ArrowDownRight, ChevronDown,
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PhishingCampaignQuota, PhishingCampaign, PhishingCampaignRequest } from '../../lib/types';
 
-export const PhishingDashboardPage: React.FC = () => {
-  const { user } = useAuth();
-  const [quota, setQuota] = useState<PhishingCampaignQuota | null>(null);
-  const [campaigns, setCampaigns] = useState<PhishingCampaign[]>([]);
-  const [requests, setRequests] = useState<PhishingCampaignRequest[]>([]);
-  const [departmentStats, setDepartmentStats] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
+/* ─────────────────────────────────────────
+   TOKENS
+───────────────────────────────────────── */
+const T = {
+  bg:          '#12140a',
+  bgCard:      '#1a1e0e',
+  accent:      '#c8ff00',
+  accentDark:  '#12140a',
+  white:       '#ffffff',
+  textBody:    '#cbd5e1',
+  textMuted:   '#64748b',
+  border:      'rgba(255,255,255,0.09)',
+  borderFaint: 'rgba(255,255,255,0.05)',
+  green:       '#34d399',
+  greenBg:     'rgba(52,211,153,0.08)',
+  greenBorder: 'rgba(52,211,153,0.22)',
+  blue:        '#60a5fa',
+  blueBg:      'rgba(96,165,250,0.08)',
+  blueBorder:  'rgba(96,165,250,0.22)',
+  orange:      '#fb923c',
+  orangeBg:    'rgba(251,146,60,0.08)',
+  orangeBorder:'rgba(251,146,60,0.22)',
+  red:         '#f87171',
+  redBg:       'rgba(248,113,113,0.08)',
+  redBorder:   'rgba(248,113,113,0.22)',
+  purple:      '#a78bfa',
+  purpleBg:    'rgba(167,139,250,0.08)',
+} as const;
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [user]);
+/* ─────────────────────────────────────────
+   CSS
+───────────────────────────────────────── */
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-  const loadDashboardData = async () => {
-    if (!user?.company_id) return;
-
-    try {
-      const currentYear = new Date().getFullYear();
-
-      const [quotaRes, campaignsRes, requestsRes, deptsRes] = await Promise.all([
-        supabase
-          .from('phishing_campaign_quotas')
-          .select('*')
-          .eq('company_id', user.company_id)
-          .eq('quota_year', currentYear)
-          .maybeSingle(),
-        supabase
-          .from('phishing_campaigns')
-          .select('*')
-          .eq('company_id', user.company_id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('phishing_campaign_requests')
-          .select('*')
-          .eq('company_id', user.company_id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('departments')
-          .select('*')
-          .eq('company_id', user.company_id)
-          .order('name')
-      ]);
-
-      if (quotaRes.data) setQuota(quotaRes.data);
-      if (campaignsRes.data) setCampaigns(campaignsRes.data);
-      if (requestsRes.data) setRequests(requestsRes.data);
-      if (deptsRes.data) setDepartments(deptsRes.data);
-
-      if (campaignsRes.data && campaignsRes.data.length > 0) {
-        const latestCompletedCampaign = campaignsRes.data.find(c => c.status === 'COMPLETED');
-        if (latestCompletedCampaign) {
-          setSelectedCampaign(latestCompletedCampaign.id);
-          await loadDepartmentStats(latestCompletedCampaign.id);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadDepartmentStats = async (campaignId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('department_vulnerability_stats')
-        .select(`
-          *,
-          department:departments(name)
-        `)
-        .eq('campaign_id', campaignId)
-        .order('vulnerability_score', { ascending: false });
-
-      if (error) throw error;
-      if (data) setDepartmentStats(data);
-    } catch (error) {
-      console.error('Error loading department stats:', error);
-    }
-  };
-
-  const handleCampaignSelect = async (campaignId: string) => {
-    setSelectedCampaign(campaignId);
-    await loadDepartmentStats(campaignId);
-  };
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      DRAFT: 'bg-slate-100 text-slate-700',
-      SUBMITTED: 'bg-blue-100 text-blue-700',
-      APPROVED: 'bg-green-100 text-green-700',
-      RUNNING: 'bg-orange-100 text-orange-700',
-      COMPLETED: 'bg-purple-100 text-purple-700',
-      REJECTED: 'bg-red-100 text-red-700'
-    };
-    return colors[status] || 'bg-slate-100 text-slate-700';
-  };
-
-  const getVulnerabilityColor = (score: number) => {
-    if (score >= 76) return { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300', label: 'Critical' };
-    if (score >= 51) return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300', label: 'High Risk' };
-    if (score >= 26) return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300', label: 'Moderate' };
-    return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300', label: 'Low Risk' };
-  };
-
-  const exportToExcel = () => {
-    const csvData = campaigns.map(c => ({
-      'Campaign Name': c.campaign_name,
-      'Status': c.status,
-      'Launch Date': c.launch_date ? new Date(c.launch_date).toLocaleDateString() : 'N/A',
-      'Total Targets': c.total_targets,
-      'Emails Sent': c.emails_sent,
-      'Open Rate %': c.open_rate || 0,
-      'Click Rate %': c.click_rate || 0,
-      'Credential Rate %': c.credential_rate || 0,
-      'Reporting Rate %': c.reporting_rate || 0,
-      'Opened': c.emails_opened,
-      'Clicked': c.links_clicked,
-      'Credentials Entered': c.credentials_entered || 0,
-      'Reported': c.emails_reported
-    }));
-
-    const csv = [
-      Object.keys(csvData[0] || {}).join(','),
-      ...csvData.map(row => Object.values(row).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `phishing-campaigns-analytics-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+  .aw-ph-card {
+    background: #1a1e0e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+  }
+  .aw-ph-card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; color: #ffffff;
   }
 
-  const remainingQuota = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-  const completedCampaigns = campaigns.filter(c => c.status === 'COMPLETED');
+  /* ── Stat card ── */
+  .aw-ph-stat {
+    background: #1a1e0e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 18px 20px;
+    position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .aw-ph-stat:hover { border-color: rgba(255,255,255,0.14); transform: translateY(-1px); }
 
-  const avgClickRate = completedCampaigns.length > 0
-    ? (completedCampaigns.reduce((sum, c) => sum + (c.click_rate || 0), 0) / completedCampaigns.length).toFixed(1)
-    : '0';
+  /* ── Campaign row ── */
+  .aw-ph-camp-row {
+    padding: 14px 16px; border-radius: 10px;
+    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+    transition: background 0.18s, border-color 0.18s;
+    font-family: 'Inter', sans-serif;
+  }
+  .aw-ph-camp-row:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.09); }
 
-  const avgReportingRate = completedCampaigns.length > 0
-    ? (completedCampaigns.reduce((sum, c) => sum + (c.reporting_rate || 0), 0) / completedCampaigns.length).toFixed(1)
-    : '0';
+  /* ── Select ── */
+  .aw-ph-select {
+    padding: 8px 32px 8px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 9px; font-size: 13px; color: #ffffff;
+    font-family: 'Inter', sans-serif; outline: none; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    transition: border-color 0.2s;
+  }
+  .aw-ph-select:focus { border-color: rgba(200,255,0,0.45); }
+  .aw-ph-select option { background: #1a1e0e; }
 
-  const avgCredentialRate = completedCampaigns.length > 0
-    ? (completedCampaigns.reduce((sum, c) => sum + (c.credential_rate || 0), 0) / completedCampaigns.length).toFixed(1)
-    : '0';
+  /* ── Vuln badge ── */
+  .aw-vuln-badge {
+    display: inline-flex; padding: 3px 10px; border-radius: 9999px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  }
 
-  const selectedCampaignData = campaigns.find(c => c.id === selectedCampaign);
-  const previousCampaigns = completedCampaigns.slice(0, 5);
+  /* ── Download btn ── */
+  .aw-ph-dl-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 9px; cursor: pointer;
+    font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+    color: #94a3b8; transition: all 0.18s;
+  }
+  .aw-ph-dl-btn:hover { background: rgba(255,255,255,0.09); color: #ffffff; }
+
+  /* ── Primary btn ── */
+  .aw-ph-primary-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 9px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; font-family: 'Inter', sans-serif;
+    background: #c8ff00; color: #12140a;
+    box-shadow: 0 0 16px rgba(200,255,0,0.20);
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .aw-ph-primary-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .aw-ph-primary-btn:disabled { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.25); cursor: not-allowed; box-shadow: none; }
+
+  @keyframes aw-spin    { to { transform: rotate(360deg); } }
+  @keyframes aw-fade-up { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes aw-bar-in  { from { width:0%; } to { width:var(--w); } }
+  .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
+`;
+
+if (typeof document !== 'undefined' && !document.getElementById('aw-ph-styles')) {
+  const tag = document.createElement('style');
+  tag.id = 'aw-ph-styles';
+  tag.textContent = STYLES;
+  document.head.appendChild(tag);
+}
+
+/* ─────────────────────────────────────────
+   VULNERABILITY CONFIG
+───────────────────────────────────────── */
+const vulnConfig = (score: number) => {
+  if (score >= 76) return { color: T.red,    bg: T.redBg,    border: T.redBorder,    label: 'Critical'  };
+  if (score >= 51) return { color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'High Risk' };
+  if (score >= 26) return { color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.22)', label: 'Moderate' };
+  return { color: T.green, bg: T.greenBg, border: T.greenBorder, label: 'Low Risk' };
+};
+
+const statusConfig = (s: string) => {
+  const m: Record<string, { color: string; bg: string; border: string }> = {
+    DRAFT:     { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint },
+    SUBMITTED: { color: T.blue,   bg: T.blueBg,   border: T.blueBorder  },
+    APPROVED:  { color: T.green,  bg: T.greenBg,  border: T.greenBorder },
+    RUNNING:   { color: T.orange, bg: T.orangeBg, border: T.orangeBorder},
+    COMPLETED: { color: T.purple, bg: T.purpleBg, border: 'rgba(167,139,250,0.22)' },
+    REJECTED:  { color: T.red,    bg: T.redBg,    border: T.redBorder   },
+  };
+  return m[s] ?? m.DRAFT;
+};
+
+/* ─────────────────────────────────────────
+   RADAR CHART — Vulnerability by dept
+───────────────────────────────────────── */
+const RadarChart: React.FC<{ data: { label: string; score: number }[] }> = ({ data }) => {
+  if (!data.length) return null;
+  const N  = data.length;
+  const cx = 110; const cy = 110; const R = 80;
+  const levels = [20, 40, 60, 80, 100];
+  const angleStep = (2 * Math.PI) / N;
+  const toXY = (i: number, r: number) => ({
+    x: cx + r * Math.sin(i * angleStep),
+    y: cy - r * Math.cos(i * angleStep),
+  });
+
+  const dataPoints = data.map((d, i) => toXY(i, (d.score / 100) * R));
+  const polyline   = dataPoints.map(p => `${p.x},${p.y}`).join(' ');
+
+  return (
+    <svg width={220} height={220} viewBox="0 0 220 220" style={{ overflow: 'visible' }}>
+      {/* Grid circles */}
+      {levels.map(l => (
+        <polygon key={l}
+          points={Array.from({ length: N }, (_, i) => { const p = toXY(i, (l / 100) * R); return `${p.x},${p.y}`; }).join(' ')}
+          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1}
+        />
+      ))}
+      {/* Axes */}
+      {data.map((_, i) => {
+        const outer = toXY(i, R);
+        return <line key={i} x1={cx} y1={cy} x2={outer.x} y2={outer.y} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />;
+      })}
+      {/* Data polygon */}
+      <polygon points={polyline} fill="rgba(248,113,113,0.18)" stroke={T.red} strokeWidth={2} strokeLinejoin="round" />
+      {/* Dots */}
+      {dataPoints.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={4} fill={vulnConfig(data[i].score).color} stroke={T.bgCard} strokeWidth={2} />
+      ))}
+      {/* Labels */}
+      {data.map((d, i) => {
+        const label = toXY(i, R + 18);
+        return (
+          <text key={i} x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle"
+            fontSize={9} fontFamily="Inter" fill={T.textMuted} fontWeight="600">
+            {d.label.length > 10 ? d.label.slice(0, 10) + '…' : d.label}
+          </text>
+        );
+      })}
+      {/* Center label */}
+      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill={T.textMuted} fontFamily="Inter">Risk</text>
+    </svg>
+  );
+};
+
+/* ─────────────────────────────────────────
+   BAR CHART — campaign comparison
+───────────────────────────────────────── */
+const CampaignBarChart: React.FC<{ campaigns: PhishingCampaign[] }> = ({ campaigns }) => {
+  if (!campaigns.length) return (
+    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ fontSize: 13, color: T.textMuted }}>No completed campaigns</p>
+    </div>
+  );
+  const data = [...campaigns].slice(0, 5).reverse();
+  const maxVal = 100;
+  const W = 300; const H = 120; const BAR_W = 28; const GAP = 12;
+  const barX = (i: number) => (W - data.length * (BAR_W + GAP)) / 2 + i * (BAR_W + GAP);
+
+  const metrics = [
+    { key: 'click_rate',      color: T.red,    label: 'Click' },
+    { key: 'reporting_rate',  color: T.green,  label: 'Report' },
+    { key: 'credential_rate', color: T.orange, label: 'Cred' },
+  ] as const;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <svg width="100%" viewBox={`0 0 ${W} ${H + 40}`}>
+        {/* Grid */}
+        {[25, 50, 75, 100].map(v => {
+          const y = H - (v / maxVal) * H;
+          return <g key={v}>
+            <line x1={0} y1={y} x2={W} y2={y} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+            <text x={0} y={y + 4} fontSize={8} fill={T.textMuted} fontFamily="Inter">{v}%</text>
+          </g>;
+        })}
+        {/* Bars */}
+        {data.map((c, i) => {
+          const x = barX(i);
+          const miniW = BAR_W / 3;
+          return (
+            <g key={c.id}>
+              {metrics.map((m, mi) => {
+                const val = (c[m.key] || 0);
+                const bh  = (val / maxVal) * H;
+                return (
+                  <rect key={mi} x={x + mi * miniW} y={H - bh} width={miniW - 2} height={bh}
+                    fill={m.color} rx={2} opacity={0.85} />
+                );
+              })}
+              {/* Campaign label */}
+              <text x={x + BAR_W / 2} y={H + 14} textAnchor="middle" fontSize={8} fill={T.textMuted} fontFamily="Inter">
+                {c.campaign_name.slice(0, 8)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginTop: 4 }}>
+        {metrics.map(m => (
+          <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMuted }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: m.color }} />
+            {m.label} Rate
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────
+   TREND LINE CHART — click rate over time
+───────────────────────────────────────── */
+const TrendLine: React.FC<{ campaigns: PhishingCampaign[] }> = ({ campaigns }) => {
+  const data = [...campaigns].slice(0, 6).reverse();
+  if (data.length < 2) return (
+    <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ fontSize: 12, color: T.textMuted }}>Need 2+ campaigns for trend</p>
+    </div>
+  );
+
+  const W = 300; const H = 80; const PAD = 16;
+  const xStep = (W - PAD * 2) / (data.length - 1);
+  const toXY = (i: number, val: number) => ({ x: PAD + i * xStep, y: PAD + ((100 - val) / 100) * (H - PAD * 2) });
+
+  const clickPts  = data.map((c, i) => toXY(i, c.click_rate || 0));
+  const reportPts = data.map((c, i) => toXY(i, c.reporting_rate || 0));
+
+  const path = (pts: { x: number; y: number }[]) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H + 16}`}>
+      <path d={path(clickPts)}  fill="none" stroke={T.red}   strokeWidth={2} strokeLinecap="round" />
+      <path d={path(reportPts)} fill="none" stroke={T.green} strokeWidth={2} strokeLinecap="round" />
+      {clickPts.map((p, i)  => <circle key={`c${i}`} cx={p.x} cy={p.y} r={3} fill={T.red}   stroke={T.bgCard} strokeWidth={1.5} />)}
+      {reportPts.map((p, i) => <circle key={`r${i}`} cx={p.x} cy={p.y} r={3} fill={T.green} stroke={T.bgCard} strokeWidth={1.5} />)}
+      {data.map((_, i) => (
+        <text key={i} x={clickPts[i].x} y={H + 12} textAnchor="middle" fontSize={7} fill={T.textMuted} fontFamily="Inter">
+          C{i + 1}
+        </text>
+      ))}
+    </svg>
+  );
+};
+
+/* ─────────────────────────────────────────
+   METRIC MINI CARD
+───────────────────────────────────────── */
+const MetricCard: React.FC<{ icon: React.ElementType; color: string; bg: string; border: string; label: string; sub: string; value: string }> = ({
+  icon: Icon, color, bg, border, label, sub, value,
+}) => (
+  <div style={{ padding: '16px 18px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, position: 'relative', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${color}, ${color}40)` }} />
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ width: 38, height: 38, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={17} style={{ color }} />
+      </div>
+      <span style={{ fontSize: 26, fontWeight: 900, color: T.white }}>{value}</span>
+    </div>
+    <div style={{ fontSize: 13, fontWeight: 700, color: T.white, marginBottom: 2 }}>{label}</div>
+    <div style={{ fontSize: 11, color: T.textMuted }}>{sub}</div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════
+   COMPONENT
+═══════════════════════════════════════════ */
+export const PhishingDashboardPage: React.FC = () => {
+  const { user }    = useAuth();
+  const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
+  const [campaigns, setCampaigns]   = useState<PhishingCampaign[]>([]);
+  const [requests, setRequests]     = useState<PhishingCampaignRequest[]>([]);
+  const [deptStats, setDeptStats]   = useState<any[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
+
+  useEffect(() => { loadData(); }, [user]);
+
+  const loadData = async () => {
+    if (!user?.company_id) return;
+    try {
+      const year = new Date().getFullYear();
+      const [quotaRes, campRes, reqRes] = await Promise.all([
+        supabase.from('phishing_campaign_quotas').select('*').eq('company_id', user.company_id).eq('quota_year', year).maybeSingle(),
+        supabase.from('phishing_campaigns').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false }),
+        supabase.from('phishing_campaign_requests').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false }),
+      ]);
+      if (quotaRes.data) setQuota(quotaRes.data);
+      if (campRes.data)  setCampaigns(campRes.data);
+      if (reqRes.data)   setRequests(reqRes.data);
+      const latest = campRes.data?.find(c => c.status === 'COMPLETED');
+      if (latest) { setSelectedCampaign(latest.id); await loadDeptStats(latest.id); }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const loadDeptStats = async (campaignId: string) => {
+    const { data } = await supabase.from('department_vulnerability_stats')
+      .select('*, department:departments(name)').eq('campaign_id', campaignId)
+      .order('vulnerability_score', { ascending: false });
+    if (data) setDeptStats(data);
+  };
+
+  const handleSelectCampaign = async (id: string) => { setSelectedCampaign(id); await loadDeptStats(id); };
+
+  const exportCSV = () => {
+    const rows = campaigns.map(c => ({
+      'Campaign': c.campaign_name, 'Status': c.status,
+      'Launch Date': c.launch_date ? new Date(c.launch_date).toLocaleDateString() : 'N/A',
+      'Targets': c.total_targets, 'Sent': c.emails_sent,
+      'Open %': c.open_rate || 0, 'Click %': c.click_rate || 0,
+      'Cred %': c.credential_rate || 0, 'Report %': c.reporting_rate || 0,
+    }));
+    const csv = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `phishing-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+    </div>
+  );
+
+  const completedCampaigns  = campaigns.filter(c => c.status === 'COMPLETED');
+  const remainingQuota      = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
+  const avgClickRate        = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.click_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
+  const avgReportRate       = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.reporting_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
+  const avgCredRate         = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.credential_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
+  const selectedData        = campaigns.find(c => c.id === selectedCampaign);
+  const radarData           = deptStats.map(d => ({ label: d.department?.name || 'Dept', score: d.vulnerability_score }));
+
+  return (
+    <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Page header ── */}
+      <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Phishing Campaigns Dashboard</h1>
-          <p className="text-slate-600">Comprehensive analytics and department vulnerability analysis</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: T.redBg, border: `1px solid ${T.redBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Shield size={18} style={{ color: T.red }} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>
+              Phishing Campaigns
+            </h1>
+          </div>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+            Analytics and department vulnerability analysis.
+          </p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={exportToExcel}
-            className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Export Analytics
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="aw-ph-dl-btn" onClick={exportCSV}>
+            <Download size={14} /> Export Analytics
           </button>
-          <button
-            onClick={() => window.location.href = '/company/phishing-request'}
-            disabled={remainingQuota <= 0}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              remainingQuota > 0
-                ? 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white'
-                : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <Plus className="h-4 w-4" />
-            Create Campaign
+          <button className="aw-ph-primary-btn" disabled={remainingQuota <= 0}>
+            <Plus size={14} /> Create Campaign
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <Shield className="h-6 w-6 text-blue-600" />
-            </div>
-            <span className={`text-3xl font-bold ${remainingQuota > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-              {remainingQuota}
-            </span>
-          </div>
-          <div className="text-sm font-medium text-slate-600">Campaigns Remaining</div>
-          <div className="text-xs text-slate-500 mt-1">of {quota?.annual_quota || 0} annual quota</div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-3 bg-red-50 rounded-lg">
-              <MousePointerClick className="h-6 w-6 text-red-600" />
-            </div>
-            <span className="text-3xl font-bold text-red-600">{avgClickRate}%</span>
-          </div>
-          <div className="text-sm font-medium text-slate-600">Avg Click Rate</div>
-          <div className="text-xs text-slate-500 mt-1">employees clicked links</div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-3 bg-green-50 rounded-lg">
-              <Flag className="h-6 w-6 text-green-600" />
-            </div>
-            <span className="text-3xl font-bold text-green-600">{avgReportingRate}%</span>
-          </div>
-          <div className="text-sm font-medium text-slate-600">Avg Reporting Rate</div>
-          <div className="text-xs text-slate-500 mt-1">employees reported phishing</div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-3 bg-orange-50 rounded-lg">
-              <KeyRound className="h-6 w-6 text-orange-600" />
-            </div>
-            <span className="text-3xl font-bold text-orange-600">{avgCredentialRate}%</span>
-          </div>
-          <div className="text-sm font-medium text-slate-600">Avg Credential Rate</div>
-          <div className="text-xs text-slate-500 mt-1">entered credentials</div>
-        </div>
-      </div>
-
+      {/* ── Quota exhausted warning ── */}
       {remainingQuota <= 0 && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <div style={{ padding: '14px 18px', background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 12, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <AlertCircle size={16} style={{ color: T.red, flexShrink: 0, marginTop: 1 }} />
           <div>
-            <h3 className="font-semibold text-red-900">Quota Exhausted</h3>
-            <p className="text-sm text-red-700">
-              You have used all {quota?.annual_quota || 0} campaigns for this year. Contact support to increase your quota.
-            </p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.red, margin: '0 0 3px' }}>Quota Exhausted</p>
+            <p style={{ fontSize: 13, color: T.textBody, margin: 0 }}>You have used all {quota?.annual_quota || 0} campaigns for this year. Contact support to increase your quota.</p>
           </div>
         </div>
       )}
 
-      {selectedCampaignData && (
-        <div className="mb-6 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Campaign Analytics</h2>
-              <p className="text-sm text-slate-600">Detailed metrics for selected campaign</p>
-            </div>
-            <select
-              value={selectedCampaign || ''}
-              onChange={(e) => handleCampaignSelect(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {completedCampaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.campaign_name} - {campaign.completion_date ? new Date(campaign.completion_date).toLocaleDateString() : 'N/A'}
-                </option>
+      {/* ── Stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+        <MetricCard icon={Shield}           color={remainingQuota > 0 ? T.accent : T.red} bg={remainingQuota > 0 ? 'rgba(200,255,0,0.08)' : T.redBg} border={remainingQuota > 0 ? 'rgba(200,255,0,0.20)' : T.redBorder} label="Campaigns Remaining" sub={`of ${quota?.annual_quota || 0} annual quota`} value={`${remainingQuota}`} />
+        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="employees clicked links"    value={`${avgClickRate}%`} />
+        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="employees reported phishing" value={`${avgReportRate}%`} />
+        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="entered credentials"         value={`${avgCredRate}%`} />
+      </div>
+
+      {/* ── Charts row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+
+        {/* Bar chart */}
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.10s' }}>
+          <div className="aw-ph-card-header">
+            <BarChart3 size={14} style={{ color: T.accent }} /> Campaign Comparison
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted, fontWeight: 400 }}>Last 5</span>
+          </div>
+          <div style={{ padding: '16px 20px 20px' }}>
+            <CampaignBarChart campaigns={completedCampaigns} />
+          </div>
+        </div>
+
+        {/* Trend line */}
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.14s' }}>
+          <div className="aw-ph-card-header">
+            <TrendingUp size={14} style={{ color: T.accent }} /> Click vs. Report Trend
+          </div>
+          <div style={{ padding: '16px 20px 20px' }}>
+            <TrendLine campaigns={completedCampaigns} />
+            <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
+              {[{ color: T.red, label: 'Click Rate' }, { color: T.green, label: 'Report Rate' }].map(m => (
+                <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMuted }}>
+                  <div style={{ width: 20, height: 2, background: m.color, borderRadius: 1 }} /> {m.label}
+                </div>
               ))}
-            </select>
+            </div>
+            <p style={{ fontSize: 11, color: T.textMuted, marginTop: 8, lineHeight: '17px' }}>
+              Click rate going ↓ and Report rate going ↑ indicates improving security awareness.
+            </p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-slate-600">Open Rate</span>
-                <TrendingUp className="h-4 w-4 text-slate-400" />
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{selectedCampaignData.open_rate || 0}%</div>
-              <div className="text-xs text-slate-500 mt-1">
-                {selectedCampaignData.emails_opened} of {selectedCampaignData.emails_sent} opened
-              </div>
-            </div>
+        {/* Radar chart */}
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.18s' }}>
+          <div className="aw-ph-card-header">
+            <Target size={14} style={{ color: T.red }} /> Dept. Vulnerability Radar
+          </div>
+          <div style={{ padding: '12px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {radarData.length >= 3
+              ? <RadarChart data={radarData} />
+              : <p style={{ fontSize: 13, color: T.textMuted, padding: '28px 0' }}>Need 3+ departments for radar chart</p>
+            }
+          </div>
+        </div>
+      </div>
 
-            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-red-700">Click Rate</span>
-                <MousePointerClick className="h-4 w-4 text-red-600" />
-              </div>
-              <div className="text-2xl font-bold text-red-700">{selectedCampaignData.click_rate || 0}%</div>
-              <div className="text-xs text-red-600 mt-1">
-                {selectedCampaignData.links_clicked} of {selectedCampaignData.emails_sent} clicked
-              </div>
-            </div>
-
-            <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-orange-700">Credential Rate</span>
-                <KeyRound className="h-4 w-4 text-orange-600" />
-              </div>
-              <div className="text-2xl font-bold text-orange-700">{selectedCampaignData.credential_rate || 0}%</div>
-              <div className="text-xs text-orange-600 mt-1">
-                {selectedCampaignData.credentials_entered || 0} entered credentials
-              </div>
-            </div>
-
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-green-700">Reporting Rate</span>
-                <Flag className="h-4 w-4 text-green-600" />
-              </div>
-              <div className="text-2xl font-bold text-green-700">{selectedCampaignData.reporting_rate || 0}%</div>
-              <div className="text-xs text-green-600 mt-1">
-                {selectedCampaignData.emails_reported} reported phishing
-              </div>
+      {/* ── Campaign analytics detail ── */}
+      {selectedData && completedCampaigns.length > 0 && (
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.20s' }}>
+          <div className="aw-ph-card-header">
+            <Shield size={14} style={{ color: T.accent }} /> Campaign Analytics
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 400 }}>Select campaign</span>
+              <select className="aw-ph-select" value={selectedCampaign || ''} onChange={e => handleSelectCampaign(e.target.value)}>
+                {completedCampaigns.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.campaign_name} — {c.completion_date ? new Date(c.completion_date).toLocaleDateString('en-SA', { month: 'short', year: 'numeric' }) : 'N/A'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {departmentStats.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Building2 className="h-5 w-5 text-slate-600" />
-                <h3 className="text-lg font-bold text-slate-900">Department Vulnerability Analysis</h3>
+          {/* Campaign metric mini cards */}
+          <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+            {[
+              { icon: TrendingUp,      color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate',       sub: `${selectedData.emails_opened} opened`,                     value: `${selectedData.open_rate || 0}%` },
+              { icon: MousePointerClick, color: T.red,  bg: T.redBg,    border: T.redBorder,    label: 'Click Rate',      sub: `${selectedData.links_clicked} clicked`,                    value: `${selectedData.click_rate || 0}%` },
+              { icon: KeyRound,        color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate', sub: `${selectedData.credentials_entered || 0} entered creds`,   value: `${selectedData.credential_rate || 0}%` },
+              { icon: Flag,            color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Reporting Rate',  sub: `${selectedData.emails_reported} reported`,                 value: `${selectedData.reporting_rate || 0}%` },
+            ].map(({ icon: Icon, color, bg, border, label, sub, value }) => (
+              <div key={label} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={13} style={{ color }} />
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>{label}</span>
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 900, color, marginBottom: 3 }}>{value}</div>
+                <div style={{ fontSize: 11, color: T.textMuted }}>{sub}</div>
               </div>
-              <div className="space-y-3">
-                {departmentStats.map((stat: any) => {
-                  const vulnColor = getVulnerabilityColor(stat.vulnerability_score);
-                  const clickRate = stat.total_targets > 0 ? ((stat.links_clicked / stat.total_targets) * 100).toFixed(1) : '0';
-                  const reportRate = stat.total_targets > 0 ? ((stat.emails_reported / stat.total_targets) * 100).toFixed(1) : '0';
-                  const credRate = stat.total_targets > 0 ? ((stat.credentials_entered / stat.total_targets) * 100).toFixed(1) : '0';
+            ))}
+          </div>
+
+          {/* Department vulnerability */}
+          {deptStats.length > 0 && (
+            <div style={{ padding: '0 16px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingTop: 12, borderTop: `1px solid ${T.borderFaint}` }}>
+                <Building2 size={14} style={{ color: T.accent }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Department Vulnerability Analysis</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {deptStats.map((stat: any) => {
+                  const vc     = vulnConfig(stat.vulnerability_score);
+                  const score  = stat.vulnerability_score.toFixed(0);
+                  const click  = stat.total_targets > 0 ? ((stat.links_clicked / stat.total_targets) * 100).toFixed(1) : '0';
+                  const report = stat.total_targets > 0 ? ((stat.emails_reported / stat.total_targets) * 100).toFixed(1) : '0';
+                  const cred   = stat.total_targets > 0 ? ((stat.credentials_entered / stat.total_targets) * 100).toFixed(1) : '0';
+                  const barPct = stat.vulnerability_score;
 
                   return (
-                    <div key={stat.id} className={`p-4 rounded-lg border-2 ${vulnColor.border} ${vulnColor.bg}`}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-bold text-slate-900">{stat.department?.name || 'Unknown Department'}</h4>
-                          <p className="text-sm text-slate-600">{stat.total_targets} employees targeted</p>
+                    <div key={stat.id} style={{ padding: '14px 16px', background: vc.bg, border: `1px solid ${vc.border}`, borderRadius: 11 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                        <div>
+                          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.white, margin: '0 0 3px' }}>{stat.department?.name || 'Unknown Department'}</h4>
+                          <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>{stat.total_targets} employees targeted</p>
                         </div>
-                        <div className="text-right">
-                          <div className={`text-2xl font-bold ${vulnColor.text}`}>
-                            {stat.vulnerability_score.toFixed(0)}
-                          </div>
-                          <div className={`text-xs font-medium ${vulnColor.text}`}>
-                            {vulnColor.label}
-                          </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 24, fontWeight: 900, color: vc.color, lineHeight: 1 }}>{score}</div>
+                          <span className="aw-vuln-badge" style={{ background: vc.bg, border: `1px solid ${vc.border}`, color: vc.color, marginTop: 4, display: 'inline-flex' }}>
+                            {vc.label}
+                          </span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-2 text-xs">
-                        <div className="text-center p-2 bg-white/50 rounded">
-                          <div className="font-semibold text-slate-900">{stat.emails_opened}</div>
-                          <div className="text-slate-600">Opened</div>
-                        </div>
-                        <div className="text-center p-2 bg-white/50 rounded">
-                          <div className="font-semibold text-red-700">{stat.links_clicked}</div>
-                          <div className="text-slate-600">Clicked ({clickRate}%)</div>
-                        </div>
-                        <div className="text-center p-2 bg-white/50 rounded">
-                          <div className="font-semibold text-orange-700">{stat.credentials_entered}</div>
-                          <div className="text-slate-600">Credentials ({credRate}%)</div>
-                        </div>
-                        <div className="text-center p-2 bg-white/50 rounded">
-                          <div className="font-semibold text-green-700">{stat.emails_reported}</div>
-                          <div className="text-slate-600">Reported ({reportRate}%)</div>
-                        </div>
+
+                      {/* Vulnerability bar */}
+                      <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden', marginBottom: 12 }}>
+                        <div style={{ height: '100%', width: `${barPct}%`, background: vc.color, borderRadius: 9999 }} />
+                      </div>
+
+                      {/* Mini stats */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                        {[
+                          { label: 'Opened',     value: stat.emails_opened,       color: T.textBody  },
+                          { label: `Clicked (${click}%)`,   value: stat.links_clicked,         color: T.red    },
+                          { label: `Creds (${cred}%)`,   value: stat.credentials_entered,   color: T.orange  },
+                          { label: `Reported (${report}%)`, value: stat.emails_reported,       color: T.green  },
+                        ].map(m => (
+                          <div key={m.label} style={{ textAlign: 'center', padding: '8px 6px', background: 'rgba(0,0,0,0.15)', borderRadius: 8 }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: m.color, marginBottom: 2 }}>{m.value}</div>
+                            <div style={{ fontSize: 9, color: T.textMuted, lineHeight: '13px' }}>{m.label}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                <strong>Vulnerability Score:</strong> 0-25 (Low Risk), 26-50 (Moderate), 51-75 (High Risk), 76-100 (Critical). Higher scores indicate departments needing immediate security training.
+
+              {/* Vuln score guide */}
+              <div style={{ marginTop: 14, padding: '12px 16px', background: 'rgba(200,255,0,0.04)', border: '1px solid rgba(200,255,0,0.14)', borderRadius: 10, fontSize: 12, color: T.textBody, lineHeight: '20px' }}>
+                <strong style={{ color: T.accent }}>Vulnerability Score Guide:</strong>{' '}
+                <span style={{ color: T.green }}>0–25 Low Risk</span> · <span style={{ color: '#fbbf24' }}>26–50 Moderate</span> · <span style={{ color: T.orange }}>51–75 High Risk</span> · <span style={{ color: T.red }}>76–100 Critical</span>
+                {' '}— Higher scores indicate departments needing immediate security training.
               </div>
             </div>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="h-5 w-5 text-slate-600" />
-            <h2 className="text-lg font-bold text-slate-900">Campaign Comparison</h2>
+      {/* ── Recent requests ── */}
+      {requests.length > 0 && (
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.24s' }}>
+          <div className="aw-ph-card-header">
+            <Calendar size={14} style={{ color: T.accent }} /> Recent Campaign Requests
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted, fontWeight: 400 }}>Last {Math.min(5, requests.length)}</span>
           </div>
-          <div className="space-y-3">
-            {previousCampaigns.length > 0 ? (
-              previousCampaigns.map((campaign, index) => {
-                const prevCampaign = previousCampaigns[index + 1];
-                const clickTrend = prevCampaign ? (campaign.click_rate || 0) - (prevCampaign.click_rate || 0) : 0;
-                const reportTrend = prevCampaign ? (campaign.reporting_rate || 0) - (prevCampaign.reporting_rate || 0) : 0;
-
-                return (
-                  <div key={campaign.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-slate-900">{campaign.campaign_name}</h3>
-                        <p className="text-sm text-slate-600">
-                          {campaign.completion_date ? new Date(campaign.completion_date).toLocaleDateString() : 'N/A'}
-                        </p>
-                      </div>
-                      {index === 0 && (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                          Latest
-                        </span>
-                      )}
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {requests.slice(0, 5).map(req => {
+              const sc = statusConfig(req.status);
+              return (
+                <div key={req.id} className="aw-ph-camp-row">
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                    <div>
+                      <h4 style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 3px' }}>{req.campaign_name}</h4>
+                      <p style={{ fontSize: 11, color: T.textMuted, margin: 0, fontFamily: 'monospace' }}>{req.ticket_number}</p>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 text-xs mt-3">
-                      <div className="text-center">
-                        <div className="font-semibold text-slate-900">{campaign.open_rate || 0}%</div>
-                        <div className="text-slate-600">Opens</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-semibold text-red-700 flex items-center justify-center gap-1">
-                          {campaign.click_rate || 0}%
-                          {prevCampaign && clickTrend !== 0 && (
-                            clickTrend < 0 ?
-                              <ArrowDownRight className="h-3 w-3 text-green-600" /> :
-                              <ArrowUpRight className="h-3 w-3 text-red-600" />
-                          )}
-                        </div>
-                        <div className="text-slate-600">Clicks</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-semibold text-orange-700">{campaign.credential_rate || 0}%</div>
-                        <div className="text-slate-600">Creds</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-semibold text-green-700 flex items-center justify-center gap-1">
-                          {campaign.reporting_rate || 0}%
-                          {prevCampaign && reportTrend !== 0 && (
-                            reportTrend > 0 ?
-                              <ArrowUpRight className="h-3 w-3 text-green-600" /> :
-                              <ArrowDownRight className="h-3 w-3 text-red-600" />
-                          )}
-                        </div>
-                        <div className="text-slate-600">Reports</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                <BarChart3 className="h-12 w-12 text-slate-300 mx-auto mb-2" />
-                <p>No completed campaigns to compare</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Recent Campaign Requests</h2>
-          <div className="space-y-3">
-            {requests.length > 0 ? (
-              requests.slice(0, 5).map((request) => (
-                <div key={request.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-slate-900">{request.campaign_name}</h3>
-                      <p className="text-sm text-slate-600">{request.ticket_number}</p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                      {request.status}
+                    <span style={{ display: 'inline-flex', padding: '3px 10px', borderRadius: 9999, fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', background: sc.bg, border: `1px solid ${sc.border}`, color: sc.color, flexShrink: 0 }}>
+                      {req.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(request.created_at).toLocaleDateString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      {request.target_employee_count} targets
-                    </div>
+                  <div style={{ display: 'flex', gap: 16, fontSize: 11, color: T.textMuted }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Calendar size={10} /> {new Date(req.created_at).toLocaleDateString('en-SA', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={10} /> {req.target_employee_count} targets
+                    </span>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                <Shield className="h-12 w-12 text-slate-300 mx-auto mb-2" />
-                <p>No campaign requests yet</p>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl border border-blue-200 p-6">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-blue-100 rounded-lg">
-            <Target className="h-6 w-6 text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-slate-900 mb-2">Understanding Your Analytics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <MousePointerClick className="h-4 w-4 text-red-600" />
-                  <strong className="text-slate-900">Click Rate:</strong>
-                </div>
-                <p className="text-slate-600">Percentage of employees who clicked phishing links. Lower is better.</p>
+      {/* ── Analytics guide ── */}
+      <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.28s', borderColor: 'rgba(200,255,0,0.14)' }}>
+        <div className="aw-ph-card-header" style={{ background: 'rgba(200,255,0,0.03)' }}>
+          <Target size={14} style={{ color: T.accent }} /> Understanding Your Analytics
+        </div>
+        <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+          {[
+            { icon: MousePointerClick, color: T.red,    title: 'Click Rate',            desc: 'Percentage of employees who clicked phishing links. Lower is better.' },
+            { icon: Flag,              color: T.green,  title: 'Reporting Rate',         desc: 'Percentage who reported the phishing attempt. Higher is better!' },
+            { icon: KeyRound,          color: T.orange, title: 'Credential Rate',        desc: 'Percentage who entered credentials on a fake page. Lower is better.' },
+            { icon: Building2,         color: T.purple, title: 'Department Vulnerability', desc: 'Identifies departments needing additional security training.' },
+          ].map(({ icon: Icon, color, title, desc }) => (
+            <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 7, background: `${color}12`, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon size={14} style={{ color }} />
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Flag className="h-4 w-4 text-green-600" />
-                  <strong className="text-slate-900">Reporting Rate:</strong>
-                </div>
-                <p className="text-slate-600">Percentage who reported the phishing attempt. Higher is better!</p>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <KeyRound className="h-4 w-4 text-orange-600" />
-                  <strong className="text-slate-900">Credential Rate:</strong>
-                </div>
-                <p className="text-slate-600">Percentage who entered credentials on fake page. Lower is better.</p>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Building2 className="h-4 w-4 text-purple-600" />
-                  <strong className="text-slate-900">Department Vulnerability:</strong>
-                </div>
-                <p className="text-slate-600">Identifies departments needing additional security training.</p>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.white, marginBottom: 3 }}>{title}</div>
+                <div style={{ fontSize: 12, color: T.textBody, lineHeight: '18px' }}>{desc}</div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
