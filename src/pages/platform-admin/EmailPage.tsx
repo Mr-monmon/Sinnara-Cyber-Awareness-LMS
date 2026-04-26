@@ -4,6 +4,7 @@ import { Building2, Loader2, Mail, Send } from "lucide-react";
 import Quill from "quill";
 import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
+import { brandedEmailLayout } from "../../lib/email";
 
 type TargetScope = "all" | "department";
 
@@ -81,19 +82,15 @@ function normalizeEditorHtml(html: string, plainText: string) {
 }
 
 function buildMessageHtml(fullName: string, bodyHtml: string) {
-  return `
-     <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
-        <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
-          <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
-            <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
-            <h1 style="margin:0; font-size:22px; line-height:1.3;">Hello, ${escapeHtml(fullName)}</h1>
-          </div>
-          <div style="padding:32px;">
-            <div style="margin:0; font-size:15px; line-height:1.8; color:#94a3b8;">${bodyHtml}</div>
-          </div>
-      </div>
+  return brandedEmailLayout(`
+    <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+      <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+      <h1 style="margin:0; font-size:22px; line-height:1.3;">Hello, ${escapeHtml(fullName)}</h1>
     </div>
-  `;
+    <div style="padding:32px;">
+      <div style="margin:0; font-size:15px; line-height:1.8; color:#94a3b8;">${bodyHtml}</div>
+    </div>
+  `);
 }
 
 const EmailPage = () => {

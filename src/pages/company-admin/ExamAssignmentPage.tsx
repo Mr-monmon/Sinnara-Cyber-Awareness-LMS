@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Send, Calendar, Users, ClipboardList, AlertCircle, Undo2, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { sendNotificationEmail } from '../../lib/email';
+import { buildSameHostRedirectUrl } from '../../lib/browserTenant';
 
 interface Exam {
   id: string;
@@ -33,50 +35,38 @@ interface AssignedExam {
   assigned_at: string;
 }
 
+type AssignmentInsert = {
+  exam_id: string;
+  company_id: string | undefined;
+  assigned_by: string | undefined;
+  due_date: string | null;
+  max_attempts: number;
+  is_mandatory: boolean;
+  status: 'active';
+  assigned_to_employee?: string;
+  assigned_to_department?: string;
+};
+
+type EmailRecipient = {
+  email: string;
+  full_name: string;
+};
+
 const actionButtonBaseClass =
   'group relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
 
 const actionTooltipClass =
   'pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-all duration-200 group-hover:-translate-y-[calc(100%+0.5rem)] group-hover:opacity-100 group-focus:-translate-y-[calc(100%+0.5rem)] group-focus:opacity-100';
 
-const sendEmail = async (
-  to: string,
-  fullName: string,
-  subject: string,
-  title: string,
-  description: string,
-) => {
-  return await supabase.functions.invoke("send-email", {
-    body: {
-      to: to,
-      subject: subject,
-      html: `
-        <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
-          <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
-            <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
-              <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
-              <h1 style="margin:0; font-size:28px; line-height:1.3;">${title}, ${fullName}</h1>
-            </div>
-
-            <div style="padding:32px;">
-              <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
-                ${description}
-              </p>
-            </div>
-          </div>
-        </div>
-      `,
-    },
-  });
-};
-
 export const ExamAssignmentPage: React.FC = () => {
   const { user } = useAuth();
+  const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
   const [exams, setExams] = useState<Exam[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [assignments, setAssignments] = useState<AssignedExam[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     exam_id: '',
@@ -121,6 +111,26 @@ export const ExamAssignmentPage: React.FC = () => {
       .eq('company_id', user.company_id)
       .order('name');
     if (data) setDepartments(data);
+  };
+
+  const getSelectedAssignmentRecipients = (): EmailRecipient[] => {
+    if (formData.assignment_type === 'employee') {
+      const selectedEmployee = employees.find((employee) => employee.id === formData.target_id);
+
+      return selectedEmployee?.email
+        ? [{
+          email: selectedEmployee.email,
+          full_name: selectedEmployee.full_name
+        }]
+        : [];
+    }
+
+    return employees
+      .filter((employee) => employee.department_id === formData.target_id && employee.email)
+      .map((employee) => ({
+        email: employee.email,
+        full_name: employee.full_name
+      }));
   };
 
   const loadAssignments = async () => {
@@ -191,53 +201,92 @@ export const ExamAssignmentPage: React.FC = () => {
       };
     }));
 
-    setAssignments(enrichedAssignments as any);
+    setAssignments(enrichedAssignments as AssignedExam[]);
   };
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAssigning) return;
+
     setError(null);
+    setIsAssigning(true);
 
-    const assignment: any = {
-      exam_id: formData.exam_id,
-      company_id: user?.company_id,
-      assigned_by: user?.id,
-      due_date: formData.due_date || null,
-      max_attempts: formData.max_attempts,
-      is_mandatory: formData.is_mandatory,
-      status: 'active'
-    };
+    try {
+      const assignment: AssignmentInsert = {
+        exam_id: formData.exam_id,
+        company_id: user?.company_id,
+        assigned_by: user?.id,
+        due_date: formData.due_date || null,
+        max_attempts: formData.max_attempts,
+        is_mandatory: formData.is_mandatory,
+        status: 'active'
+      };
 
-    if (formData.assignment_type === 'employee') {
-      assignment.assigned_to_employee = formData.target_id;
-    } else {
-      assignment.assigned_to_department = formData.target_id;
-    }
-
-    const { error: insertError } = await supabase.from('assigned_exams').insert(assignment);
-
-    if (insertError) {
-      console.error('Error assigning exam:', insertError);
-
-      if (insertError.code === '23505') {
-        setError('This exam is already assigned to the selected employee/department. Check existing assignments.');
+      if (formData.assignment_type === 'employee') {
+        assignment.assigned_to_employee = formData.target_id;
       } else {
-        setError('Failed to assign exam: ' + insertError.message);
+        assignment.assigned_to_department = formData.target_id;
       }
-      return;
-    }
 
-    setShowModal(false);
-    setError(null);
-    setFormData({
-      exam_id: '',
-      assignment_type: 'employee',
-      target_id: '',
-      due_date: '',
-      max_attempts: 1,
-      is_mandatory: true
-    });
-    loadAssignments();
+      const { error: insertError } = await supabase.from('assigned_exams').insert(assignment);
+
+      if (insertError) {
+        console.error('Error assigning exam:', insertError);
+
+        if (insertError.code === '23505') {
+          setError('This exam is already assigned to the selected employee/department. Check existing assignments.');
+        } else {
+          setError('Failed to assign exam: ' + insertError.message);
+        }
+        return;
+      }
+
+      const assignedExamTitle = exams.find((exam) => exam.id === formData.exam_id)?.title || 'your assigned exam';
+      const dueDateText = formData.due_date
+        ? ` Please complete it before ${new Date(formData.due_date).toLocaleDateString()}.`
+        : '';
+      const recipients = getSelectedAssignmentRecipients();
+      let emailWarning: string | null = null;
+
+      if (recipients.length === 0) {
+        emailWarning = 'Exam assigned, but no email recipients were found to notify.';
+      } else {
+        const emailResults = await Promise.allSettled(
+          recipients.map((recipient) =>
+            sendNotificationEmail(
+              recipient.email,
+              recipient.full_name,
+              `New Exam Assigned: ${assignedExamTitle}`,
+              'New Exam Assigned',
+              `"${assignedExamTitle}" has been assigned to you.${dueDateText} Please log in to your Awareone account to complete it.`,
+              {
+                loginUrl,
+              }
+            )
+          )
+        );
+
+        const failedCount = emailResults.filter((result) => result.status === 'rejected').length;
+
+        if (failedCount > 0) {
+          emailWarning = `Exam assigned, but ${failedCount} assignment notification email(s) could not be sent.`;
+        }
+      }
+
+      setShowModal(false);
+      setError(emailWarning);
+      setFormData({
+        exam_id: '',
+        assignment_type: 'employee',
+        target_id: '',
+        due_date: '',
+        max_attempts: 1,
+        is_mandatory: true
+      });
+      loadAssignments();
+    } finally {
+      setIsAssigning(false);
+    }
   };
 
   const handleWithdrawAssignment = async (assignmentId: string, examTitle: string, targetName: string) => {
@@ -304,22 +353,25 @@ export const ExamAssignmentPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         recipients.map((recipient) =>
-          sendEmail(
+          sendNotificationEmail(
             recipient.email,
             recipient.full_name,
             `Exam Reminder: ${examTitle}`,
             'Exam Reminder',
-            `This is a reminder that "${examTitle}" is still assigned to you.${dueDateText} Please log in to your Awareone account to complete it.`
+            `This is a reminder that "${examTitle}" is still assigned to you.${dueDateText} Please log in to your Awareone account to complete it.`,
+            {
+              loginUrl,
+            }
           )
         )
       );
 
-      const failedResult = results.find((result) => result.error);
+      const failedCount = results.filter((r) => r.status === 'rejected').length;
 
-      if (failedResult?.error) {
-        throw failedResult.error;
+      if (failedCount > 0) {
+        throw new Error(`${failedCount} reminder email(s) could not be sent.`);
       }
 
       window.alert(
@@ -640,12 +692,14 @@ export const ExamAssignmentPage: React.FC = () => {
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
+                  disabled={isAssigning}
                   className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                 >
-                  Assign
+                  {isAssigning ? 'Assigning...' : 'Assign'}
                 </button>
                 <button
                   type="button"
+                  disabled={isAssigning}
                   onClick={() => {
                     setShowModal(false);
                     setError(null);

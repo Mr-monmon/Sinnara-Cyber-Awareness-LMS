@@ -4,6 +4,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { User as UserType } from "../../lib/types";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
+import { sendNotificationEmail } from "../../lib/email";
 
 interface EmployeesPageProps {
   onViewEmployee?: (employeeId: string) => void;
@@ -14,85 +15,15 @@ interface Department {
   name: string;
 }
 
-const sendEmail = async (
-  to: string,
-  fullName: string,
-  subject: string,
-  title: string,
-  description: string,
-  loginUrl?: string,
-  isDelete = false
-) => {
-  return await supabase.functions.invoke("send-email", {
-    body: {
-      to: to,
-      subject: subject,
-      html: `
-        <div style="margin:0; padding:32px 16px; background:#12140a; font-family:Arial, sans-serif; color:#ffffff;">
-          <div style="max-width:600px; margin:0 auto; background:rgba(200,255,0,0.03); border:1px solid rgba(255,255,255,0.10); border-radius:18px; overflow:hidden; box-shadow:0 12px 32px rgba(0, 0, 0, 0.28);">
-            <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
-              <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
-              <h1 style="margin:0; font-size:28px; line-height:1.3;">${title}, ${fullName}</h1>
-            </div>
+type BulkCreateResult = {
+  email: string;
+  success: boolean;
+};
 
-            <div style="padding:32px;">
-              <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
-                ${description}
-              </p>
-
-              
-             ${
-               !isDelete
-                 ? `<div style="margin:24px 0; padding:24px; background:rgba(200,255,0,0.10); border:1px solid rgba(200,255,0,0.20); border-radius:14px;">
-                <p style="margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#c8ff00;">
-                  Account Details
-                </p>
-                <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${to}</p>
-                <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> employee123</p>
-                <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> Employee</p>
-              </div>`
-                 : ""
-             } 
-
-              ${
-                loginUrl
-                  ? `
-              <div style="margin:24px 0;">
-                <a
-                  href="${loginUrl}"
-                  style="display:inline-block; padding:14px 22px; background:#c8ff00; color:#12140a; text-decoration:none; font-size:15px; font-weight:700; border-radius:10px;"
-                >
-                  Go to Login
-                </a>
-                <p style="margin:12px 0 0; font-size:14px; line-height:1.7; color:#94a3b8;">
-                  Website link: <a href="${loginUrl}" style="color:#c8ff00; text-decoration:none;">${loginUrl}</a>
-                </p>
-              </div>
-              `
-                  : ""
-              }
-
-
-              ${
-                !isDelete
-                  ? `<div style="margin:24px 0; padding:18px 20px; background:rgba(255,255,255,0.03); border-left:4px solid #c8ff00; border-radius:10px;">
-                <p style="margin:0; font-size:14px; line-height:1.7; color:#cbd5e1;">
-                  For security, please sign in and change your password as soon as possible.
-                </p>
-              </div>
-
-              <p style="margin:24px 0 0; font-size:15px; line-height:1.8; color:#94a3b8;">
-                If you need help getting started, reply to this email and our team will assist you.
-              </p>`
-                  : ""
-              }
-              
-            </div>
-          </div>
-        </div>
-      `,
-    },
-  });
+type BulkCreateResponse = {
+  succeeded?: number;
+  failed?: number;
+  results?: BulkCreateResult[];
 };
 
 export const EmployeesPage: React.FC<EmployeesPageProps> = ({
@@ -152,7 +83,12 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
     try {
       if (editingEmployee) {
-        const { password: _ , email: __, ...profileData } = formData;
+        const profileData = {
+          full_name: formData.full_name,
+          phone: formData.phone,
+          employee_id: formData.employee_id,
+          department_id: formData.department_id,
+        };
         await supabase
           .from("users")
           .update(profileData)
@@ -176,14 +112,26 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         if (createError || !createResult?.success)
           throw new Error(createResult?.error || "Failed to create employee");
 
-        await sendEmail(
-          formData.email,
-          formData.full_name,
-          "Welcome to Awareone",
-          "Welcome aboard",
-          "We created your employee account. Use the credentials below to sign in and start managing your team.",
-          loginUrl
-        );
+        try {
+          await sendNotificationEmail(
+            formData.email,
+            formData.full_name,
+            "Welcome to Awareone",
+            "Welcome aboard",
+            "Your account has been created. Use the credentials below to sign in.",
+            {
+              loginUrl,
+              credentials: {
+                email: formData.email,
+                password: formData.password,
+                role: "Employee",
+              },
+              showSecurityNote: true,
+            }
+          );
+        } catch (emailErr) {
+          console.warn("Welcome email could not be sent:", emailErr);
+        }
       }
 
       setShowModal(false);
@@ -227,15 +175,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       if (delError || !delResult?.success)
         throw new Error(delResult?.error || "Failed to delete employee");
 
-      await sendEmail(
-        email,
-        fullName,
-        "Account Deleted",
-        "Account Deleted",
-        "Your account has been deleted. Please contact your administrator if you need to access your account again.",
-        undefined,
-        true
-      );
+      try {
+        await sendNotificationEmail(
+          email,
+          fullName,
+          "Your account has been removed",
+          "Account Removed",
+          "Your account on Awareone has been removed. If you believe this was a mistake, please reach out to your organization's administrator."
+        );
+      } catch (emailErr) {
+        console.warn("Account deletion email could not be sent:", emailErr);
+      }
       loadEmployees();
     } catch (error) {
       console.error("Error deleting employee:", error);
@@ -268,14 +218,18 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         `Password reset successfully!\nEmail: ${employee.email}\nNew Password: employee123`
       );
 
-      await sendEmail(
-        employee.email,
-        employee.full_name,
-        "Password Reset",
-        "Password Reset",
-        "Your password has been reset to the default password. Please sign in and change your password as soon as possible.",
-        loginUrl
-      );
+      try {
+        await sendNotificationEmail(
+          employee.email,
+          employee.full_name,
+          "Your password has been reset",
+          "Password Reset",
+          "Your password has been reset to the default password. Please sign in and change your password as soon as possible.",
+          { loginUrl }
+        );
+      } catch (emailErr) {
+        console.warn("Password reset email could not be sent:", emailErr);
+      }
     } catch (error) {
       console.error("Error resetting password:", error);
       alert("Failed to reset password");
@@ -480,7 +434,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       }));
 
       const { data: bulkResult, error: bulkError } =
-        await supabase.functions.invoke("user-admin", {
+        await supabase.functions.invoke<BulkCreateResponse>("user-admin", {
           body: { action: "bulkCreate", users: bulkUsers },
         });
       if (bulkError) throw bulkError;
@@ -491,9 +445,43 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         rejectionCounts.invalidEmail +
         rejectionCounts.existingEmail;
       const serverFailed = bulkResult?.failed ?? 0;
+      const succeededEmails = new Set(
+        (bulkResult?.results ?? [])
+          .filter((result) => result.success)
+          .map((result) => result.email)
+      );
+      const createdRows = validRows.filter((row) =>
+        succeededEmails.has(row.email)
+      );
+      const emailResults = await Promise.allSettled(
+        createdRows.map((row) =>
+          sendNotificationEmail(
+            row.email,
+            row.full_name,
+            "Welcome to Awareone",
+            "Welcome aboard",
+            "Your account has been created. Use the credentials below to sign in.",
+            {
+              loginUrl,
+              credentials: {
+                email: row.email,
+                password: row.password,
+                role: "Employee",
+              },
+              showSecurityNote: true,
+            }
+          )
+        )
+      );
+      const emailFailed = emailResults.filter(
+        (result) => result.status === "rejected"
+      ).length;
+      const emailSent = createdRows.length - emailFailed;
+
       setUploadSummary(
         `Imported ${bulkResult?.succeeded ?? 0} employees. Rejected ${clientRejected + serverFailed} rows.\n` +
-          `Client: missing name (${rejectionCounts.missingName}), missing email (${rejectionCounts.missingEmail}), invalid email (${rejectionCounts.invalidEmail}), existing email (${rejectionCounts.existingEmail}). Server failures: ${serverFailed}.`
+          `Client: missing name (${rejectionCounts.missingName}), missing email (${rejectionCounts.missingEmail}), invalid email (${rejectionCounts.invalidEmail}), existing email (${rejectionCounts.existingEmail}). Server failures: ${serverFailed}.\n` +
+          `Welcome emails sent: ${emailSent}. Email failures: ${emailFailed}.`
       );
 
       if (fileInputRef.current) {
