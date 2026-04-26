@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { Upload, AlertCircle, CheckCircle, Loader, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import {
@@ -17,6 +18,26 @@ interface TargetData {
   status: string;
 }
 
+interface CampaignTargetUpdate {
+  status: string;
+  sent_at: string | null;
+  opened_at?: string;
+  clicked_at?: string;
+  submitted_at?: string;
+  reported_at?: string;
+}
+
+const getErrorMessage = (err: unknown, fallback: string) => {
+  if (err instanceof Error && err.message) return err.message;
+
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+
+  return fallback;
+};
+
 export const PhishingCampaignResultsPage: React.FC = () => {
   const [campaigns, setCampaigns] = useState<RequestWithCompany[]>([]);
   const [selectedCampaign, setSelectedCampaign] =
@@ -25,11 +46,21 @@ export const PhishingCampaignResultsPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
-  const [csvData, setCsvData] = useState<any>(null);
+  const [csvData, setCsvData] = useState<ReturnType<typeof parseCSV> | null>(
+    null
+  );
   const [targetData, setTargetData] = useState<TargetData[]>([]);
   const [viewDetailsModal, setViewDetailsModal] = useState(false);
-  // const [selectedCampaignRequest, setSelectedCampaignRequest] =
-  //   useState<RequestWithCompany | null>(null);
+
+  console.log(campaigns);
+
+  const sanitizedEmailHtml = React.useMemo(
+    () =>
+      selectedCampaign?.email_html_body
+        ? DOMPurify.sanitize(selectedCampaign.email_html_body)
+        : "",
+    [selectedCampaign?.email_html_body]
+  );
 
   useEffect(() => {
     loadCampaigns();
@@ -88,8 +119,8 @@ export const PhishingCampaignResultsPage: React.FC = () => {
 
       setTargetData(targets);
       setSuccess(`Parsed ${parsed.records.length} records from CSV`);
-    } catch (err: any) {
-      setError(err.message || "Failed to parse CSV file");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to parse CSV file"));
     }
   };
 
@@ -141,7 +172,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
           .eq("email", target.email)
           .maybeSingle();
 
-        const updateData: any = {
+        const updateData: CampaignTargetUpdate = {
           status: target.status,
           sent_at: gophishRecord.send_date
             ? new Date(gophishRecord.send_date).toISOString()
@@ -191,9 +222,9 @@ export const PhishingCampaignResultsPage: React.FC = () => {
       setTargetData([]);
       setSelectedCampaign(null);
       loadCampaigns();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error uploading results:", err);
-      setError(err.message || "Failed to upload campaign results");
+      setError(getErrorMessage(err, "Failed to upload campaign results"));
     } finally {
       setUploading(false);
     }
@@ -475,7 +506,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-slate-500">Company</p>
                   <p className="font-medium text-slate-900">
@@ -507,6 +538,68 @@ export const PhishingCampaignResultsPage: React.FC = () => {
                         ).toLocaleDateString()
                       : "Not set"}
                   </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Template</p>
+                  <p className="font-medium text-slate-900">
+                    {selectedCampaign.phishing_templates?.name || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Priority</p>
+                  <p className="font-medium text-slate-900">
+                    {selectedCampaign.priority || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Target Employees</p>
+                  <p className="font-medium text-slate-900">
+                    {selectedCampaign.target_employee_count ?? "N/A"}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-sm text-slate-500">Email Subject</p>
+                  <p className="font-medium text-slate-900 break-words">
+                    {selectedCampaign.email_subject || "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              {selectedCampaign.admin_notes && (
+                <div>
+                  <p className="text-sm text-slate-500 mb-1">Admin Notes</p>
+                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-slate-800 whitespace-pre-wrap">
+                    {selectedCampaign.admin_notes}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Email HTML Body
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-2">Preview</p>
+                    <div className="min-h-40 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-900">
+                      {sanitizedEmailHtml ? (
+                        <div
+                          className="prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizedEmailHtml,
+                          }}
+                        />
+                      ) : (
+                        <p className="text-slate-500">No HTML body provided</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500 mb-2">Source</p>
+                    <pre className="min-h-40 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-4 text-xs leading-relaxed text-slate-100">{selectedCampaign.email_html_body || "No HTML body provided"}</pre>
+                  </div>
                 </div>
               </div>
             </div>
