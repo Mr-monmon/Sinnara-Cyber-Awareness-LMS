@@ -1012,7 +1012,7 @@ export const CompaniesPage: React.FC = () => {
                       Created
                     </span>
                     <span style={{ fontSize: 12, color: T.textMuted }}>
-                      {fmt(co.created_at?.toISOString() || null)}
+                      {fmt(co.created_at)}
                     </span>
                   </div>
 

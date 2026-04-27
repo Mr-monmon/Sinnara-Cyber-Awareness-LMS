@@ -339,29 +339,46 @@ export const PhishingRequestPage: React.FC = () => {
         : [...prev.target_departments, id],
     }));
 
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.company_id || !user?.id) return;
-    const remaining = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-    if (remaining <= 0) {
-      alert("No remaining quota.");
+
+    const remainingQuota =
+      (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
+    if (remainingQuota <= 0) {
+      alert("No remaining quota. Please contact support.");
       return;
     }
+
     setSubmitting(true);
+
     try {
-      const { data: ticketData, error: ticketErr } = await supabase.rpc(
-        "generate_ticket_number"
+      const { error: quotaError } = await supabase.rpc(
+        "consume_campaign_quota",
+        {
+          p_company_id: user.company_id,
+          p_quota_year: "2026",
+        }
       );
-      const ticketNumber =
-        !ticketErr && ticketData
-          ? ticketData
-          : `PHC-${Date.now().toString().slice(-6)}`;
-      const { count } = await supabase
+      if (quotaError) throw quotaError;
+
+      const { count: employeeCount } = await supabase
         .from("users")
         .select("*", { count: "exact", head: true })
         .eq("company_id", user.company_id)
         .eq("role", "EMPLOYEE")
         .in("department_id", form.target_departments);
+
+      const { data: ticketData, error: ticketErr } = await supabase.rpc(
+        "generate_ticket_number"
+      );
+
+      const ticketNumber =
+        !ticketErr && ticketData
+          ? ticketData
+          : `PHC-${Date.now().toString().slice(-6)}`;
+
       const { error } = await supabase
         .from("phishing_campaign_requests")
         .insert([
@@ -372,7 +389,7 @@ export const PhishingRequestPage: React.FC = () => {
             campaign_name: form.campaign_name,
             template_id: form.template_id || null,
             target_departments: form.target_departments,
-            target_employee_count: count || 0,
+            target_employee_count: employeeCount,
             scheduled_date: form.scheduled_date || null,
             status: "SUBMITTED",
             priority: form.priority,
@@ -390,12 +407,22 @@ export const PhishingRequestPage: React.FC = () => {
             capture_passwords: form.capture_passwords,
           },
         ]);
-      if (error) throw error;
-      alert(`Campaign request submitted! Ticket: ${ticketNumber}`);
-      window.location.href = "/company/phishing-dashboard";
-    } catch (err) {
-      console.error(err);
-      alert("Failed to submit. Please try again.");
+
+      if (error) {
+        // Rollback: refund the quota since insert failed
+        await supabase.rpc("refund_used_quotes", {
+          p_company_id: user.company_id,
+          p_quota_year: new Date().getFullYear(),
+        });
+        throw error;
+      }
+
+      alert(`Campaign request submitted successfully! Ticket: ${ticketNumber}`);
+
+      window.location.reload();
+    } catch (error) {
+      console.error("Error submitting request:", error);
+      alert("Failed to submit request. Please try again.");
     } finally {
       setSubmitting(false);
     }

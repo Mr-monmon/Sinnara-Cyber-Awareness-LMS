@@ -406,25 +406,20 @@ const Modal: React.FC<{
 ═══════════════════════════════════════════ */
 export const UsersManagementPage: React.FC = () => {
   const { user } = useAuth();
-  const [users, setUsers] = useState<UserType[]>([]);
   const defaultLoginUrl = buildSameHostRedirectUrl(
     window.location.href,
     "/login"
   );
+  const [users, setUsers] = useState<UserType[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<string>("");
   const [selectedRole, setSelectedRole] = useState<string>("");
-  const [search, setSearch] = useState("");
-  const [filterCompany, setFilterCompany] = useState("");
-  const [filterRole, setFilterRole] = useState("");
-
-  /* Modals */
-  const [showAddModal, setShowAddModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [uploadCompanyId, setUploadCompanyId] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
   const [newUserData, setNewUserData] = useState({
     full_name: "",
     email: "",
@@ -455,41 +450,56 @@ export const UsersManagementPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [compsRes, usersRes] = await Promise.all([
+      const [usersRes, companiesRes] = await Promise.all([
         supabase
           .from("users")
           .select("*")
           .order("created_at", { ascending: false }),
-        supabase.from("companies").select("id, name").order("name"),
+        supabase.from("companies").select("id, name, subdomain").order("name"),
       ]);
-      if (usersRes.data) setUsers(usersRes.data as unknown as UserType[]);
-      if (compsRes.data) setCompanies(compsRes.data);
-    } catch (err) {
-      console.error(err);
+
+      if (usersRes.data) setUsers(usersRes.data);
+      if (companiesRes.data) setCompanies(companiesRes.data as Company[]);
+    } catch (error) {
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const getCompanyName = (id?: string) =>
-    id ? companies.find((c) => c.id === id)?.name || "—" : "—";
+  const getCompanyName = (companyId?: string) => {
+    if (!companyId) return "-";
+    const company = companies.find((c) => c.id === companyId);
+    return company?.name || "-";
+  };
 
-  const filtered = users.filter((u) => {
-    const q = search.toLowerCase();
+  const getLoginUrlForCompany = (companyId?: string | null) => {
+    if (!companyId) return defaultLoginUrl;
+
+    const companySubdomain = companies.find(
+      (c) => c.id === companyId
+    )?.subdomain;
+    if (!companySubdomain) return defaultLoginUrl;
+
     return (
-      (u.full_name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q)) &&
-      (!filterCompany || u.company_id === filterCompany) &&
-      (!filterRole || u.role === filterRole)
+      buildTenantRedirectUrl(
+        window.location.href,
+        companySubdomain,
+        "/login"
+      ) ?? defaultLoginUrl
     );
-  });
+  };
 
-  const verifyCurrentUserPassword = async (pw: string): Promise<boolean> => {
+  const verifyCurrentUserPassword = async (
+    password: string
+  ): Promise<boolean> => {
     if (!user?.email) return false;
+
     const { error } = await supabase.auth.signInWithPassword({
       email: user.email,
-      password: pw,
+      password,
     });
+
     return !error;
   };
 
@@ -505,59 +515,43 @@ export const UsersManagementPage: React.FC = () => {
       setPasswordError("Invalid password. Please try again.");
       return;
     }
+
+    // Password verified, execute the pending action
     if (pendingAction) {
       switch (pendingAction.type) {
         case "role_change":
-          await executeRoleChange(pendingAction.userId, pendingAction.newRole!);
+          await executeRoleChange(
+            pendingAction.userId,
+            pendingAction.newRole!,
+            pendingAction.userEmail,
+            pendingAction.userFullName,
+            pendingAction.companyId
+          );
           break;
         case "delete":
-          await executeDeleteUser(pendingAction.userId);
+          await executeDeleteUser(
+            pendingAction.userId,
+            pendingAction.userEmail,
+            pendingAction.userFullName
+          );
           break;
         case "reset_password":
           await executeResetPassword(
             pendingAction.userId,
             pendingAction.userEmail,
-            pendingAction.newPassword!
+            pendingAction.userFullName,
+            pendingAction.newPassword!,
+            pendingAction.companyId
           );
           break;
       }
     }
 
+    // Reset modal state
     setShowPasswordModal(false);
     setConfirmPassword("");
     setPasswordError("");
     setPendingAction(null);
-  };
-
-  const closePasswordModal = () => {
-    setShowPasswordModal(false);
-    setConfirmPassword("");
-    setPasswordError("");
-    setPendingAction(null);
-  };
-
-  const getRoleBadge = (role: string) => {
-    const styles = {
-      PLATFORM_ADMIN: "bg-red-100 text-red-800 border-red-200",
-      COMPANY_ADMIN: "bg-blue-100 text-blue-800 border-blue-200",
-      EMPLOYEE: "bg-green-100 text-green-800 border-green-200",
-    };
-
-    const labels = {
-      PLATFORM_ADMIN: "Platform Admin",
-      COMPANY_ADMIN: "Company Admin",
-      EMPLOYEE: "Employee",
-    };
-
-    return (
-      <span
-        className={`px-3 py-1 rounded-full text-xs font-medium border ${
-          styles[role as keyof typeof styles]
-        }`}
-      >
-        {labels[role as keyof typeof labels]}
-      </span>
-    );
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -567,6 +561,8 @@ export const UsersManagementPage: React.FC = () => {
       alert("Please fill in all required fields");
       return;
     }
+
+    setSubmitting(true);
 
     try {
       const { data: createResult, error: createError } =
@@ -595,6 +591,27 @@ export const UsersManagementPage: React.FC = () => {
         },
       ]);
 
+      try {
+        await sendNotificationEmail(
+          newUserData.email,
+          newUserData.full_name,
+          "Welcome to Awareone",
+          "Welcome aboard",
+          "Your account has been created. Use the credentials below to sign in.",
+          {
+            loginUrl: getLoginUrlForCompany(newUserData.company_id),
+            credentials: {
+              email: newUserData.email,
+              password: newUserData.password,
+              role: newUserData.role,
+            },
+            showSecurityNote: true,
+          }
+        );
+      } catch (emailErr) {
+        console.warn("Welcome email could not be sent:", emailErr);
+      }
+
       setShowAddUserModal(false);
       setNewUserData({
         full_name: "",
@@ -609,10 +626,17 @@ export const UsersManagementPage: React.FC = () => {
     } catch (error) {
       console.error("Error adding user:", error);
       alert("Failed to add user. Email might already exist.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleResetPassword = (userId: string, userEmail: string) => {
+  const handleResetPassword = (
+    userId: string,
+    userEmail: string,
+    userFullName: string,
+    companyId?: string
+  ) => {
     const newPassword = prompt("Enter new password for " + userEmail + ":");
 
     if (!newPassword) return;
@@ -622,29 +646,24 @@ export const UsersManagementPage: React.FC = () => {
       return;
     }
 
-    if (
-      !confirm(
-        "Are you sure you want to reset the password for " + userEmail + "?"
-      )
-    ) {
-      return;
-    }
-
     // Show password confirmation modal
     setPendingAction({
       type: "reset_password",
       userId,
       userEmail,
-      newPassword: newPassword,
+      userFullName,
+      companyId,
+      newPassword,
     });
-
     setShowPasswordModal(true);
   };
 
   const executeResetPassword = async (
     userId: string,
     userEmail: string,
-    newPassword: string
+    userFullName: string,
+    newPassword: string,
+    companyId?: string
   ) => {
     try {
       const { data: resetResult, error: resetError } =
@@ -665,6 +684,19 @@ export const UsersManagementPage: React.FC = () => {
         },
       ]);
 
+      try {
+        await sendNotificationEmail(
+          userEmail,
+          userFullName,
+          "Your password has been reset",
+          "Password Reset",
+          "Your password has been reset by an administrator. Please sign in with your new password.",
+          { loginUrl: getLoginUrlForCompany(companyId) }
+        );
+      } catch (emailErr) {
+        console.warn("Password reset email could not be sent:", emailErr);
+      }
+
       alert("Password reset successfully!");
     } catch (error) {
       console.error("Error resetting password:", error);
@@ -675,12 +707,15 @@ export const UsersManagementPage: React.FC = () => {
   const handleRoleChange = (
     userId: string,
     newRole: string,
-    userEmail: string
+    userEmail: string,
+    userFullName: string,
+    companyId?: string
   ) => {
     if (!confirm("Are you sure you want to change this user's role?")) {
       return;
     }
-    if (!confirm(`Reset password for ${userEmail}?`)) return;
+
+    // Show password confirmation modal
     setPendingAction({
       type: "role_change",
       userId,
@@ -806,45 +841,50 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
-  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !uploadCompanyId) {
-      alert("Select a company and file");
+      alert("Please select a company and file");
       return;
     }
+
     const reader = new FileReader();
-    reader.onload = async (ev) => {
+    reader.onload = async (event) => {
       try {
-        const text = ev.target?.result as string;
-        const lines = text.split("\n").filter((l) => l.trim());
+        const text = event.target?.result as string;
+        const lines = text.split("\n").filter((line) => line.trim());
+
         if (lines.length < 2) {
           alert("File is empty or incorrectly formatted");
           return;
         }
+
         const headers = lines[0]
           .toLowerCase()
           .split(",")
           .map((h) => h.trim());
-        const emailIdx = headers.findIndex((h) => h.includes("email"));
-        const nameIdx = headers.findIndex((h) => h.includes("name"));
-        const phoneIdx = headers.findIndex(
+        const emailIndex = headers.findIndex((h) => h.includes("email"));
+        const nameIndex = headers.findIndex((h) => h.includes("name"));
+        const phoneIndex = headers.findIndex(
           (h) => h.includes("phone") || h.includes("mobile")
         );
-        const deptIdx = headers.findIndex((h) => h.includes("department"));
-        if (emailIdx === -1 || nameIdx === -1) {
+        const deptIndex = headers.findIndex((h) => h.includes("department"));
+
+        if (emailIndex === -1 || nameIndex === -1) {
           alert("File must contain email and name columns");
           return;
         }
-        const employees: any[] = [];
+
+        const employees = [];
+        const failedRows = [];
+
         for (let i = 1; i < lines.length; i++) {
           const values = lines[i].split(",").map((v) => v.trim());
 
           if (values.length < 2) continue;
 
-          const email = values[emailIdx]?.toLowerCase();
-          const fullName = values[nameIdx];
-          const failedRows: number[] = [];
-
+          const email = values[emailIndex]?.toLowerCase();
+          const fullName = values[nameIndex];
 
           if (!email || !fullName) {
             failedRows.push(i + 1);
@@ -854,8 +894,8 @@ export const UsersManagementPage: React.FC = () => {
           employees.push({
             email,
             full_name: fullName,
-            phone: phoneIdx !== -1 ? values[phoneIdx] : null,
-            department: deptIdx !== -1 ? values[deptIdx] : null,
+            phone: phoneIndex !== -1 ? values[phoneIndex] : null,
+            department: deptIndex !== -1 ? values[deptIndex] : null,
             password: "Password123!",
             role: "EMPLOYEE",
             company_id: uploadCompanyId,
@@ -938,10 +978,12 @@ export const UsersManagementPage: React.FC = () => {
         alert("Failed to upload employees. Check data format.");
       }
     };
+
     reader.readAsText(file);
   };
 
-  const exportCSV = () => {
+  const exportToCSV = () => {
+    const filteredUsers = getFilteredUsers();
     const csv = [
       "Name,Email,Phone,Role,Company,Department",
       ...filteredUsers.map(
@@ -1074,7 +1116,7 @@ export const UsersManagementPage: React.FC = () => {
             alignItems: "center",
           }}
         >
-          <button className="aw-um-btn-ghost" onClick={exportCSV}>
+          <button className="aw-um-btn-ghost" onClick={exportToCSV}>
             <Download size={13} /> Export CSV
           </button>
           <button
@@ -1085,7 +1127,7 @@ export const UsersManagementPage: React.FC = () => {
           </button>
           <button
             className="aw-um-btn-primary"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => setShowAddUserModal(true)}
           >
             <Plus size={13} /> Add User
           </button>
@@ -1166,9 +1208,9 @@ export const UsersManagementPage: React.FC = () => {
           <Users size={12} style={{ color: T.accent }} />
           Showing{" "}
           <strong style={{ color: T.textBody }}>
-            {filtered.length}
-          </strong> of{" "}
-          <strong style={{ color: T.textBody }}>{users.length}</strong>
+            {filteredUsers.length}
+          </strong>{" "}
+          of <strong style={{ color: T.textBody }}>{users.length}</strong>
         </div>
       </div>
 
@@ -1204,12 +1246,12 @@ export const UsersManagementPage: React.FC = () => {
             className="aw-um-input"
             style={{ paddingLeft: 36 }}
             placeholder="Search by name or email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          {search && (
+          {searchTerm && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => setSearchTerm("")}
               style={{
                 position: "absolute",
                 right: 11,
@@ -1230,8 +1272,8 @@ export const UsersManagementPage: React.FC = () => {
         <select
           className="aw-um-select"
           style={{ flex: "1 1 160px" }}
-          value={filterCompany}
-          onChange={(e) => setFilterCompany(e.target.value)}
+          value={selectedCompany}
+          onChange={(e) => setSelectedCompany(e.target.value)}
         >
           <option value="">All Companies</option>
           {companies.map((c) => (
@@ -1244,8 +1286,8 @@ export const UsersManagementPage: React.FC = () => {
         <select
           className="aw-um-select"
           style={{ flex: "1 1 140px" }}
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value)}
+          value={selectedRole}
+          onChange={(e) => setSelectedRole(e.target.value)}
         >
           <option value="">All Roles</option>
           <option value="PLATFORM_ADMIN">Platform Admin</option>
@@ -1278,7 +1320,7 @@ export const UsersManagementPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {filteredUsers.map((u) => (
                 <tr key={u.id}>
                   <td>
                     <div
@@ -1320,7 +1362,9 @@ export const UsersManagementPage: React.FC = () => {
                       <button
                         className="aw-um-icon-btn reset"
                         title="Reset Password"
-                        onClick={() => handleResetPassword(u.id, u.email)}
+                        onClick={() =>
+                          handleResetPassword(u.id, u.email, u.full_name)
+                        }
                       >
                         <Key size={13} />
                       </button>
@@ -1328,7 +1372,12 @@ export const UsersManagementPage: React.FC = () => {
                         className="aw-um-role-select"
                         value={u.role}
                         onChange={(e) =>
-                          handleRoleChange(u.id, e.target.value, u.email)
+                          handleRoleChange(
+                            u.id,
+                            e.target.value,
+                            u.email,
+                            u.full_name
+                          )
                         }
                       >
                         <option value="PLATFORM_ADMIN">Platform Admin</option>
@@ -1338,7 +1387,9 @@ export const UsersManagementPage: React.FC = () => {
                       <button
                         className="aw-um-icon-btn del"
                         title="Delete"
-                        onClick={() => handleDelete(u.id, u.email)}
+                        onClick={() =>
+                          handleDeleteUser(u.id, u.email, u.full_name)
+                        }
                       >
                         <Trash2 size={13} />
                       </button>
@@ -1350,7 +1401,7 @@ export const UsersManagementPage: React.FC = () => {
           </table>
         </div>
 
-        {filtered.length === 0 && (
+        {filteredUsers.length === 0 && (
           <div style={{ textAlign: "center", padding: "52px 24px" }}>
             <div
               style={{
@@ -1375,12 +1426,12 @@ export const UsersManagementPage: React.FC = () => {
       </div>
 
       {/* ═══════════ ADD USER MODAL ═══════════ */}
-      {showAddModal && (
+      {showAddUserModal && (
         <Modal
           title="Add New User"
           subtitle="Fill in the user details"
           icon={Plus}
-          onClose={() => setShowAddModal(false)}
+          onClose={() => setShowAddUserModal(false)}
         >
           <form onSubmit={handleAddUser}>
             <div
@@ -1399,9 +1450,9 @@ export const UsersManagementPage: React.FC = () => {
                   className="aw-um-input"
                   required
                   placeholder="John Smith"
-                  value={newUser.full_name}
+                  value={newUserData.full_name}
                   onChange={(e) =>
-                    setNewUser((p) => ({ ...p, full_name: e.target.value }))
+                    setNewUserData((p) => ({ ...p, full_name: e.target.value }))
                   }
                 />
               </div>
@@ -1414,9 +1465,9 @@ export const UsersManagementPage: React.FC = () => {
                   type="email"
                   required
                   placeholder="john@company.com"
-                  value={newUser.email}
+                  value={newUserData.email}
                   onChange={(e) =>
-                    setNewUser((p) => ({ ...p, email: e.target.value }))
+                    setNewUserData((p) => ({ ...p, email: e.target.value }))
                   }
                 />
               </div>
@@ -1429,9 +1480,9 @@ export const UsersManagementPage: React.FC = () => {
                   type="password"
                   required
                   minLength={6}
-                  value={newUser.password}
+                  value={newUserData.password}
                   onChange={(e) =>
-                    setNewUser((p) => ({ ...p, password: e.target.value }))
+                    setNewUserData((p) => ({ ...p, password: e.target.value }))
                   }
                 />
               </div>
@@ -1441,9 +1492,9 @@ export const UsersManagementPage: React.FC = () => {
                   className="aw-um-input"
                   type="tel"
                   placeholder="+966 5x xxx xxxx"
-                  value={newUser.phone}
+                  value={newUserData.phone}
                   onChange={(e) =>
-                    setNewUser((p) => ({ ...p, phone: e.target.value }))
+                    setNewUserData((p) => ({ ...p, phone: e.target.value }))
                   }
                 />
               </div>
@@ -1460,9 +1511,9 @@ export const UsersManagementPage: React.FC = () => {
                   </label>
                   <select
                     className="aw-um-select"
-                    value={newUser.role}
+                    value={newUserData.role}
                     onChange={(e) =>
-                      setNewUser((p) => ({ ...p, role: e.target.value }))
+                      setNewUserData((p) => ({ ...p, role: e.target.value }))
                     }
                   >
                     <option value="EMPLOYEE">Employee</option>
@@ -1474,9 +1525,12 @@ export const UsersManagementPage: React.FC = () => {
                   <label className="aw-um-label">Company</label>
                   <select
                     className="aw-um-select"
-                    value={newUser.company_id}
+                    value={newUserData.company_id}
                     onChange={(e) =>
-                      setNewUser((p) => ({ ...p, company_id: e.target.value }))
+                      setNewUserData((p) => ({
+                        ...p,
+                        company_id: e.target.value,
+                      }))
                     }
                   >
                     <option value="">— Select —</option>
@@ -1500,7 +1554,7 @@ export const UsersManagementPage: React.FC = () => {
               <button
                 type="button"
                 className="aw-um-btn-ghost"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => setShowAddUserModal(false)}
                 style={{ flex: 1, justifyContent: "center" }}
               >
                 Cancel
@@ -1606,7 +1660,7 @@ export const UsersManagementPage: React.FC = () => {
               <input
                 type="file"
                 accept=".csv"
-                onChange={handleCSVUpload}
+                onChange={handleFileUpload}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
@@ -1642,16 +1696,16 @@ export const UsersManagementPage: React.FC = () => {
       )}
 
       {/* ═══════════ PASSWORD CONFIRM MODAL ═══════════ */}
-      {showPassModal && (
+      {showPasswordModal && (
         <Modal
           title="Confirm Your Identity"
           subtitle="Enter your password to proceed"
           icon={Key}
           iconColor={T.orange}
           onClose={() => {
-            setShowPassModal(false);
-            setConfirmPw("");
-            setPwError("");
+            setShowPasswordModal(false);
+            setConfirmPassword("");
+            setPasswordError("");
             setPendingAction(null);
           }}
           maxWidth={400}
@@ -1671,18 +1725,18 @@ export const UsersManagementPage: React.FC = () => {
                 type="password"
                 autoFocus
                 placeholder="Enter your password"
-                value={confirmPw}
+                value={confirmPassword}
                 onChange={(e) => {
-                  setConfirmPw(e.target.value);
-                  setPwError("");
+                  setConfirmPassword(e.target.value);
+                  setPasswordError("");
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handlePwConfirm();
+                  if (e.key === "Enter") handlePasswordConfirm();
                 }}
               />
-              {pwError && (
+              {passwordError && (
                 <p style={{ fontSize: 12, color: T.red, marginTop: 5 }}>
-                  {pwError}
+                  {passwordError}
                 </p>
               )}
             </div>
@@ -1698,9 +1752,9 @@ export const UsersManagementPage: React.FC = () => {
             <button
               className="aw-um-btn-ghost"
               onClick={() => {
-                setShowPassModal(false);
-                setConfirmPw("");
-                setPwError("");
+                setShowPasswordModal(false);
+                setConfirmPassword("");
+                setPasswordError("");
                 setPendingAction(null);
               }}
               style={{ flex: 1, justifyContent: "center" }}
@@ -1709,7 +1763,7 @@ export const UsersManagementPage: React.FC = () => {
             </button>
             <button
               className="aw-um-save-btn"
-              onClick={handlePwConfirm}
+              onClick={handlePasswordConfirm}
               style={{
                 background: T.orange,
                 boxShadow: "0 0 16px rgba(251,146,60,0.20)",
