@@ -10,14 +10,246 @@ import {
   Lock,
   Activity,
   Loader2,
+  Check,
+  X,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { PhishingTemplate, PhishingCampaignQuota } from "../../lib/types";
 
+/* ─────────────────────────────────────────
+   TOKENS
+───────────────────────────────────────── */
+const T = {
+  bg: "#12140a",
+  bgCard: "#1a1e0e",
+  accent: "#c8ff00",
+  accentDark: "#12140a",
+  white: "#ffffff",
+  textBody: "#cbd5e1",
+  textMuted: "#64748b",
+  border: "rgba(255,255,255,0.09)",
+  borderFaint: "rgba(255,255,255,0.05)",
+  green: "#34d399",
+  greenBg: "rgba(52,211,153,0.08)",
+  greenBorder: "rgba(52,211,153,0.22)",
+  blue: "#60a5fa",
+  blueBg: "rgba(96,165,250,0.08)",
+  blueBorder: "rgba(96,165,250,0.22)",
+  orange: "#fb923c",
+  orangeBg: "rgba(251,146,60,0.08)",
+  orangeBorder: "rgba(251,146,60,0.22)",
+  red: "#f87171",
+  redBg: "rgba(248,113,113,0.08)",
+  redBorder: "rgba(248,113,113,0.22)",
+  purple: "#a78bfa",
+  purpleBg: "rgba(167,139,250,0.08)",
+  purpleBorder: "rgba(167,139,250,0.22)",
+  gold: "#fbbf24",
+} as const;
+
 const ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT =
   "Request Additional Phishing Campaigns";
 
+/* ─────────────────────────────────────────
+   CSS
+───────────────────────────────────────── */
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  /* ── Form inputs ── */
+  .aw-pr-input, .aw-pr-select, .aw-pr-textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 10px;
+    font-size: 14px; color: #ffffff;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+  .aw-pr-input    { padding: 11px 14px; }
+  .aw-pr-textarea { padding: 11px 14px; resize: vertical; min-height: 100px; }
+  .aw-pr-select   {
+    padding: 11px 36px 11px 14px; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  .aw-pr-input:focus, .aw-pr-select:focus, .aw-pr-textarea:focus {
+    border-color: rgba(200,255,0,0.45);
+    box-shadow: 0 0 0 3px rgba(200,255,0,0.07);
+    background: rgba(255,255,255,0.06);
+  }
+  .aw-pr-input::placeholder, .aw-pr-textarea::placeholder { color: rgba(148,163,184,0.35); }
+  .aw-pr-select option { background: #1a1e0e; color: #ffffff; }
+
+  .aw-pr-label {
+    display: block; font-size: 12px; font-weight: 600;
+    color: #94a3b8; margin-bottom: 7px; letter-spacing: 0.3px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* ── Tabs ── */
+  .aw-pr-tab {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px; border-radius: 9px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+    transition: all 0.18s; background: none; color: #64748b;
+  }
+  .aw-pr-tab:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+  .aw-pr-tab.active {
+    background: rgba(200,255,0,0.10);
+    border: 1px solid rgba(200,255,0,0.22);
+    color: #c8ff00;
+  }
+
+  /* ── Dept checkbox row ── */
+  .aw-pr-dept-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 9px;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,0.02); cursor: pointer;
+    transition: all 0.18s; font-family: 'Inter', sans-serif;
+  }
+  .aw-pr-dept-row:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); }
+  .aw-pr-dept-row.checked {
+    background: rgba(200,255,0,0.06);
+    border-color: rgba(200,255,0,0.25);
+  }
+
+  /* ── Tracking toggle row ── */
+  .aw-pr-track-row {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 16px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02); cursor: pointer;
+    transition: all 0.18s; font-family: 'Inter', sans-serif;
+  }
+  .aw-pr-track-row:hover { background: rgba(255,255,255,0.05); }
+  .aw-pr-track-row.checked {
+    background: rgba(200,255,0,0.04);
+    border-color: rgba(200,255,0,0.20);
+  }
+
+  /* ── Custom checkbox ── */
+  .aw-pr-check {
+    width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.20);
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; transition: all 0.18s;
+  }
+  .checked .aw-pr-check {
+    background: #c8ff00; border-color: #c8ff00;
+  }
+
+  /* ── Submit btn ── */
+  .aw-pr-submit {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 14px 24px; border-radius: 10px; border: none; cursor: pointer;
+    font-size: 15px; font-weight: 700; font-family: 'Inter', sans-serif;
+    background: #c8ff00; color: #12140a;
+    box-shadow: 0 0 22px rgba(200,255,0,0.22);
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .aw-pr-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .aw-pr-submit:disabled {
+    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.25);
+    cursor: not-allowed; box-shadow: none;
+  }
+
+  /* ── Checklist dot ── */
+  .aw-pr-dot { width: 8px; height: 8px; border-radius: '50%'; flex-shrink: 0; margin-top: 5px; }
+
+  /* ── Progress steps ── */
+  .aw-pr-step {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-family: 'Inter', sans-serif;
+  }
+  .aw-pr-step-num {
+    width: 30px; height: 30px; border-radius: '50%'; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800;
+  }
+
+  /* ── Code textarea ── */
+  .aw-pr-code {
+    font-family: 'Fira Code', 'Courier New', monospace !important;
+    font-size: 12px !important; line-height: 1.6;
+  }
+
+  /* ── Preview modal overlay ── */
+  .aw-pr-overlay {
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(10,12,6,0.85);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+
+  @keyframes aw-spin    { to { transform: rotate(360deg); } }
+  @keyframes aw-fade-up { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes aw-modal-in { from { opacity:0; transform:scale(0.97) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
+  .aw-modal-in { animation: aw-modal-in 0.28s ease both; }
+`;
+
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("aw-pr-styles")
+) {
+  const tag = document.createElement("style");
+  tag.id = "aw-pr-styles";
+  tag.textContent = STYLES;
+  document.head.appendChild(tag);
+}
+
+type Tab = "basic" | "email" | "landing" | "tracking";
+
+/* ─────────────────────────────────────────
+   SECTION WRAPPER
+───────────────────────────────────────── */
+const Section: React.FC<{ children: React.ReactNode; delay?: string }> = ({
+  children,
+  delay = "0s",
+}) => (
+  <div
+    className="aw-fade-up"
+    style={{
+      animationDelay: delay,
+      background: T.bgCard,
+      border: `1px solid ${T.border}`,
+      borderRadius: 14,
+      overflow: "hidden",
+    }}
+  >
+    {children}
+  </div>
+);
+const SectionHeader: React.FC<{
+  icon: React.ElementType;
+  color?: string;
+  title: string;
+  right?: React.ReactNode;
+}> = ({ icon: Icon, color = T.accent, title, right }) => (
+  <div
+    style={{
+      padding: "14px 20px",
+      borderBottom: `1px solid ${T.borderFaint}`,
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+    }}
+  >
+    <Icon size={14} style={{ color }} />
+    <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>
+      {title}
+    </span>
+    {right && <div style={{ marginLeft: "auto" }}>{right}</div>}
+  </div>
+);
+
+/* ═══════════════════════════════════════════
+   COMPONENT
+═══════════════════════════════════════════ */
 export const PhishingRequestPage: React.FC = () => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<PhishingTemplate[]>([]);
@@ -27,15 +259,11 @@ export const PhishingRequestPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [previewTemplate, setPreviewTemplate] =
     useState<PhishingTemplate | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    "basic" | "email" | "landing" | "tracking"
-  >("basic");
-  const [requestingAdditionalCampaigns, setRequestingAdditionalCampaigns] =
-    useState(false);
-  const [additionalCampaignsTicketError, setAdditionalCampaignsTicketError] =
-    useState("");
+  const [activeTab, setActiveTab] = useState<Tab>("basic");
+  const [requestingMore, setRequestingMore] = useState(false);
+  const [moreError, setMoreError] = useState("");
 
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     campaign_name: "",
     template_id: "",
     target_departments: [] as string[],
@@ -61,11 +289,9 @@ export const PhishingRequestPage: React.FC = () => {
 
   const loadFormData = async () => {
     if (!user?.company_id) return;
-
     try {
-      const currentYear = new Date().getFullYear();
-
-      const [templatesRes, deptRes, quotaRes] = await Promise.all([
+      const year = new Date().getFullYear();
+      const [tRes, dRes, qRes] = await Promise.all([
         supabase
           .from("phishing_templates")
           .select("*")
@@ -80,61 +306,62 @@ export const PhishingRequestPage: React.FC = () => {
           .from("phishing_campaign_quotas")
           .select("*")
           .eq("company_id", user.company_id)
-          .eq("quota_year", currentYear)
+          .eq("quota_year", year)
           .maybeSingle(),
       ]);
-
-      if (templatesRes.data) setTemplates(templatesRes.data);
-      if (deptRes.data) setDepartments(deptRes.data);
-      if (quotaRes.data) setQuota(quotaRes.data);
-    } catch (error) {
-      console.error("Error loading form data:", error);
+      if (tRes.data) setTemplates(tRes.data);
+      if (dRes.data) setDepartments(dRes.data);
+      if (qRes.data) setQuota(qRes.data);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTemplateChange = (templateId: string) => {
-    const template = templates.find((t) => t.id === templateId);
-    if (template) {
-      setFormData((prev) => ({
+  const handleTemplateChange = (id: string) => {
+    const tpl = templates.find((t) => t.id === id);
+    if (tpl)
+      setForm((prev) => ({
         ...prev,
-        template_id: templateId,
-        email_subject: template.subject,
-        email_html_body: template.html_content,
+        template_id: id,
+        email_subject: tpl.subject,
+        email_html_body: tpl.html_content,
       }));
-    }
+    else setForm((prev) => ({ ...prev, template_id: id }));
   };
+
+  const toggleDept = (id: string) =>
+    setForm((prev) => ({
+      ...prev,
+      target_departments: prev.target_departments.includes(id)
+        ? prev.target_departments.filter((x) => x !== id)
+        : [...prev.target_departments, id],
+    }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.company_id || !user?.id) return;
-
-    const remainingQuota =
-      (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-    if (remainingQuota <= 0) {
-      alert("No remaining quota. Please contact support.");
+    const remaining = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
+    if (remaining <= 0) {
+      alert("No remaining quota.");
       return;
     }
-
     setSubmitting(true);
-
     try {
-      const { error: quotaError } = await supabase.rpc(
-        "consume_campaign_quota",
-        {
-          p_company_id: user.company_id,
-          p_quota_year: '2026',
-        }
+      const { data: ticketData, error: ticketErr } = await supabase.rpc(
+        "generate_ticket_number"
       );
-      console.log('quotaError', quotaError);
-      if (quotaError) throw quotaError;
-
-      const ticketNumber = await generateTicketNumber();
-      const employeeCount = await calculateEmployeeCount(
-        formData.target_departments
-      );
-
+      const ticketNumber =
+        !ticketErr && ticketData
+          ? ticketData
+          : `PHC-${Date.now().toString().slice(-6)}`;
+      const { count } = await supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("company_id", user.company_id)
+        .eq("role", "EMPLOYEE")
+        .in("department_id", form.target_departments);
       const { error } = await supabase
         .from("phishing_campaign_requests")
         .insert([
@@ -142,937 +369,1362 @@ export const PhishingRequestPage: React.FC = () => {
             ticket_number: ticketNumber,
             company_id: user.company_id,
             requested_by: user.id,
-            campaign_name: formData.campaign_name,
-            template_id: formData.template_id || null,
-            target_departments: formData.target_departments,
-            target_employee_count: employeeCount,
-            scheduled_date: formData.scheduled_date || null,
+            campaign_name: form.campaign_name,
+            template_id: form.template_id || null,
+            target_departments: form.target_departments,
+            target_employee_count: count || 0,
+            scheduled_date: form.scheduled_date || null,
             status: "SUBMITTED",
-            priority: formData.priority,
-            notes: formData.notes || null,
-            email_subject: formData.email_subject || null,
-            email_html_body: formData.email_html_body || null,
-            email_text_body: formData.email_text_body || null,
-            landing_page_html: formData.landing_page_html || null,
-            redirect_url: formData.redirect_url || null,
-            from_address: formData.from_address || null,
-            from_name: formData.from_name || null,
-            track_opens: formData.track_opens,
-            track_clicks: formData.track_clicks,
-            capture_credentials: formData.capture_credentials,
-            capture_passwords: formData.capture_passwords,
+            priority: form.priority,
+            notes: form.notes || null,
+            email_subject: form.email_subject || null,
+            email_html_body: form.email_html_body || null,
+            email_text_body: form.email_text_body || null,
+            landing_page_html: form.landing_page_html || null,
+            redirect_url: form.redirect_url || null,
+            from_address: form.from_address || null,
+            from_name: form.from_name || null,
+            track_opens: form.track_opens,
+            track_clicks: form.track_clicks,
+            capture_credentials: form.capture_credentials,
+            capture_passwords: form.capture_passwords,
           },
         ]);
-
-      if (error) {
-        // Rollback: refund the quota since insert failed
-        await supabase.rpc("refund_used_quotes", {
-          p_company_id: user.company_id,
-          p_quota_year: new Date().getFullYear(),
-        });
-        throw error;
-      }
-
-      alert(`Campaign request submitted successfully! Ticket: ${ticketNumber}`);
-
-      window.location.reload();
-    } catch (error) {
-      console.error("Error submitting request:", error);
-      alert("Failed to submit request. Please try again.");
+      if (error) throw error;
+      alert(`Campaign request submitted! Ticket: ${ticketNumber}`);
+      window.location.href = "/company/phishing-dashboard";
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const generateTicketNumber = async () => {
-    const { data, error } = await supabase.rpc("generate_ticket_number");
-    if (error || !data) {
-      const timestamp = Date.now().toString().slice(-6);
-      return `PHC-${timestamp}`;
-    }
-    return data;
-  };
-
-  const calculateEmployeeCount = async (deptIds: string[]) => {
-    if (!user?.company_id) return 0;
-    if (deptIds.length === 0) return 0;
-
-    const { count } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("company_id", user.company_id)
-      .eq("role", "EMPLOYEE")
-      .in("department_id", deptIds);
-
-    return count || 0;
-  };
-
-  const toggleDepartment = (deptId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      target_departments: prev.target_departments.includes(deptId)
-        ? prev.target_departments.filter((id) => id !== deptId)
-        : [...prev.target_departments, deptId],
-    }));
-  };
-
-  const handleRequestAdditionalPhishingCampaigns = async () => {
+  const handleRequestMore = async () => {
     if (!user?.id) {
-      setAdditionalCampaignsTicketError(
-        "Unable to identify the current user. Please sign in again."
-      );
+      setMoreError("Unable to identify user.");
       return;
     }
-
-    setRequestingAdditionalCampaigns(true);
-    setAdditionalCampaignsTicketError("");
-
+    setRequestingMore(true);
+    setMoreError("");
     try {
-      const { error: createError } = await supabase
+      const { error } = await supabase
         .from("support_ticket")
         .insert([
           { user_id: user.id, subject: ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT },
         ])
         .select("id")
         .single();
-
-      if (createError) {
-        throw createError;
-      }
-
+      if (error) throw error;
       alert("Support request submitted successfully.");
-    } catch (submitError) {
-      console.error("Error creating support ticket:", submitError);
-      setAdditionalCampaignsTicketError(
-        "Failed to create support request. Please try again."
-      );
+    } catch {
+      setMoreError("Failed to create support request. Please try again.");
     } finally {
-      setRequestingAdditionalCampaigns(false);
+      setRequestingMore(false);
     }
   };
 
-  if (loading) {
+  if (loading)
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "80px 0",
+          gap: 14,
+          fontFamily: "Inter, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            border: "3px solid rgba(255,255,255,0.06)",
+            borderTopColor: T.accent,
+            animation: "aw-spin 0.8s linear infinite",
+          }}
+        />
       </div>
     );
-  }
 
   const remainingQuota =
     (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-  const selectedTemplate = templates.find((t) => t.id === formData.template_id);
+  const selectedTpl = templates.find((t) => t.id === form.template_id);
   const annualQuotaIsZero = quota !== null && quota.annual_quota === 0;
 
   if (annualQuotaIsZero) {
     return (
-      <div>
+      <div style={{ fontFamily: "'Inter', sans-serif" }}>
         <button
-          type="button"
-          onClick={() => (window.location.href = "/company/phishing-dashboard")}
-          className="mb-6 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            fontSize: 13,
+            fontWeight: 600,
+            color: T.textMuted,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "0 0 24px",
+            fontFamily: "inherit",
+          }}
+          onClick={() => window.history.back()}
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Dashboard
+          <ArrowLeft size={14} /> Back to Dashboard
         </button>
 
-        <div className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-amber-50/80 p-8 shadow-sm">
-          <div className="mb-6 flex justify-center">
-            <div className="rounded-full bg-amber-100 p-4 text-amber-700">
-              <Shield className="h-10 w-10" />
-            </div>
+        <div
+          style={{
+            maxWidth: 520,
+            margin: "0 auto",
+            textAlign: "center",
+            padding: "40px 32px",
+            background: T.bgCard,
+            border: `1px solid ${T.orangeBorder}`,
+            borderRadius: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              background: T.orangeBg,
+              border: `1px solid ${T.orangeBorder}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <Shield size={26} style={{ color: T.orange }} />
           </div>
-          <h1 className="mb-3 text-center text-2xl font-bold text-slate-900">
-            Phishing campaign quota exhausted
+          <h1
+            style={{
+              fontSize: 20,
+              fontWeight: 900,
+              color: T.white,
+              margin: "0 0 10px",
+            }}
+          >
+            Quota Exhausted
           </h1>
-          <p className="mb-6 text-center text-slate-700">
-            Your organization has used all phishing campaigns included in your
-            current plan for this year. You cannot create a new campaign until
-            your quota is increased or renewed.
+          <p
+            style={{
+              fontSize: 14,
+              color: T.textBody,
+              margin: "0 0 24px",
+              lineHeight: "22px",
+            }}
+          >
+            Your organization has used all phishing campaigns for this year.
+            Contact support to increase your quota.
           </p>
-          {additionalCampaignsTicketError && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {additionalCampaignsTicketError}
+          {moreError && (
+            <div
+              style={{
+                padding: "10px 16px",
+                background: T.redBg,
+                border: `1px solid ${T.redBorder}`,
+                borderRadius: 9,
+                fontSize: 13,
+                color: T.red,
+                marginBottom: 16,
+              }}
+            >
+              {moreError}
             </div>
           )}
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={handleRequestAdditionalPhishingCampaigns}
-              disabled={requestingAdditionalCampaigns}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            >
-              {requestingAdditionalCampaigns ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending request...
-                </>
-              ) : (
-                ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT
-              )}
-            </button>
-          </div>
+          <button
+            onClick={handleRequestMore}
+            disabled={requestingMore}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 24px",
+              background: T.accent,
+              color: T.accentDark,
+              fontSize: 14,
+              fontWeight: 700,
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {requestingMore ? (
+              <>
+                <Loader2
+                  size={14}
+                  style={{ animation: "aw-spin 0.8s linear infinite" }}
+                />{" "}
+                Sending…
+              </>
+            ) : (
+              ADDITIONAL_PHISHING_CAMPAIGNS_SUBJECT
+            )}
+          </button>
         </div>
       </div>
     );
   }
 
+  const tabs: { id: Tab; icon: React.ElementType; label: string }[] = [
+    { id: "basic", icon: FileText, label: "Basic Info" },
+    { id: "email", icon: Mail, label: "Email Template" },
+    { id: "landing", icon: Globe, label: "Landing Page" },
+    { id: "tracking", icon: Activity, label: "Tracking" },
+  ];
+
+  /* Checklist items */
+  const checklist = [
+    {
+      label: "Campaign Name",
+      done: !!form.campaign_name,
+      sub: "Appears in reports",
+    },
+    {
+      label: "Email Template",
+      done: !!form.email_subject && !!form.email_html_body,
+      sub: "Subject & HTML body",
+    },
+    {
+      label: "Landing Page",
+      done: !!form.landing_page_html,
+      sub: "Capture page",
+    },
+    {
+      label: "Target Group",
+      done: form.target_departments.length > 0,
+      sub: "Recipient departments",
+    },
+    { label: "Sending Profile", done: !!form.from_address, sub: "SMTP config" },
+    {
+      label: "Scheduling",
+      done: !!form.scheduled_date,
+      sub: form.scheduled_date ? "Scheduled" : "Immediate on approval",
+      optional: true,
+    },
+    {
+      label: "Tracking Options",
+      done: true,
+      sub: "Opens, clicks, credentials",
+    },
+  ];
+
+  const isSubmitDisabled =
+    submitting ||
+    remainingQuota <= 0 ||
+    form.target_departments.length === 0 ||
+    !form.campaign_name ||
+    !form.email_subject ||
+    !form.email_html_body;
+
   return (
-    <div>
+    <div style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* ── Back button ── */}
       <button
-        onClick={() => (window.location.href = "/company/phishing-dashboard")}
-        className="mb-6 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+        className="aw-fade-up"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 7,
+          fontSize: 13,
+          fontWeight: 600,
+          color: T.textMuted,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "0 0 20px",
+          fontFamily: "inherit",
+          transition: "color 0.18s",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = T.white)}
+        onMouseLeave={(e) => (e.currentTarget.style.color = T.textMuted)}
+        onClick={() => window.history.back()}
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Dashboard
+        <ArrowLeft size={14} /> Back to Dashboard
       </button>
 
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">
-          Create Phishing Campaign Request
-        </h1>
-        <p className="text-slate-600">
-          Configure all elements of your phishing simulation campaign
+      {/* ── Page header ── */}
+      <div className="aw-fade-up" style={{ marginBottom: 24 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 5,
+          }}
+        >
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: T.redBg,
+              border: `1px solid ${T.redBorder}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Shield size={18} style={{ color: T.red }} />
+          </div>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: T.white,
+              letterSpacing: "-0.3px",
+              margin: 0,
+            }}
+          >
+            Create Phishing Campaign
+          </h1>
+        </div>
+        <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+          Configure all elements of your phishing simulation campaign.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <form
-            onSubmit={handleSubmit}
-            className="bg-white rounded-xl shadow-sm border border-slate-200 p-6"
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 300px",
+          gap: 20,
+          alignItems: "flex-start",
+        }}
+      >
+        {/* ── Main form ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Quota bar */}
+          <div
+            className="aw-fade-up"
+            style={{
+              animationDelay: "0.05s",
+              padding: "14px 18px",
+              background: remainingQuota > 0 ? "rgba(200,255,0,0.04)" : T.redBg,
+              border: `1px solid ${
+                remainingQuota > 0 ? "rgba(200,255,0,0.20)" : T.redBorder
+              }`,
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+            }}
           >
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-blue-900">
-                    Campaign Quota
-                  </h3>
-                  <p className="text-sm text-blue-700">
-                    Remaining: {remainingQuota} of {quota?.annual_quota || 0}{" "}
-                    campaigns
-                  </p>
-                </div>
-                <Shield className="h-8 w-8 text-blue-600" />
-              </div>
-            </div>
-
-            <div className="border-b border-slate-200 mb-6">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("basic")}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    activeTab === "basic"
-                      ? "text-blue-600 border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <FileText className="inline h-4 w-4 mr-2" />
-                  Basic Info
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("email")}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    activeTab === "email"
-                      ? "text-blue-600 border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <Mail className="inline h-4 w-4 mr-2" />
-                  Email Template
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("landing")}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    activeTab === "landing"
-                      ? "text-blue-600 border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <Globe className="inline h-4 w-4 mr-2" />
-                  Landing Page
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("tracking")}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    activeTab === "tracking"
-                      ? "text-blue-600 border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <Activity className="inline h-4 w-4 mr-2" />
-                  Tracking
-                </button>
-              </div>
-            </div>
-
-            {activeTab === "basic" && (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Campaign Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.campaign_name}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        campaign_name: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Q4 2025 Security Awareness Test"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Phishing Template
-                  </label>
-                  <select
-                    value={formData.template_id}
-                    onChange={(e) => handleTemplateChange(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">
-                      Select a template (or create custom below)...
-                    </option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name} ({template.difficulty_level})
-                      </option>
-                    ))}
-                  </select>
-                  {selectedTemplate && (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewTemplate(selectedTemplate)}
-                      className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                    >
-                      <Eye className="h-4 w-4" />
-                      Preview Template
-                    </button>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Target Departments * (Select Recipient Groups)
-                  </label>
-                  <div className="border border-slate-300 rounded-lg p-4 max-h-48 overflow-y-auto">
-                    {departments.length > 0 ? (
-                      departments.map((dept) => (
-                        <label
-                          key={dept.id}
-                          className="flex items-center gap-2 py-2 hover:bg-slate-50 px-2 rounded cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={formData.target_departments.includes(
-                              dept.id
-                            )}
-                            onChange={() => toggleDepartment(dept.id)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-slate-700">{dept.name}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        No departments available
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Scheduled Launch Date (ISO8601)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.scheduled_date}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        scheduled_date: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    min={new Date().toISOString().slice(0, 16)}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Leave empty to launch immediately upon approval
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={formData.priority}
-                    onChange={(e) =>
-                      setFormData({ ...formData, priority: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="LOW">Low</option>
-                    <option value="NORMAL">Normal</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Additional Notes
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) =>
-                      setFormData({ ...formData, notes: e.target.value })
-                    }
-                    rows={4}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Any specific requirements or instructions..."
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "email" && (
-              <div className="space-y-6">
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-                  <p className="text-amber-800">
-                    <strong>Template Variables:</strong> Use{" "}
-                    <code className="bg-amber-100 px-1 rounded">
-                      {"{{.FirstName}}"}
-                    </code>
-                    ,{" "}
-                    <code className="bg-amber-100 px-1 rounded">
-                      {"{{.LastName}}"}
-                    </code>
-                    ,{" "}
-                    <code className="bg-amber-100 px-1 rounded">
-                      {"{{.Email}}"}
-                    </code>
-                    ,{" "}
-                    <code className="bg-amber-100 px-1 rounded">
-                      {"{{.URL}}"}
-                    </code>{" "}
-                    to personalize emails.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    From Name (SMTP Profile)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.from_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, from_name: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="IT Support Team"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    From Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.from_address}
-                    onChange={(e) =>
-                      setFormData({ ...formData, from_address: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="support@company.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Email Subject *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.email_subject}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        email_subject: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Urgent: Password Reset Required"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    HTML Body *
-                  </label>
-                  <textarea
-                    required
-                    value={formData.email_html_body}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        email_html_body: e.target.value,
-                      })
-                    }
-                    rows={10}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                    placeholder="<html><body><p>Hello {{.FirstName}},</p><p>Click here: <a href='{{.URL}}'>Reset Password</a></p></body></html>"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Plain Text Body (Optional)
-                  </label>
-                  <textarea
-                    value={formData.email_text_body}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        email_text_body: e.target.value,
-                      })
-                    }
-                    rows={6}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                    placeholder="Hello {{.FirstName}}, Click here to reset: {{.URL}}"
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "landing" && (
-              <div className="space-y-6">
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                  <p className="text-blue-800">
-                    <strong>Landing Page:</strong> The page displayed when users
-                    click the phishing link. Can capture credentials or redirect
-                    to a real website.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Landing Page HTML
-                  </label>
-                  <textarea
-                    value={formData.landing_page_html}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        landing_page_html: e.target.value,
-                      })
-                    }
-                    rows={12}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                    placeholder="<html><body><h2>Account Verification</h2><form><input name='username' placeholder='Email' /><input name='password' type='password' placeholder='Password' /><button>Submit</button></form></body></html>"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Redirect URL (After Landing Page)
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.redirect_url}
-                    onChange={(e) =>
-                      setFormData({ ...formData, redirect_url: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="https://www.company.com/security-awareness"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Where to redirect users after they interact with the landing
-                    page
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === "tracking" && (
-              <div className="space-y-6">
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="text-green-800">
-                    <strong>Tracking Options:</strong> Configure what user
-                    actions to monitor during the campaign.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.track_opens}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          track_opens: e.target.checked,
-                        })
-                      }
-                      className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900">
-                        Track Email Opens
-                      </div>
-                      <div className="text-sm text-slate-600">
-                        Monitor when recipients open the phishing email
-                      </div>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.track_clicks}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          track_clicks: e.target.checked,
-                        })
-                      }
-                      className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900">
-                        Track Link Clicks
-                      </div>
-                      <div className="text-sm text-slate-600">
-                        Monitor when recipients click links in the email
-                      </div>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.capture_credentials}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          capture_credentials: e.target.checked,
-                        })
-                      }
-                      className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900">
-                        Capture Credential Submissions
-                      </div>
-                      <div className="text-sm text-slate-600">
-                        Track when users enter credentials on the landing page
-                      </div>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.capture_passwords}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          capture_passwords: e.target.checked,
-                        })
-                      }
-                      className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900 flex items-center gap-2">
-                        Capture Actual Passwords
-                        <Lock className="h-4 w-4 text-amber-600" />
-                      </div>
-                      <div className="text-sm text-slate-600">
-                        Store actual passwords entered (use with caution -
-                        security risk)
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-                  <p className="text-amber-800">
-                    <strong>Note:</strong> All captured data is encrypted and
-                    only accessible to authorized administrators. Capturing
-                    actual passwords is not recommended for security reasons.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-8 pt-6 border-t border-slate-200">
-              <button
-                type="submit"
-                disabled={
-                  submitting ||
-                  remainingQuota <= 0 ||
-                  formData.target_departments.length === 0 ||
-                  !formData.campaign_name ||
-                  !formData.email_subject ||
-                  !formData.email_html_body
-                }
-                className={`w-full py-3 rounded-lg transition-all flex items-center justify-center gap-2 font-medium ${
-                  submitting ||
-                  remainingQuota <= 0 ||
-                  formData.target_departments.length === 0 ||
-                  !formData.campaign_name ||
-                  !formData.email_subject ||
-                  !formData.email_html_body
-                    ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-md hover:shadow-lg"
-                }`}
+            <Shield
+              size={18}
+              style={{
+                color: remainingQuota > 0 ? T.accent : T.red,
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: T.white,
+                  marginBottom: 5,
+                }}
               >
-                <Send className="h-5 w-5" />
-                {submitting
-                  ? "Submitting Campaign Request..."
-                  : "Submit Campaign Request"}
-              </button>
+                Campaign Quota
+              </div>
+              <div
+                style={{
+                  height: 5,
+                  background: "rgba(255,255,255,0.07)",
+                  borderRadius: 9999,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.max(
+                      0,
+                      (remainingQuota / (quota?.annual_quota || 1)) * 100
+                    )}%`,
+                    background: remainingQuota > 0 ? T.accent : T.red,
+                    borderRadius: 9999,
+                  }}
+                />
+              </div>
             </div>
-          </form>
+            <span
+              style={{
+                fontSize: 16,
+                fontWeight: 900,
+                color: remainingQuota > 0 ? T.accent : T.red,
+                flexShrink: 0,
+              }}
+            >
+              {remainingQuota} / {quota?.annual_quota || 0}
+            </span>
+          </div>
+
+          {/* Tabs */}
+          <div
+            className="aw-fade-up"
+            style={{
+              animationDelay: "0.08s",
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 14,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`aw-pr-tab ${
+                    activeTab === tab.id ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <tab.icon size={13} /> {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ padding: "20px" }}>
+                {/* ── BASIC TAB ── */}
+                {activeTab === "basic" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 18,
+                    }}
+                  >
+                    <div>
+                      <label className="aw-pr-label">
+                        Campaign Name <span style={{ color: T.accent }}>*</span>
+                      </label>
+                      <input
+                        className="aw-pr-input"
+                        type="text"
+                        required
+                        placeholder="Q4 2025 Security Awareness Test"
+                        value={form.campaign_name}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            campaign_name: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="aw-pr-label">Phishing Template</label>
+                      <select
+                        className="aw-pr-select"
+                        value={form.template_id}
+                        onChange={(e) => handleTemplateChange(e.target.value)}
+                      >
+                        <option value="">
+                          Select a template (or create custom below)…
+                        </option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.difficulty_level})
+                          </option>
+                        ))}
+                      </select>
+                      {selectedTpl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTemplate(selectedTpl)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            marginTop: 8,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: T.blue,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 0,
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          <Eye size={12} /> Preview Template
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Target departments */}
+                    <div>
+                      <label className="aw-pr-label">
+                        Target Departments{" "}
+                        <span style={{ color: T.accent }}>*</span>
+                      </label>
+                      <div
+                        style={{
+                          maxHeight: 200,
+                          overflowY: "auto",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          padding: "4px 0",
+                        }}
+                      >
+                        {departments.length > 0 ? (
+                          departments.map((dept) => {
+                            const checked = form.target_departments.includes(
+                              dept.id
+                            );
+                            return (
+                              <div
+                                key={dept.id}
+                                className={`aw-pr-dept-row ${
+                                  checked ? "checked" : ""
+                                }`}
+                                onClick={() => toggleDept(dept.id)}
+                              >
+                                <div className="aw-pr-check">
+                                  {checked && (
+                                    <Check
+                                      size={12}
+                                      style={{
+                                        color: T.accentDark,
+                                        strokeWidth: 3,
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                                <div
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: "50%",
+                                    background: checked
+                                      ? "rgba(200,255,0,0.10)"
+                                      : "rgba(255,255,255,0.05)",
+                                    border: `1px solid ${
+                                      checked
+                                        ? "rgba(200,255,0,0.25)"
+                                        : T.borderFaint
+                                    }`,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: checked ? T.accent : T.textMuted,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {dept.name.charAt(0).toUpperCase()}
+                                </div>
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: checked ? 600 : 400,
+                                    color: checked ? T.white : T.textBody,
+                                  }}
+                                >
+                                  {dept.name}
+                                </span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p
+                            style={{
+                              fontSize: 13,
+                              color: T.textMuted,
+                              padding: "8px 0",
+                            }}
+                          >
+                            No departments available
+                          </p>
+                        )}
+                      </div>
+                      {form.target_departments.length > 0 && (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: T.accent,
+                            marginTop: 7,
+                          }}
+                        >
+                          ✓ {form.target_departments.length} department
+                          {form.target_departments.length !== 1 ? "s" : ""}{" "}
+                          selected
+                        </p>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 14,
+                      }}
+                    >
+                      <div>
+                        <label className="aw-pr-label">
+                          Scheduled Launch Date
+                        </label>
+                        <input
+                          className="aw-pr-input"
+                          type="datetime-local"
+                          value={form.scheduled_date}
+                          min={new Date().toISOString().slice(0, 16)}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              scheduled_date: e.target.value,
+                            }))
+                          }
+                        />
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: T.textMuted,
+                            marginTop: 5,
+                          }}
+                        >
+                          Leave empty to launch immediately upon approval
+                        </p>
+                      </div>
+                      <div>
+                        <label className="aw-pr-label">Priority</label>
+                        <select
+                          className="aw-pr-select"
+                          value={form.priority}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, priority: e.target.value }))
+                          }
+                        >
+                          {["LOW", "NORMAL", "HIGH", "URGENT"].map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="aw-pr-label">Additional Notes</label>
+                      <textarea
+                        className="aw-pr-textarea"
+                        rows={3}
+                        placeholder="Any specific requirements or instructions…"
+                        value={form.notes}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, notes: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── EMAIL TAB ── */}
+                {activeTab === "email" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 18,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: "rgba(251,191,36,0.07)",
+                        border: "1px solid rgba(251,191,36,0.22)",
+                        borderRadius: 10,
+                        fontSize: 13,
+                        color: T.gold,
+                      }}
+                    >
+                      <strong>Template Variables:</strong> Use{" "}
+                      <code
+                        style={{
+                          background: "rgba(251,191,36,0.14)",
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {"{{.FirstName}}"}
+                      </code>
+                      ,{" "}
+                      <code
+                        style={{
+                          background: "rgba(251,191,36,0.14)",
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {"{{.Email}}"}
+                      </code>
+                      ,{" "}
+                      <code
+                        style={{
+                          background: "rgba(251,191,36,0.14)",
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {"{{.URL}}"}
+                      </code>{" "}
+                      to personalize emails.
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 14,
+                      }}
+                    >
+                      <div>
+                        <label className="aw-pr-label">From Name</label>
+                        <input
+                          className="aw-pr-input"
+                          type="text"
+                          placeholder="IT Support Team"
+                          value={form.from_name}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              from_name: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="aw-pr-label">
+                          From Email Address
+                        </label>
+                        <input
+                          className="aw-pr-input"
+                          type="email"
+                          placeholder="support@company.com"
+                          value={form.from_address}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              from_address: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">
+                        Email Subject <span style={{ color: T.accent }}>*</span>
+                      </label>
+                      <input
+                        className="aw-pr-input"
+                        type="text"
+                        required
+                        placeholder="Urgent: Password Reset Required"
+                        value={form.email_subject}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            email_subject: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">
+                        HTML Body <span style={{ color: T.accent }}>*</span>
+                      </label>
+                      <textarea
+                        className="aw-pr-textarea aw-pr-code"
+                        required
+                        rows={10}
+                        placeholder={`<html><body><p>Hello {{.FirstName}},</p><p>Click here: <a href='{{.URL}}'>Reset Password</a></p></body></html>`}
+                        value={form.email_html_body}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            email_html_body: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">
+                        Plain Text Body{" "}
+                        <span style={{ color: T.textMuted }}>(optional)</span>
+                      </label>
+                      <textarea
+                        className="aw-pr-textarea aw-pr-code"
+                        rows={4}
+                        placeholder="Hello {{.FirstName}}, Click here: {{.URL}}"
+                        value={form.email_text_body}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            email_text_body: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── LANDING TAB ── */}
+                {activeTab === "landing" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 18,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: T.blueBg,
+                        border: `1px solid ${T.blueBorder}`,
+                        borderRadius: 10,
+                        fontSize: 13,
+                        color: T.blue,
+                      }}
+                    >
+                      <strong>Landing Page:</strong> The page displayed when
+                      users click the phishing link. Can capture credentials or
+                      redirect to a real website.
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">Landing Page HTML</label>
+                      <textarea
+                        className="aw-pr-textarea aw-pr-code"
+                        rows={12}
+                        placeholder={`<html><body><h2>Account Verification</h2><form><input name='username' placeholder='Email' /><input name='password' type='password' placeholder='Password' /><button>Submit</button></form></body></html>`}
+                        value={form.landing_page_html}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            landing_page_html: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">
+                        Redirect URL{" "}
+                        <span style={{ color: T.textMuted }}>
+                          (after landing page)
+                        </span>
+                      </label>
+                      <input
+                        className="aw-pr-input"
+                        type="url"
+                        placeholder="https://www.company.com/security-awareness"
+                        value={form.redirect_url}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            redirect_url: e.target.value,
+                          }))
+                        }
+                      />
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: T.textMuted,
+                          marginTop: 5,
+                        }}
+                      >
+                        Where to redirect users after they interact with the
+                        landing page
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── TRACKING TAB ── */}
+                {activeTab === "tracking" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: T.greenBg,
+                        border: `1px solid ${T.greenBorder}`,
+                        borderRadius: 10,
+                        fontSize: 13,
+                        color: T.green,
+                      }}
+                    >
+                      <strong>Tracking Options:</strong> Configure what user
+                      actions to monitor during the campaign.
+                    </div>
+                    {[
+                      {
+                        key: "track_opens" as const,
+                        label: "Track Email Opens",
+                        sub: "Monitor when recipients open the phishing email",
+                        warn: false,
+                      },
+                      {
+                        key: "track_clicks" as const,
+                        label: "Track Link Clicks",
+                        sub: "Monitor when recipients click links in the email",
+                        warn: false,
+                      },
+                      {
+                        key: "capture_credentials" as const,
+                        label: "Capture Credential Submissions",
+                        sub: "Track when users enter credentials on the landing page",
+                        warn: false,
+                      },
+                      {
+                        key: "capture_passwords" as const,
+                        label: "Capture Actual Passwords",
+                        sub: "Store actual passwords entered — use with caution",
+                        warn: true,
+                      },
+                    ].map(({ key, label, sub, warn }) => {
+                      const checked = form[key];
+                      return (
+                        <div
+                          key={key}
+                          className={`aw-pr-track-row ${
+                            checked ? "checked" : ""
+                          }`}
+                          onClick={() =>
+                            setForm((p) => ({ ...p, [key]: !p[key] }))
+                          }
+                        >
+                          <div style={{ marginTop: 1 }}>
+                            <div
+                              className="aw-pr-check"
+                              style={{
+                                background: checked ? T.accent : "transparent",
+                                borderColor: checked
+                                  ? T.accent
+                                  : "rgba(255,255,255,0.20)",
+                              }}
+                            >
+                              {checked && (
+                                <Check
+                                  size={12}
+                                  style={{
+                                    color: T.accentDark,
+                                    strokeWidth: 3,
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 7,
+                                marginBottom: 3,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  color: T.white,
+                                }}
+                              >
+                                {label}
+                              </span>
+                              {warn && (
+                                <Lock size={12} style={{ color: T.gold }} />
+                              )}
+                            </div>
+                            <div style={{ fontSize: 12, color: T.textMuted }}>
+                              {sub}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        background: T.orangeBg,
+                        border: `1px solid ${T.orangeBorder}`,
+                        borderRadius: 10,
+                        fontSize: 12,
+                        color: T.orange,
+                        lineHeight: "18px",
+                      }}
+                    >
+                      <strong>Note:</strong> All captured data is encrypted and
+                      only accessible to authorized administrators. Capturing
+                      actual passwords is not recommended for security reasons.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit */}
+              <div
+                style={{
+                  padding: "16px 20px",
+                  borderTop: `1px solid ${T.borderFaint}`,
+                }}
+              >
+                <button
+                  type="submit"
+                  className="aw-pr-submit"
+                  disabled={isSubmitDisabled}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        style={{ animation: "aw-spin 0.8s linear infinite" }}
+                      />{" "}
+                      Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} /> Submit Campaign Request
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="font-bold text-slate-900 mb-4">
-              style Campaign Elements
-            </h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-2">
+        {/* ── Sidebar ── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            position: "sticky",
+            top: 88,
+          }}
+        >
+          {/* Campaign elements checklist */}
+          <Section delay="0.12s">
+            <SectionHeader icon={Check} title="Campaign Elements" />
+            <div
+              style={{
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {checklist.map(({ label, done, sub, optional }) => (
                 <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.campaign_name ? "bg-green-500" : "bg-slate-300"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">
-                    Campaign Name
-                  </div>
-                  <div className="text-slate-600">Appears in reports</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.email_subject && formData.email_html_body
-                      ? "bg-green-500"
-                      : "bg-slate-300"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">
-                    Email Template
-                  </div>
-                  <div className="text-slate-600">Subject, HTML/Text body</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.landing_page_html ? "bg-green-500" : "bg-slate-300"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">Landing Page</div>
-                  <div className="text-slate-600">Capture credentials</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.target_departments.length > 0
-                      ? "bg-green-500"
-                      : "bg-slate-300"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">Target Group</div>
-                  <div className="text-slate-600">Recipient departments</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.from_address ? "bg-green-500" : "bg-slate-300"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">
-                    Sending Profile
-                  </div>
-                  <div className="text-slate-600">SMTP configuration</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 ${
-                    formData.scheduled_date ? "bg-green-500" : "bg-amber-500"
-                  }`}
-                />
-                <div>
-                  <div className="font-medium text-slate-900">Scheduling</div>
-                  <div className="text-slate-600">
-                    {formData.scheduled_date ? "Scheduled" : "Immediate launch"}
+                  key={label}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 10 }}
+                >
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      marginTop: 5,
+                      background: done
+                        ? T.green
+                        : optional
+                        ? T.gold
+                        : "rgba(255,255,255,0.15)",
+                      boxShadow: done
+                        ? "0 0 6px rgba(52,211,153,0.45)"
+                        : "none",
+                    }}
+                  />
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: done ? T.white : T.textMuted,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textMuted }}>
+                      {sub}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className={`w-2 h-2 rounded-full mt-1.5 bg-green-500`} />
-                <div>
-                  <div className="font-medium text-slate-900">
-                    Tracking Options
-                  </div>
-                  <div className="text-slate-600">
-                    Opens, clicks, credentials
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
+          </Section>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="font-bold text-slate-900 mb-4">
-              What Happens Next?
-            </h3>
-            <div className="space-y-3">
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
-                  1
+          {/* What happens next */}
+          <Section delay="0.16s">
+            <SectionHeader icon={ChevronRight} title="What Happens Next?" />
+            <div
+              style={{
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              {[
+                {
+                  color: T.blue,
+                  label: "Request Submitted",
+                  sub: "Your request is sent to platform team",
+                },
+                {
+                  color: T.green,
+                  label: "Review & Setup",
+                  sub: "Team configures the campaign",
+                },
+                {
+                  color: T.orange,
+                  label: "Campaign Launched",
+                  sub: "Phishing emails sent to targets",
+                },
+                {
+                  color: T.purple,
+                  label: "Results & Analytics",
+                  sub: "View detailed performance metrics",
+                },
+              ].map(({ color, label, sub }, i) => (
+                <div
+                  key={label}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 10 }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background: `${color}14`,
+                      border: `1px solid ${color}30`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color,
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: T.white,
+                        marginBottom: 2,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textMuted }}>
+                      {sub}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-medium text-slate-900">
-                    Request Submitted
-                  </h4>
-                  <p className="text-sm text-slate-600">
-                    Your request is sent to platform team
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold text-sm">
-                  2
-                </div>
-                <div>
-                  <h4 className="font-medium text-slate-900">Review & Setup</h4>
-                  <p className="text-sm text-slate-600">
-                    Team configures campaign
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-sm">
-                  3
-                </div>
-                <div>
-                  <h4 className="font-medium text-slate-900">
-                    Campaign Launched
-                  </h4>
-                  <p className="text-sm text-slate-600">
-                    Phishing emails sent to targets
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
-                  4
-                </div>
-                <div>
-                  <h4 className="font-medium text-slate-900">
-                    Results & Analytics
-                  </h4>
-                  <p className="text-sm text-slate-600">
-                    View detailed metrics
-                  </p>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
+          </Section>
 
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
-            <h3 className="font-bold text-slate-900 mb-3">Best Practices</h3>
-            <ul className="space-y-2 text-sm text-slate-700">
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600">•</span>
-                <span>Use template variables for personalization</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600">•</span>
-                <span>Test HTML rendering before submission</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600">•</span>
-                <span>Schedule during business hours</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600">•</span>
-                <span>Enable all tracking options for insights</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600">•</span>
-                <span>Review department vulnerability after completion</span>
-              </li>
-            </ul>
-          </div>
+          {/* Best practices */}
+          <Section delay="0.20s">
+            <SectionHeader
+              icon={Shield}
+              color={T.green}
+              title="Best Practices"
+            />
+            <div
+              style={{
+                padding: "12px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              {[
+                "Use template variables for personalization",
+                "Test HTML rendering before submission",
+                "Schedule during business hours",
+                "Enable all tracking options for insights",
+                "Review department vulnerability after completion",
+              ].map((tip) => (
+                <div
+                  key={tip}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    fontSize: 12,
+                    color: T.textBody,
+                    lineHeight: "18px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: T.accent,
+                      flexShrink: 0,
+                      marginTop: 6,
+                    }}
+                  />
+                  {tip}
+                </div>
+              ))}
+            </div>
+          </Section>
         </div>
       </div>
 
+      {/* ── Template preview modal ── */}
       {previewTemplate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900">
-                  Template Preview
-                </h2>
-                <button
-                  onClick={() => setPreviewTemplate(null)}
-                  className="text-slate-400 hover:text-slate-600"
+        <div className="aw-pr-overlay" onClick={() => setPreviewTemplate(null)}>
+          <div
+            className="aw-modal-in"
+            style={{
+              width: "100%",
+              maxWidth: 660,
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 16,
+              overflow: "hidden",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 32px 80px rgba(0,0,0,0.55)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                height: 3,
+                background:
+                  "linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))",
+              }}
+            />
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 800,
+                    color: T.white,
+                    margin: "0 0 4px",
+                  }}
                 >
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="mb-4">
-                <h3 className="font-bold text-slate-900">
                   {previewTemplate.name}
-                </h3>
-                <p className="text-sm text-slate-600">
+                </h2>
+                <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
                   {previewTemplate.description}
                 </p>
-                <div className="flex gap-2 mt-2">
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                    {previewTemplate.category}
-                  </span>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                    {previewTemplate.difficulty_level}
-                  </span>
+                <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+                  {[
+                    previewTemplate.category,
+                    previewTemplate.difficulty_level,
+                  ].map((tag) => (
+                    <span
+                      key={tag}
+                      style={{
+                        padding: "2px 9px",
+                        background: T.blueBg,
+                        border: `1px solid ${T.blueBorder}`,
+                        borderRadius: 9999,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: T.blue,
+                      }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
               </div>
-              <div className="border border-slate-200 rounded-lg p-4">
-                <div className="mb-2">
-                  <strong>Subject:</strong> {previewTemplate.subject}
-                </div>
+              <button
+                onClick={() => setPreviewTemplate(null)}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(255,255,255,0.05)",
+                  border: `1px solid ${T.borderFaint}`,
+                  color: T.textMuted,
+                  cursor: "pointer",
+                }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div style={{ overflowY: "auto", padding: "18px 22px" }}>
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 14px",
+                  background: "rgba(255,255,255,0.03)",
+                  border: `1px solid ${T.borderFaint}`,
+                  borderRadius: 9,
+                }}
+              >
+                <span style={{ fontSize: 11, color: T.textMuted }}>
+                  Subject:{" "}
+                </span>
+                <span
+                  style={{ fontSize: 13, fontWeight: 600, color: T.textBody }}
+                >
+                  {previewTemplate.subject}
+                </span>
+              </div>
+              <div
+                style={{
+                  padding: "14px",
+                  background: "#ffffff",
+                  borderRadius: 10,
+                  overflow: "auto",
+                }}
+              >
                 <div
-                  className="prose prose-sm max-w-none"
                   dangerouslySetInnerHTML={{
                     __html: previewTemplate.html_content,
                   }}

@@ -1,393 +1,382 @@
 import React, { useState, useEffect } from "react";
-import { History, Search, Download, Eye } from "lucide-react";
+import {
+  History, Search, Download, Eye, X, ChevronLeft, ChevronRight,
+} from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { User } from "../../lib/types";
 
+/* ─────────────────────────────────────────
+   TOKENS
+───────────────────────────────────────── */
+const T = {
+  bg:          '#12140a',
+  bgCard:      '#1a1e0e',
+  accent:      '#c8ff00',
+  accentDark:  '#12140a',
+  white:       '#ffffff',
+  textBody:    '#cbd5e1',
+  textMuted:   '#64748b',
+  border:      'rgba(255,255,255,0.09)',
+  borderFaint: 'rgba(255,255,255,0.05)',
+  green:       '#34d399',
+  greenBg:     'rgba(52,211,153,0.08)',
+  greenBorder: 'rgba(52,211,153,0.22)',
+  blue:        '#60a5fa',
+  blueBg:      'rgba(96,165,250,0.08)',
+  blueBorder:  'rgba(96,165,250,0.22)',
+  red:         '#f87171',
+  redBg:       'rgba(248,113,113,0.08)',
+  redBorder:   'rgba(248,113,113,0.22)',
+  orange:      '#fb923c',
+  orangeBg:    'rgba(251,146,60,0.08)',
+  orangeBorder:'rgba(251,146,60,0.22)',
+  purple:      '#a78bfa',
+  purpleBg:    'rgba(167,139,250,0.08)',
+  purpleBorder:'rgba(167,139,250,0.22)',
+  cyan:        '#22d3ee',
+  cyanBg:      'rgba(34,211,238,0.08)',
+  gold:        '#fbbf24',
+  goldBg:      'rgba(251,191,36,0.08)',
+} as const;
+
+/* ─────────────────────────────────────────
+   ACTION → color mapping
+───────────────────────────────────────── */
+const ACTION_CFG: Record<string, { color: string; bg: string; border: string }> = {
+  CREATE:          { color: T.green,  bg: T.greenBg,   border: T.greenBorder   },
+  CREATE_COMPANY:  { color: T.green,  bg: T.greenBg,   border: T.greenBorder   },
+  CREATE_USER:     { color: T.green,  bg: T.greenBg,   border: T.greenBorder   },
+  UPDATE:          { color: T.blue,   bg: T.blueBg,    border: T.blueBorder    },
+  UPDATE_COMPANY:  { color: T.blue,   bg: T.blueBg,    border: T.blueBorder    },
+  UPDATE_USER:     { color: T.blue,   bg: T.blueBg,    border: T.blueBorder    },
+  ROLE_CHANGE:     { color: T.blue,   bg: T.blueBg,    border: T.blueBorder    },
+  SEND_REMINDER:   { color: T.blue,   bg: T.blueBg,    border: T.blueBorder    },
+  DELETE:          { color: T.red,    bg: T.redBg,     border: T.redBorder     },
+  DELETE_COMPANY:  { color: T.red,    bg: T.redBg,     border: T.redBorder     },
+  DELETE_USER:     { color: T.red,    bg: T.redBg,     border: T.redBorder     },
+  RESET_PASSWORD:  { color: T.orange, bg: T.orangeBg,  border: T.orangeBorder  },
+  LOGIN_FAILED:    { color: T.orange, bg: T.orangeBg,  border: T.orangeBorder  },
+  LOGIN:           { color: T.purple, bg: T.purpleBg,  border: T.purpleBorder  },
+  LOGOUT:          { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint },
+  UPLOAD_EMPLOYEES:{ color: T.cyan,   bg: T.cyanBg,    border: 'rgba(34,211,238,0.22)'  },
+  EXPORT_DATA:     { color: T.gold,   bg: T.goldBg,    border: 'rgba(251,191,36,0.22)'  },
+  ASSIGN_COURSE:   { color: T.cyan,   bg: T.cyanBg,    border: 'rgba(34,211,238,0.22)'  },
+  ASSIGN_EXAM:     { color: T.cyan,   bg: T.cyanBg,    border: 'rgba(34,211,238,0.22)'  },
+  COMPLETE_COURSE: { color: T.green,  bg: T.greenBg,   border: T.greenBorder   },
+  COMPLETE_EXAM:   { color: T.green,  bg: T.greenBg,   border: T.greenBorder   },
+};
+const getActionCfg = (a: string) => ACTION_CFG[a] ?? { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint };
+
+const ACTION_LABEL: Record<string, string> = {
+  CREATE:'Create', UPDATE:'Update', DELETE:'Delete',
+  LOGIN:'Login', LOGOUT:'Logout', LOGIN_FAILED:'Login Failed',
+  ROLE_CHANGE:'Role Change', ASSIGN_COURSE:'Assign Course', ASSIGN_EXAM:'Assign Exam',
+  COMPLETE_COURSE:'Complete Course', COMPLETE_EXAM:'Complete Exam',
+  CREATE_COMPANY:'Create Company', UPDATE_COMPANY:'Update Company', DELETE_COMPANY:'Delete Company',
+  CREATE_USER:'Create User', UPDATE_USER:'Update User', DELETE_USER:'Delete User',
+  UPLOAD_EMPLOYEES:'Upload Employees', EXPORT_DATA:'Export Data',
+  RESET_PASSWORD:'Reset Password', SEND_REMINDER:'Send Reminder',
+};
+
+const ROLE_CFG: Record<string, { color: string; bg: string }> = {
+  PLATFORM_ADMIN: { color: T.red,    bg: T.redBg    },
+  COMPANY_ADMIN:  { color: T.blue,   bg: T.blueBg   },
+  EMPLOYEE:       { color: T.green,  bg: T.greenBg  },
+};
+
+/* ─────────────────────────────────────────
+   CSS
+───────────────────────────────────────── */
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  .aw-al-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+  .aw-al-table th {
+    padding: 10px 14px; text-align: left;
+    font-size: 10px; font-weight: 700; color: #64748b;
+    letter-spacing: 0.9px; text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02);
+  }
+  .aw-al-table td {
+    padding: 11px 14px; font-size: 12px; color: #cbd5e1;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.14s;
+  }
+  .aw-al-table tr:last-child td { border-bottom: none; }
+  .aw-al-table tr:hover td { background: rgba(255,255,255,0.025); }
+
+  /* ── Filter inputs ── */
+  .aw-al-input, .aw-al-select {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 9px; font-size: 13px; color: #ffffff;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .aw-al-input  { padding: 9px 14px; }
+  .aw-al-select {
+    padding: 9px 32px 9px 12px; cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+  }
+  .aw-al-input:focus, .aw-al-select:focus {
+    border-color: rgba(200,255,0,0.45);
+    background: rgba(255,255,255,0.06);
+  }
+  .aw-al-input::placeholder { color: rgba(148,163,184,0.35); }
+  .aw-al-select option { background: #1a1e0e; color: #ffffff; }
+  input[type="date"].aw-al-input::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.4); cursor: pointer; }
+
+  /* ── Eye btn ── */
+  .aw-al-eye-btn {
+    width: 28px; height: 28px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.22);
+    color: #60a5fa; cursor: pointer; transition: all 0.18s;
+  }
+  .aw-al-eye-btn:hover { background: rgba(96,165,250,0.18); }
+
+  /* ── Pagination btn ── */
+  .aw-al-page-btn {
+    min-width: 30px; height: 30px; padding: 0 8px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    color: #94a3b8; cursor: pointer; font-size: 12px; font-weight: 600;
+    font-family: 'Inter', sans-serif; transition: all 0.18s;
+  }
+  .aw-al-page-btn:hover:not(:disabled) { background: rgba(255,255,255,0.09); color: #ffffff; }
+  .aw-al-page-btn.active { background: rgba(200,255,0,0.12); border-color: rgba(200,255,0,0.30); color: #c8ff00; }
+  .aw-al-page-btn:disabled { opacity: 0.30; cursor: not-allowed; }
+
+  /* ── Detail label/value ── */
+  .aw-al-detail-label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 5px; text-transform: uppercase; letter-spacing: '0.6px'; }
+  .aw-al-detail-value { font-size: 13px; color: #cbd5e1; }
+
+  /* ── Scrollbar ── */
+  .aw-al-scroll::-webkit-scrollbar { width: 3px; }
+  .aw-al-scroll::-webkit-scrollbar-track { background: transparent; }
+  .aw-al-scroll::-webkit-scrollbar-thumb { background: rgba(200,255,0,0.20); border-radius: 9999px; }
+
+  @keyframes aw-spin    { to { transform: rotate(360deg); } }
+  @keyframes aw-fade-up { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes aw-modal-in { from { opacity:0; transform:scale(0.97) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  .aw-fade-up  { animation: aw-fade-up  0.4s ease both; }
+  .aw-modal-in { animation: aw-modal-in 0.28s ease both; }
+`;
+
+if (typeof document !== 'undefined' && !document.getElementById('aw-al-styles')) {
+  const tag = document.createElement('style');
+  tag.id = 'aw-al-styles';
+  tag.textContent = STYLES;
+  document.head.appendChild(tag);
+}
+
+/* ─────────────────────────────────────────
+   TYPE
+───────────────────────────────────────── */
 interface AuditLog {
-  id: string;
-  user_id?: string;
-  action_type: string;
-  entity_type?: string;
-  entity_id?: string;
-  entity_name?: string;
-  old_value?: any;
-  new_value?: any;
-  ip_address?: string;
-  user_agent?: string;
-  description?: string;
-  created_at: string;
+  id: string; user_id?: string; action_type: string;
+  entity_type?: string; entity_id?: string; entity_name?: string;
+  old_value?: any; new_value?: any; ip_address?: string;
+  user_agent?: string; description?: string; created_at: string;
   users: User;
 }
 
+const fmt = (d: string) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+/* ─────────────────────────────────────────
+   BADGE COMPONENTS
+───────────────────────────────────────── */
+const ActionBadge: React.FC<{ action: string }> = ({ action }) => {
+  const cfg = getActionCfg(action);
+  return (
+    <span style={{ display: 'inline-flex', padding: '2px 9px', borderRadius: 9999, fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color, whiteSpace: 'nowrap' }}>
+      {ACTION_LABEL[action] || action}
+    </span>
+  );
+};
+
+const RoleBadge: React.FC<{ role?: string }> = ({ role }) => {
+  if (!role) return null;
+  const cfg = ROLE_CFG[role] ?? { color: T.textMuted, bg: 'rgba(255,255,255,0.04)' };
+  const labels: Record<string, string> = { PLATFORM_ADMIN: 'Platform', COMPANY_ADMIN: 'Company', EMPLOYEE: 'Employee' };
+  return (
+    <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 9999, fontSize: 10, fontWeight: 700, background: cfg.bg, color: cfg.color }}>
+      {labels[role] || role}
+    </span>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   COMPONENT
+═══════════════════════════════════════════ */
 export const AuditLogsPage: React.FC = () => {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [filteredLogs, setFilteredLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedAction, setSelectedAction] = useState("");
-  const [selectedEntity, setSelectedEntity] = useState("");
-  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [logs, setLogs]                   = useState<AuditLog[]>([]);
+  const [filteredLogs, setFilteredLogs]   = useState<AuditLog[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [searchTerm, setSearchTerm]       = useState('');
+  const [selectedAction, setSelectedAction] = useState('');
+  const [selectedEntity, setSelectedEntity] = useState('');
+  const [dateFrom, setDateFrom]           = useState('');
+  const [selectedLog, setSelectedLog]     = useState<AuditLog | null>(null);
+  const [currentPage, setCurrentPage]     = useState(1);
   const pageSize = 20;
 
-  useEffect(() => {
-    loadLogs();
-  }, []);
-
-  useEffect(() => {
-    filterLogs();
-  }, [logs, searchTerm, selectedAction, selectedEntity, dateFrom, dateTo]);
+  useEffect(() => { loadLogs(); }, []);
+  useEffect(() => { filterLogs(); }, [logs, searchTerm, selectedAction, selectedEntity, dateFrom]);
 
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from("audit_logs")
+      const { data } = await supabase.from("audit_logs")
         .select("*, users(email, role, full_name)")
-        .order("created_at", { ascending: false })
-        .limit(50);
-
+        .order("created_at", { ascending: false }).limit(500);
       if (data) setLogs(data);
-    } catch (error) {
-      console.error("Error loading logs:", error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   const filterLogs = () => {
-    let filtered = [...logs];
-
+    let f = [...logs];
     if (searchTerm) {
-      filtered = filtered.filter(
-        (log) =>
-          log?.users?.full_name
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          log.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.entity_name?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const q = searchTerm.toLowerCase();
+      f = f.filter(l => l?.users?.full_name?.toLowerCase().includes(q) || l.description?.toLowerCase().includes(q) || l.entity_name?.toLowerCase().includes(q));
     }
-
-    if (selectedAction) {
-      filtered = filtered.filter((log) => log.action_type === selectedAction);
-    }
-
-    if (selectedEntity) {
-      filtered = filtered.filter((log) => log.entity_type === selectedEntity);
-    }
-
-    if (dateFrom) {
-      filtered = filtered.filter(
-        (log) => new Date(log.created_at) >= new Date(dateFrom)
-      );
-    }
-
-    if (dateTo) {
-      const endDate = new Date(dateTo);
-      endDate.setHours(23, 59, 59);
-      filtered = filtered.filter((log) => new Date(log.created_at) <= endDate);
-    }
-
-    setFilteredLogs(filtered);
+    if (selectedAction) f = f.filter(l => l.action_type === selectedAction);
+    if (selectedEntity) f = f.filter(l => l.entity_type === selectedEntity);
+    if (dateFrom)       f = f.filter(l => new Date(l.created_at) >= new Date(dateFrom));
+    setFilteredLogs(f);
     setCurrentPage(1);
   };
 
-  const getActionBadge = (action: string) => {
-    const styles: Record<string, string> = {
-      CREATE: "bg-green-100 text-green-800 border-green-200",
-      UPDATE: "bg-blue-100 text-blue-800 border-blue-200",
-      DELETE: "bg-red-100 text-red-800 border-red-200",
-      LOGIN: "bg-purple-100 text-purple-800 border-purple-200",
-      LOGOUT: "bg-gray-100 text-gray-800 border-gray-200",
-      LOGIN_FAILED: "bg-orange-100 text-orange-800 border-orange-200",
-      ROLE_CHANGE: "bg-indigo-100 text-indigo-800 border-indigo-200",
-      ASSIGN_COURSE: "bg-cyan-100 text-cyan-800 border-cyan-200",
-      ASSIGN_EXAM: "bg-teal-100 text-teal-800 border-teal-200",
-      COMPLETE_COURSE: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      COMPLETE_EXAM: "bg-lime-100 text-lime-800 border-lime-200",
-      CREATE_COMPANY: "bg-blue-100 text-blue-800 border-blue-200",
-      UPDATE_COMPANY: "bg-blue-100 text-blue-800 border-blue-200",
-      DELETE_COMPANY: "bg-red-100 text-red-800 border-red-200",
-      CREATE_USER: "bg-green-100 text-green-800 border-green-200",
-      UPDATE_USER: "bg-blue-100 text-blue-800 border-blue-200",
-      DELETE_USER: "bg-red-100 text-red-800 border-red-200",
-      UPLOAD_EMPLOYEES: "bg-purple-100 text-purple-800 border-purple-200",
-      EXPORT_DATA: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    };
+  const clearFilters = () => { setSearchTerm(''); setSelectedAction(''); setSelectedEntity(''); setDateFrom(''); };
+  const hasFilters   = searchTerm || selectedAction || selectedEntity || dateFrom;
 
-    const labels: Record<string, string> = {
-      CREATE: "Create",
-      UPDATE: "Update",
-      DELETE: "Delete",
-      LOGIN: "Login",
-      LOGOUT: "Logout",
-      LOGIN_FAILED: "Login Failed",
-      ROLE_CHANGE: "Role Change",
-      ASSIGN_COURSE: "Assign Course",
-      ASSIGN_EXAM: "Assign Exam",
-      COMPLETE_COURSE: "Complete Course",
-      COMPLETE_EXAM: "Complete Exam",
-      CREATE_COMPANY: "Create Company",
-      UPDATE_COMPANY: "Update Company",
-      DELETE_COMPANY: "Delete Company",
-      CREATE_USER: "Create User",
-      UPDATE_USER: "Update User",
-      DELETE_USER: "Delete User",
-      UPLOAD_EMPLOYEES: "Upload Employees",
-      EXPORT_DATA: "Export Data",
-    };
-
-    return (
-      <span
-        className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${
-          styles[action] || "bg-gray-100 text-gray-800 border-gray-200"
-        }`}
-      >
-        {labels[action] || action}
-      </span>
-    );
+  const exportCSV = () => {
+    const csv = ['Date,User,Email,Role,Action,Entity,Description',
+      ...filteredLogs.map(l => `${new Date(l.created_at).toLocaleString('en-US')},${l?.users?.full_name || 'System'},${l?.users?.email || 'System'},${l?.users?.role || '-'},${l.action_type},${l.entity_type || '-'},"${l.description || '-'}"`),
+    ].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a'); a.href = url; a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(url);
   };
 
-  const getRoleBadge = (role?: string) => {
-    if (!role) return null;
+  const actionTypes = Array.from(new Set(logs.map(l => l.action_type))).sort();
+  const entityTypes = Array.from(new Set(logs.map(l => l.entity_type).filter(Boolean))).sort() as string[];
+  const totalPages  = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const safePage    = Math.min(currentPage, totalPages);
+  const startIndex  = (safePage - 1) * pageSize;
+  const pagedLogs   = filteredLogs.slice(startIndex, startIndex + pageSize);
 
-    const styles: Record<string, string> = {
-      PLATFORM_ADMIN: "bg-red-100 text-red-800",
-      COMPANY_ADMIN: "bg-blue-100 text-blue-800",
-      EMPLOYEE: "bg-green-100 text-green-800",
-    };
-
-    const labels: Record<string, string> = {
-      PLATFORM_ADMIN: "Platform Admin",
-      COMPANY_ADMIN: "Company Admin",
-      EMPLOYEE: "Employee",
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${styles[role]}`}>
-        {labels[role] || role}
-      </span>
-    );
-  };
-
-  const exportToCSV = () => {
-    const csv = [
-      "Date,User,name,email,Role,Action,Entity,Description",
-      ...filteredLogs.map(
-        (log) =>
-          `${new Date(log.created_at).toLocaleString("en-US")},${
-            log?.users?.full_name || "System"
-          },${log?.users?.email || "System"},${log?.users?.role || "-"},${
-            log.action_type
-          },${log.entity_type || "-"},"${log.description || "-"}"`
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-  };
-
-  const actionTypes = Array.from(
-    new Set(logs.map((l) => l.action_type))
-  ).sort();
-  const entityTypes = Array.from(
-    new Set(logs.map((l) => l.entity_type).filter(Boolean))
-  ).sort();
-  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const pagedLogs = filteredLogs.slice(startIndex, startIndex + pageSize);
-  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+  /* Page numbers with ellipsis */
+  const pageNums: (number | '…')[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pageNums.push(i);
+  } else {
+    pageNums.push(1);
+    if (safePage > 3) pageNums.push('…');
+    for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) pageNums.push(i);
+    if (safePage < totalPages - 2) pageNums.push('…');
+    pageNums.push(totalPages);
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, flexDirection: 'column', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+    </div>
+  );
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      {/* ── Page header ── */}
+      <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Activity Log
-          </h1>
-          <p className="text-slate-600">
-            Track all activities and changes in the platform
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <History size={18} style={{ color: T.purple }} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>Activity Log</h1>
+          </div>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Track all activities and changes in the platform.</p>
         </div>
-        <button
-          onClick={exportToCSV}
-          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg transition-all flex items-center gap-2 font-medium"
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
+        <button onClick={exportCSV}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 9, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, color: T.purple, transition: 'background 0.18s' }}>
+          <Download size={14} /> Export CSV
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="lg:col-span-2">
-            <div className="relative">
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search by user or description..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pr-10 pl-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div>
-            <select
-              value={selectedAction}
-              onChange={(e) => setSelectedAction(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Actions</option>
-              {actionTypes.map((action) => (
-                <option key={action} value={action}>
-                  {action}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <select
-              value={selectedEntity}
-              onChange={(e) => setSelectedEntity(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Entities</option>
-              {entityTypes.map((entity) => (
-                <option key={entity} value={entity}>
-                  {entity}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              placeholder="من تاريخ"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+      {/* ── Filter bar ── */}
+      <div className="aw-fade-up" style={{ animationDelay: '0.05s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, padding: '14px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr)) auto', gap: 10, alignItems: 'center' }}>
+        {/* Search */}
+        <div style={{ position: 'relative', gridColumn: 'span 2' }}>
+          <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+          <input className="aw-al-input" style={{ width: '100%', paddingLeft: 34, boxSizing: 'border-box' }} placeholder="Search user, description…" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          {searchTerm && <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 0 }}><X size={12} /></button>}
         </div>
 
-        <div className="mt-4 flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <span>
-              Results: {filteredLogs.length} of {logs.length}
-            </span>
-            <History className="h-4 w-4" />
-          </div>
+        {/* Action filter */}
+        <select className="aw-al-select" style={{ width: '100%' }} value={selectedAction} onChange={e => setSelectedAction(e.target.value)}>
+          <option value="">All Actions</option>
+          {actionTypes.map(a => <option key={a} value={a}>{ACTION_LABEL[a] || a}</option>)}
+        </select>
 
-          {(searchTerm ||
-            selectedAction ||
-            selectedEntity ||
-            dateFrom ||
-            dateTo) && (
-            <button
-              onClick={() => {
-                setSearchTerm("");
-                setSelectedAction("");
-                setSelectedEntity("");
-                setDateFrom("");
-                setDateTo("");
-              }}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Clear Filters
+        {/* Entity filter */}
+        <select className="aw-al-select" style={{ width: '100%' }} value={selectedEntity} onChange={e => setSelectedEntity(e.target.value)}>
+          <option value="">All Entities</option>
+          {entityTypes.map(e => <option key={e} value={e}>{e}</option>)}
+        </select>
+
+        {/* Date from */}
+        <input className="aw-al-input" type="date" style={{ width: '100%' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+
+        {/* Clear + count */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {hasFilters && (
+            <button onClick={clearFilters} style={{ fontSize: 12, fontWeight: 600, color: T.accent, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, whiteSpace: 'nowrap' }}>
+              Clear
             </button>
           )}
+          <span style={{ fontSize: 12, color: T.textMuted, whiteSpace: 'nowrap' }}>
+            <strong style={{ color: T.textBody }}>{filteredLogs.length}</strong> / {logs.length}
+          </span>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+      {/* ── Table ── */}
+      <div className="aw-fade-up" style={{ animationDelay: '0.08s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }} className="aw-al-scroll">
+          <table className="aw-al-table">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Date and Time
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  User
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Action
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Entity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase">
-                  Details
-                </th>
+                <th>Date & Time</th>
+                <th>User</th>
+                <th>Role</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Description</th>
+                <th style={{ textAlign: 'center' }}>Info</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
-              {pagedLogs.map((log) => (
-                <tr
-                  key={log.id}
-                  className="hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {new Date(log.created_at).toLocaleString("en-US", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+            <tbody>
+              {pagedLogs.map(log => (
+                <tr key={log.id}>
+                  <td style={{ fontSize: 11, color: T.textMuted, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{fmt(log.created_at)}</td>
+                  <td>
+                    <div style={{ fontWeight: 600, color: T.textBody, whiteSpace: 'nowrap' }}>{log?.users?.full_name || 'System'}</div>
+                    {log?.users?.email && <div style={{ fontSize: 11, color: T.textMuted }}>{log.users.email}</div>}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-slate-900">
-                      {log?.users?.full_name || "System"}
+                  <td><RoleBadge role={log?.users?.role} /></td>
+                  <td><ActionBadge action={log.action_type} /></td>
+                  <td style={{ color: T.textMuted, whiteSpace: 'nowrap' }}>{log.entity_type || '—'}</td>
+                  <td>
+                    <div style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.textBody, fontSize: 12 }}>
+                      {log.description || '—'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getRoleBadge(log?.users?.role)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getActionBadge(log.action_type)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {log.entity_type || "-"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-slate-600 max-w-md truncate">
-                      {log.description || "-"}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button
-                      onClick={() => setSelectedLog(log)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="View Details"
-                    >
-                      <Eye className="h-4 w-4" />
+                  <td style={{ textAlign: 'center' }}>
+                    <button className="aw-al-eye-btn" onClick={() => setSelectedLog(log)} title="View Details">
+                      <Eye size={13} />
                     </button>
                   </td>
                 </tr>
@@ -397,196 +386,127 @@ export const AuditLogsPage: React.FC = () => {
         </div>
 
         {filteredLogs.length === 0 && (
-          <div className="text-center py-12 text-slate-500">
-            No matching results
-          </div>
+          <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMuted, fontSize: 13 }}>No matching audit logs found.</div>
         )}
       </div>
 
-      {filteredLogs.length > 0 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-slate-600">
-            Showing {startIndex + 1}-
-            {Math.min(startIndex + pageSize, filteredLogs.length)} of{" "}
-            {filteredLogs.length}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              disabled={safePage === 1}
-              className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
-              aria-label="Previous page"
-            >
-              Prev
+      {/* ── Pagination ── */}
+      {filteredLogs.length > pageSize && (
+        <div className="aw-fade-up" style={{ animationDelay: '0.10s', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: T.textMuted }}>
+            Showing <strong style={{ color: T.textBody }}>{startIndex + 1}–{Math.min(startIndex + pageSize, filteredLogs.length)}</strong> of <strong style={{ color: T.textBody }}>{filteredLogs.length}</strong>
+          </span>
+          <div style={{ display: 'flex', gap: 5 }}>
+            <button className="aw-al-page-btn" disabled={safePage === 1} onClick={() => setCurrentPage(p => p - 1)}>
+              <ChevronLeft size={13} />
             </button>
-            <div className="flex items-center gap-1">
-              {pageNumbers.map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-3 py-1 text-sm rounded border ${
-                    page === safePage
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                  }`}
-                  aria-current={page === safePage ? "page" : undefined}
-                >
-                  {page}
+            {pageNums.map((p, i) =>
+              p === '…' ? (
+                <div key={`ell-${i}`} style={{ display: 'flex', alignItems: 'center', padding: '0 4px', color: T.textMuted, fontSize: 12 }}>…</div>
+              ) : (
+                <button key={p} className={`aw-al-page-btn ${safePage === p ? 'active' : ''}`} onClick={() => setCurrentPage(p)}>
+                  {p}
                 </button>
-              ))}
-            </div>
-            <button
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-              disabled={safePage === totalPages}
-              className="px-3 py-1 text-sm rounded border border-slate-300 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
-              aria-label="Next page"
-            >
-              Next
+              )
+            )}
+            <button className="aw-al-page-btn" disabled={safePage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>
+              <ChevronRight size={13} />
             </button>
           </div>
         </div>
       )}
 
+      {/* ── Detail Modal ── */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-slate-900">Log Details</h2>
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                ×
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(10,12,6,0.82)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+          onClick={() => setSelectedLog(null)}>
+          <div className="aw-modal-in aw-al-scroll" style={{ width: '100%', maxWidth: 620, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 16, overflow: 'hidden', overflowY: 'auto', maxHeight: '88vh', boxShadow: '0 32px 80px rgba(0,0,0,0.55)', fontFamily: "'Inter', sans-serif" }}
+            onClick={e => e.stopPropagation()}>
+
+            <div style={{ height: 3, background: 'linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))' }} />
+
+            {/* Header */}
+            <div style={{ padding: '16px 22px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: T.bgCard, zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <History size={15} style={{ color: T.purple }} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 15, fontWeight: 800, color: T.white, margin: 0 }}>Log Details</h2>
+                  <p style={{ fontSize: 11, color: T.textMuted, margin: 0, fontFamily: 'monospace' }}>{fmt(selectedLog.created_at)}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedLog(null)} style={{ width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer' }}>
+                <X size={13} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Date and Time
-                  </label>
-                  <div className="text-slate-900">
-                    {new Date(selectedLog.created_at).toLocaleString("en-US")}
+            {/* Body */}
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* Grid fields */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {[
+                  { label: 'User',        value: selectedLog?.users?.full_name || 'System' },
+                  { label: 'Email',       value: selectedLog?.users?.email || 'System'     },
+                  { label: 'Entity Type', value: selectedLog.entity_type || '—'            },
+                  { label: 'Entity Name', value: selectedLog.entity_name || '—'            },
+                  ...(selectedLog.ip_address ? [{ label: 'IP Address', value: selectedLog.ip_address }] : []),
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <div className="aw-al-detail-label">{label}</div>
+                    <div className="aw-al-detail-value" style={{ fontFamily: label === 'IP Address' ? 'monospace' : 'inherit' }}>{value}</div>
                   </div>
-                </div>
-
+                ))}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    User
-                  </label>
-                  <div className="text-slate-900">
-                    {selectedLog?.users?.full_name || "System"}
-                  </div>
+                  <div className="aw-al-detail-label">Action</div>
+                  <div style={{ marginTop: 3 }}><ActionBadge action={selectedLog.action_type} /></div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
-                  <div className="text-slate-900">
-                    {selectedLog?.users?.email || "System"}
-                  </div>
+                  <div className="aw-al-detail-label">Role</div>
+                  <div style={{ marginTop: 3 }}><RoleBadge role={selectedLog?.users?.role} /></div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Role
-                  </label>
-                  <div>{getRoleBadge(selectedLog?.users?.role) || "-"}</div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Action
-                  </label>
-                  <div>{getActionBadge(selectedLog.action_type)}</div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Entity Type
-                  </label>
-                  <div className="text-slate-900">
-                    {selectedLog.entity_type || "-"}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Entity Name
-                  </label>
-                  <div className="text-slate-900">
-                    {selectedLog.entity_name || "-"}
-                  </div>
-                </div>
-
-                {selectedLog.ip_address && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      IP Address
-                    </label>
-                    <div className="text-slate-900 font-mono text-sm">
-                      {selectedLog.ip_address}
-                    </div>
-                  </div>
-                )}
               </div>
 
+              {/* Description */}
               {selectedLog.description && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Description
-                  </label>
-                  <div className="text-slate-900 bg-slate-50 p-3 rounded-lg">
+                  <div className="aw-al-detail-label" style={{ marginBottom: 7 }}>Description</div>
+                  <div style={{ padding: '11px 14px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 9, fontSize: 13, color: T.textBody, lineHeight: '20px' }}>
                     {selectedLog.description}
                   </div>
                 </div>
               )}
 
-              {selectedLog.old_value &&
-                Object.keys(selectedLog.old_value).length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Old Value
-                    </label>
-                    <pre className="text-sm bg-slate-50 p-3 rounded-lg overflow-x-auto">
-                      {JSON.stringify(selectedLog.old_value, null, 2)}
+              {/* Old / New value */}
+              {[
+                { label: 'Old Value', val: selectedLog.old_value },
+                { label: 'New Value', val: selectedLog.new_value },
+              ].map(({ label, val }) =>
+                val && Object.keys(val).length > 0 ? (
+                  <div key={label}>
+                    <div className="aw-al-detail-label" style={{ marginBottom: 7 }}>{label}</div>
+                    <pre style={{ padding: '11px 14px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 9, fontSize: 12, color: T.textBody, overflowX: 'auto', margin: 0, fontFamily: 'monospace', lineHeight: '18px' }}>
+                      {JSON.stringify(val, null, 2)}
                     </pre>
                   </div>
-                )}
+                ) : null
+              )}
 
-              {selectedLog.new_value &&
-                Object.keys(selectedLog.new_value).length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      New Value
-                    </label>
-                    <pre className="text-sm bg-slate-50 p-3 rounded-lg overflow-x-auto">
-                      {JSON.stringify(selectedLog.new_value, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
+              {/* User agent */}
               {selectedLog.user_agent && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Browser
-                  </label>
-                  <div className="text-slate-600 text-sm bg-slate-50 p-3 rounded-lg break-all">
+                  <div className="aw-al-detail-label" style={{ marginBottom: 7 }}>Browser / Agent</div>
+                  <div style={{ padding: '10px 13px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 9, fontSize: 11, color: T.textMuted, wordBreak: 'break-all', lineHeight: '17px' }}>
                     {selectedLog.user_agent}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="border-t border-slate-200 px-6 py-4">
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
-              >
+            {/* Footer */}
+            <div style={{ padding: '12px 22px', borderTop: `1px solid ${T.borderFaint}` }}>
+              <button onClick={() => setSelectedLog(null)} style={{ width: '100%', padding: '10px', borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.18s' }}>
                 Close
               </button>
             </div>
