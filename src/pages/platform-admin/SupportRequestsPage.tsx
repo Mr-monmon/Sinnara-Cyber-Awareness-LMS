@@ -1,7 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  Loader2, Mail, MessageSquare, CheckCircle,
-  AlertCircle, Clock, X, Send, ChevronDown, User,
+  Loader2,
+  Mail,
+  MessageSquare,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  X,
+  Send,
+  ChevronDown,
+  User,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -9,30 +17,30 @@ import { supabase } from "../../lib/supabase";
    TOKENS
 ───────────────────────────────────────── */
 const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
-  blueBorder:  'rgba(96,165,250,0.22)',
-  orange:      '#fb923c',
-  orangeBg:    'rgba(251,146,60,0.08)',
-  orangeBorder:'rgba(251,146,60,0.22)',
-  red:         '#f87171',
-  redBg:       'rgba(248,113,113,0.08)',
-  redBorder:   'rgba(248,113,113,0.22)',
-  gold:        '#fbbf24',
-  goldBg:      'rgba(251,191,36,0.08)',
-  goldBorder:  'rgba(251,191,36,0.22)',
+  bg: "#12140a",
+  bgCard: "#1a1e0e",
+  accent: "#c8ff00",
+  accentDark: "#12140a",
+  white: "#ffffff",
+  textBody: "#cbd5e1",
+  textMuted: "#64748b",
+  border: "rgba(255,255,255,0.09)",
+  borderFaint: "rgba(255,255,255,0.05)",
+  green: "#34d399",
+  greenBg: "rgba(52,211,153,0.08)",
+  greenBorder: "rgba(52,211,153,0.22)",
+  blue: "#60a5fa",
+  blueBg: "rgba(96,165,250,0.08)",
+  blueBorder: "rgba(96,165,250,0.22)",
+  orange: "#fb923c",
+  orangeBg: "rgba(251,146,60,0.08)",
+  orangeBorder: "rgba(251,146,60,0.22)",
+  red: "#f87171",
+  redBg: "rgba(248,113,113,0.08)",
+  redBorder: "rgba(248,113,113,0.22)",
+  gold: "#fbbf24",
+  goldBg: "rgba(251,191,36,0.08)",
+  goldBorder: "rgba(251,191,36,0.22)",
 } as const;
 
 /* ─────────────────────────────────────────
@@ -40,10 +48,37 @@ const T = {
 ───────────────────────────────────────── */
 type TicketStatus = "open" | "pending" | "closed";
 
-const STATUS_CFG: Record<TicketStatus, { color: string; bg: string; border: string; icon: typeof Clock; label: string }> = {
-  open:    { color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   icon: AlertCircle,   label: 'Open'    },
-  pending: { color: T.gold,   bg: T.goldBg,   border: T.goldBorder,   icon: Clock,         label: 'Pending' },
-  closed:  { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  icon: CheckCircle,   label: 'Closed'  },
+const STATUS_CFG: Record<
+  TicketStatus,
+  {
+    color: string;
+    bg: string;
+    border: string;
+    icon: typeof Clock;
+    label: string;
+  }
+> = {
+  open: {
+    color: T.blue,
+    bg: T.blueBg,
+    border: T.blueBorder,
+    icon: AlertCircle,
+    label: "Open",
+  },
+  pending: {
+    color: T.gold,
+    bg: T.goldBg,
+    border: T.goldBorder,
+    icon: Clock,
+    label: "Pending",
+  },
+  closed: {
+    color: T.green,
+    bg: T.greenBg,
+    border: T.greenBorder,
+    icon: CheckCircle,
+    label: "Closed",
+  },
 };
 
 /* ─────────────────────────────────────────
@@ -129,9 +164,12 @@ const STYLES = `
   .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
 `;
 
-if (typeof document !== 'undefined' && !document.getElementById('aw-sr-styles')) {
-  const tag = document.createElement('style');
-  tag.id = 'aw-sr-styles';
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("aw-sr-styles")
+) {
+  const tag = document.createElement("style");
+  tag.id = "aw-sr-styles";
   tag.textContent = STYLES;
   document.head.appendChild(tag);
 }
@@ -140,12 +178,23 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-sr-styles'))
    TYPES
 ───────────────────────────────────────── */
 interface SupportTicketRow {
-  id: string; user_id: string; subject: string;
-  status: TicketStatus; created_at: string; updated_at: string;
+  id: string;
+  user_id: string;
+  subject: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
   users: { email: string; full_name: string } | null;
 }
 
-const fmt = (d: string) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmt = (d: string) =>
+  new Date(d).toLocaleDateString("en-SA", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 /* ─────────────────────────────────────────
    EMAIL BUILDER (unchanged logic)
@@ -157,113 +206,273 @@ const buildReplyHtml = (fullName: string, subject: string, reply: string) =>
    COMPONENT
 ═══════════════════════════════════════════ */
 const SupportRequestsPage = () => {
-  const [tickets, setTickets]         = useState<SupportTicketRow[]>([]);
-  const [error, setError]             = useState('');
-  const [isLoading, setIsLoading]     = useState(true);
-  const [updatingId, setUpdatingId]   = useState<string | null>(null);
-  const [replyMap, setReplyMap]       = useState<Record<string, string>>({});
-  const [sendingId, setSendingId]     = useState<string | null>(null);
-  const [sentIds, setSentIds]         = useState<Set<string>>(new Set());
-  const [filterStatus, setFilterStatus] = useState<TicketStatus | 'all'>('all');
-  const [expanded, setExpanded]       = useState<Set<string>>(new Set());
+  const [tickets, setTickets] = useState<SupportTicketRow[]>([]);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [replyMap, setReplyMap] = useState<Record<string, string>>({});
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const sorted = useMemo(() =>
-    [...tickets].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+  const sorted = useMemo(
+    () =>
+      [...tickets].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
     [tickets]
   );
 
-  const filtered = useMemo(() =>
-    filterStatus === 'all' ? sorted : sorted.filter(t => t.status === filterStatus),
+  const filtered = useMemo(
+    () =>
+      filterStatus === "all"
+        ? sorted
+        : sorted.filter((t) => t.status === filterStatus),
     [sorted, filterStatus]
   );
 
-  useEffect(() => { loadTickets(); }, []);
+  useEffect(() => {
+    loadTickets();
+  }, []);
 
   const loadTickets = async () => {
-    setIsLoading(true); setError('');
+    setIsLoading(true);
+    setError("");
     try {
-      const { data, error: e } = await supabase.from("support_ticket")
-        .select("id, user_id, subject, status, created_at, updated_at, users!support_ticket_user_id_fkey(email, full_name)");
+      const { data, error: e } = await supabase
+        .from("support_ticket")
+        .select(
+          "id, user_id, subject, status, created_at, updated_at, users!support_ticket_user_id_fkey(email, full_name)"
+        );
       if (e) throw e;
-      const normalized: SupportTicketRow[] = ((data || []) as any[]).map(t => ({
-        ...t, users: Array.isArray(t.users) ? t.users[0] || null : t.users,
-      }));
+      const normalized: SupportTicketRow[] = ((data || []) as any[]).map(
+        (t) => ({
+          ...t,
+          users: Array.isArray(t.users) ? t.users[0] || null : t.users,
+        })
+      );
       setTickets(normalized);
-    } catch { setError("Failed to load support requests. Please refresh and try again."); }
-    finally { setIsLoading(false); }
+    } catch {
+      setError(
+        "Failed to load support requests. Please refresh and try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleStatusChange = async (id: string, status: TicketStatus) => {
     setUpdatingId(id);
     try {
-      await supabase.from("support_ticket").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
-      setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updated_at: new Date().toISOString() } : t));
-    } catch { setError("Failed to update status. Please try again."); }
-    finally { setUpdatingId(null); }
+      await supabase
+        .from("support_ticket")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? { ...t, status, updated_at: new Date().toISOString() }
+            : t
+        )
+      );
+    } catch {
+      setError("Failed to update status. Please try again.");
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
-  const handleSendReply = async (e: FormEvent<HTMLFormElement>, ticket: SupportTicketRow) => {
+  const handleSendReply = async (
+    e: FormEvent<HTMLFormElement>,
+    ticket: SupportTicketRow
+  ) => {
     e.preventDefault();
-    const reply = (replyMap[ticket.id] || '').trim();
+    const reply = (replyMap[ticket.id] || "").trim();
     const email = ticket.users?.email;
-    if (!reply) { setError("Please enter a reply message."); return; }
-    if (!email) { setError("This ticket has no valid email."); return; }
-    setSendingId(ticket.id); setError('');
+    if (!reply) {
+      setError("Please enter a reply message.");
+      return;
+    }
+    if (!email) {
+      setError("This ticket has no valid email.");
+      return;
+    }
+    setSendingId(ticket.id);
+    setError("");
     try {
       const { error: fnErr } = await supabase.functions.invoke("send-email", {
-        body: { to: email, subject: `Support Reply: ${ticket.subject}`, html: buildReplyHtml(ticket.users?.full_name || 'User', ticket.subject, reply) },
+        body: {
+          to: email,
+          subject: `Support Reply: ${ticket.subject}`,
+          html: buildReplyHtml(
+            ticket.users?.full_name || "User",
+            ticket.subject,
+            reply
+          ),
+        },
       });
       if (fnErr) throw fnErr;
-      setReplyMap(prev => ({ ...prev, [ticket.id]: '' }));
-      setSentIds(prev => new Set([...prev, ticket.id]));
-      setTimeout(() => setSentIds(prev => { const n = new Set(prev); n.delete(ticket.id); return n; }), 3000);
-    } catch { setError("Failed to send reply. Please try again."); }
-    finally { setSendingId(null); }
+      setReplyMap((prev) => ({ ...prev, [ticket.id]: "" }));
+      setSentIds((prev) => new Set([...prev, ticket.id]));
+      setTimeout(
+        () =>
+          setSentIds((prev) => {
+            const n = new Set(prev);
+            n.delete(ticket.id);
+            return n;
+          }),
+        3000
+      );
+    } catch {
+      setError("Failed to send reply. Please try again.");
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const toggleExpand = (id: string) =>
-    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
 
   /* Stats */
-  const counts = { all: tickets.length, open: tickets.filter(t => t.status === 'open').length, pending: tickets.filter(t => t.status === 'pending').length, closed: tickets.filter(t => t.status === 'closed').length };
+  const counts = {
+    all: tickets.length,
+    open: tickets.filter((t) => t.status === "open").length,
+    pending: tickets.filter((t) => t.status === "pending").length,
+    closed: tickets.filter((t) => t.status === "closed").length,
+  };
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
-
+    <div
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        gap: 20,
+      }}
+    >
       {/* ── Page header ── */}
-      <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 10, background: T.purpleBg || 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <MessageSquare size={18} style={{ color: '#a78bfa' }} />
+      <div
+        className="aw-fade-up"
+        style={{ display: "flex", alignItems: "center", gap: 12 }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            background: T.purpleBg || "rgba(167,139,250,0.08)",
+            border: "1px solid rgba(167,139,250,0.22)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <MessageSquare size={18} style={{ color: "#a78bfa" }} />
         </div>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>Support Requests</h1>
-          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Review tickets, update statuses, and reply to users.</p>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: T.white,
+              letterSpacing: "-0.3px",
+              margin: 0,
+            }}
+          >
+            Support Requests
+          </h1>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+            Review tickets, update statuses, and reply to users.
+          </p>
         </div>
       </div>
 
       {/* ── Error ── */}
       {error && (
-        <div style={{ padding: '11px 16px', background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: T.red }}>
+        <div
+          style={{
+            padding: "11px 16px",
+            background: T.redBg,
+            border: `1px solid ${T.redBorder}`,
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 13,
+            color: T.red,
+          }}
+        >
           <AlertCircle size={14} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{error}</span>
-          <button onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.red, padding: 0 }}><X size={13} /></button>
+          <button
+            onClick={() => setError("")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: T.red,
+              padding: 0,
+            }}
+          >
+            <X size={13} />
+          </button>
         </div>
       )}
 
       {/* ── Stats + Filter tabs ── */}
-      <div className="aw-fade-up" style={{ animationDelay: '0.05s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-
+      <div
+        className="aw-fade-up"
+        style={{
+          animationDelay: "0.05s",
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 12,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 14,
+          flexWrap: "wrap",
+        }}
+      >
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 5 }}>
+        <div style={{ display: "flex", gap: 5 }}>
           {[
-            { key: 'all', label: 'All', count: counts.all },
-            { key: 'open', label: 'Open', count: counts.open },
-            { key: 'pending', label: 'Pending', count: counts.pending },
-            { key: 'closed', label: 'Closed', count: counts.closed },
+            { key: "all", label: "All", count: counts.all },
+            { key: "open", label: "Open", count: counts.open },
+            { key: "pending", label: "Pending", count: counts.pending },
+            { key: "closed", label: "Closed", count: counts.closed },
           ].map(({ key, label, count }) => (
-            <button key={key} className={`aw-sr-tab ${filterStatus === key ? 'active' : ''}`} onClick={() => setFilterStatus(key as any)}>
+            <button
+              key={key}
+              className={`aw-sr-tab ${filterStatus === key ? "active" : ""}`}
+              onClick={() => setFilterStatus(key as any)}
+            >
               {label}
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 9999, background: filterStatus === key ? 'rgba(200,255,0,0.20)' : 'rgba(255,255,255,0.08)', fontSize: 10, fontWeight: 800, color: filterStatus === key ? T.accent : T.textMuted, padding: '0 5px' }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9999,
+                  background:
+                    filterStatus === key
+                      ? "rgba(200,255,0,0.20)"
+                      : "rgba(255,255,255,0.08)",
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: filterStatus === key ? T.accent : T.textMuted,
+                  padding: "0 5px",
+                }}
+              >
                 {count}
               </span>
             </button>
@@ -271,10 +480,31 @@ const SupportRequestsPage = () => {
         </div>
 
         {/* Status legend */}
-        <div style={{ display: 'flex', gap: 12 }}>
-          {(Object.entries(STATUS_CFG) as [TicketStatus, typeof STATUS_CFG['open']][]).map(([s, cfg]) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMuted }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color }} />
+        <div style={{ display: "flex", gap: 12 }}>
+          {(
+            Object.entries(STATUS_CFG) as [
+              TicketStatus,
+              (typeof STATUS_CFG)["open"]
+            ][]
+          ).map(([s, cfg]) => (
+            <div
+              key={s}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: 11,
+                color: T.textMuted,
+              }}
+            >
+              <div
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: cfg.color,
+                }}
+              />
               {cfg.label}
             </div>
           ))}
@@ -283,64 +513,187 @@ const SupportRequestsPage = () => {
 
       {/* ── Tickets list ── */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '60px 0', color: T.textMuted, fontSize: 14 }}>
-          <Loader2 size={18} style={{ animation: 'aw-spin 0.8s linear infinite', color: T.accent }} />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "60px 0",
+            color: T.textMuted,
+            fontSize: 14,
+          }}
+        >
+          <Loader2
+            size={18}
+            style={{
+              animation: "aw-spin 0.8s linear infinite",
+              color: T.accent,
+            }}
+          />
           Loading support requests…
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '56px 24px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: "56px 24px",
+            background: T.bgCard,
+            border: `1px solid ${T.border}`,
+            borderRadius: 14,
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${T.borderFaint}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 14px",
+            }}
+          >
             <MessageSquare size={22} style={{ color: T.textMuted }} />
           </div>
-          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>No {filterStatus !== 'all' ? filterStatus : ''} support requests found.</p>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+            No {filterStatus !== "all" ? filterStatus : ""} support requests
+            found.
+          </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {filtered.map((ticket, idx) => {
-            const cfg      = STATUS_CFG[ticket.status];
-            const Icon     = cfg.icon;
+            const cfg = STATUS_CFG[ticket.status];
+            const Icon = cfg.icon;
             const isExpand = expanded.has(ticket.id);
-            const isSent   = sentIds.has(ticket.id);
+            const isSent = sentIds.has(ticket.id);
 
             return (
-              <div key={ticket.id} className={`aw-sr-card aw-fade-up`} style={{ animationDelay: `${idx * 0.04}s` }}>
-
+              <div
+                key={ticket.id}
+                className={`aw-sr-card aw-fade-up`}
+                style={{ animationDelay: `${idx * 0.04}s` }}
+              >
                 {/* Status bar */}
-                <div style={{ height: 2, background: `linear-gradient(90deg, ${cfg.color}, ${cfg.color}30)` }} />
+                <div
+                  style={{
+                    height: 2,
+                    background: `linear-gradient(90deg, ${cfg.color}, ${cfg.color}30)`,
+                  }}
+                />
 
                 {/* Card header — always visible */}
-                <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-
+                <div
+                  style={{
+                    padding: "14px 18px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 14,
+                  }}
+                >
                   {/* Status icon */}
-                  <div style={{ width: 36, height: 36, borderRadius: 9, background: cfg.bg, border: `1px solid ${cfg.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 9,
+                      background: cfg.bg,
+                      border: `1px solid ${cfg.border}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
                     <Icon size={16} style={{ color: cfg.color }} />
                   </div>
 
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ fontSize: 14, fontWeight: 700, color: T.white, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <h3
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: T.white,
+                        margin: "0 0 6px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {ticket.subject}
                     </h3>
-                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: T.textMuted }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 14,
+                        flexWrap: "wrap",
+                        fontSize: 12,
+                        color: T.textMuted,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
                         <User size={11} />
-                        <strong style={{ color: T.textBody }}>{ticket.users?.full_name || 'Unknown'}</strong>
+                        <strong style={{ color: T.textBody }}>
+                          {ticket.users?.full_name || "Unknown"}
+                        </strong>
                       </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
                         <Mail size={11} />
-                        {ticket.users?.email || '—'}
+                        {ticket.users?.email || "—"}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>
+                    <div
+                      style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}
+                    >
                       Created: {fmt(ticket.created_at)}
-                      {ticket.updated_at !== ticket.created_at && ` · Updated: ${fmt(ticket.updated_at)}`}
+                      {ticket.updated_at !== ticket.created_at &&
+                        ` · Updated: ${fmt(ticket.updated_at)}`}
                     </div>
                   </div>
 
                   {/* Right: status + expand */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 9,
+                      flexShrink: 0,
+                    }}
+                  >
                     {/* Status badge */}
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 9999, fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 10px",
+                        borderRadius: 9999,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.5px",
+                        textTransform: "uppercase",
+                        background: cfg.bg,
+                        border: `1px solid ${cfg.border}`,
+                        color: cfg.color,
+                      }}
+                    >
                       {cfg.label}
                     </span>
 
@@ -349,49 +702,137 @@ const SupportRequestsPage = () => {
                       className="aw-sr-select"
                       value={ticket.status}
                       disabled={updatingId === ticket.id}
-                      onChange={e => handleStatusChange(ticket.id, e.target.value as TicketStatus)}
+                      onChange={(e) =>
+                        handleStatusChange(
+                          ticket.id,
+                          e.target.value as TicketStatus
+                        )
+                      }
                     >
                       <option value="open">→ Open</option>
                       <option value="pending">→ Pending</option>
                       <option value="closed">→ Closed</option>
                     </select>
 
-                    {updatingId === ticket.id && <Loader2 size={13} style={{ color: T.accent, animation: 'aw-spin 0.8s linear infinite', flexShrink: 0 }} />}
+                    {updatingId === ticket.id && (
+                      <Loader2
+                        size={13}
+                        style={{
+                          color: T.accent,
+                          animation: "aw-spin 0.8s linear infinite",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
 
                     {/* Expand toggle */}
                     <button
                       onClick={() => toggleExpand(ticket.id)}
-                      style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isExpand ? 'rgba(200,255,0,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isExpand ? 'rgba(200,255,0,0.22)' : T.borderFaint}`, color: isExpand ? T.accent : T.textMuted, cursor: 'pointer', transition: 'all 0.18s' }}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: isExpand
+                          ? "rgba(200,255,0,0.08)"
+                          : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${
+                          isExpand ? "rgba(200,255,0,0.22)" : T.borderFaint
+                        }`,
+                        color: isExpand ? T.accent : T.textMuted,
+                        cursor: "pointer",
+                        transition: "all 0.18s",
+                      }}
                     >
-                      <ChevronDown size={14} style={{ transform: isExpand ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transform: isExpand ? "rotate(180deg)" : "none",
+                          transition: "transform 0.2s",
+                        }}
+                      />
                     </button>
                   </div>
                 </div>
 
                 {/* Expanded reply area */}
                 {isExpand && (
-                  <div style={{ padding: '0 18px 18px', borderTop: `1px solid ${T.borderFaint}`, paddingTop: 16 }}>
-                    <form onSubmit={e => handleSendReply(e, ticket)}>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Reply Message</label>
+                  <div
+                    style={{
+                      padding: "0 18px 18px",
+                      borderTop: `1px solid ${T.borderFaint}`,
+                      paddingTop: 16,
+                    }}
+                  >
+                    <form onSubmit={(e) => handleSendReply(e, ticket)}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: T.textMuted,
+                          marginBottom: 8,
+                        }}
+                      >
+                        Reply Message
+                      </label>
                       <textarea
                         className="aw-sr-textarea"
                         placeholder="Write your support reply here…"
                         rows={4}
-                        value={replyMap[ticket.id] || ''}
-                        onChange={e => setReplyMap(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                        value={replyMap[ticket.id] || ""}
+                        onChange={(e) =>
+                          setReplyMap((prev) => ({
+                            ...prev,
+                            [ticket.id]: e.target.value,
+                          }))
+                        }
                       />
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 12 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginTop: 10,
+                          gap: 12,
+                        }}
+                      >
                         {isSent && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.green }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              fontSize: 12,
+                              color: T.green,
+                            }}
+                          >
                             <CheckCircle size={13} /> Reply sent successfully!
                           </div>
                         )}
-                        <div style={{ marginLeft: 'auto' }}>
-                          <button type="submit" className="aw-sr-reply-btn" disabled={sendingId === ticket.id}>
-                            {sendingId === ticket.id
-                              ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Sending…</>
-                              : <><Send size={13} /> Send Reply via Email</>
-                            }
+                        <div style={{ marginLeft: "auto" }}>
+                          <button
+                            type="submit"
+                            className="aw-sr-reply-btn"
+                            disabled={sendingId === ticket.id}
+                          >
+                            {sendingId === ticket.id ? (
+                              <>
+                                <Loader2
+                                  size={13}
+                                  style={{
+                                    animation: "aw-spin 0.8s linear infinite",
+                                  }}
+                                />{" "}
+                                Sending…
+                              </>
+                            ) : (
+                              <>
+                                <Send size={13} /> Send Reply via Email
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>

@@ -1,50 +1,88 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  Users, Search, Trash2, Upload, Download,
-  Building2, Plus, Key, X, Save, Loader2,
-  Shield, UserCog, User,
-} from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { User as UserType } from '../../lib/types';
-import { useAuth } from '../../contexts/AuthContext';
+  Users,
+  Search,
+  Trash2,
+  Upload,
+  Download,
+  Building2,
+  Plus,
+  Key,
+  X,
+  Save,
+  Loader2,
+  Shield,
+  UserCog,
+  User,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { User as UserType } from "../../lib/types";
+import { useAuth } from "../../contexts/AuthContext";
 
 /* ─────────────────────────────────────────
    TOKENS
 ───────────────────────────────────────── */
 const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
-  blueBorder:  'rgba(96,165,250,0.22)',
-  orange:      '#fb923c',
-  orangeBg:    'rgba(251,146,60,0.08)',
-  orangeBorder:'rgba(251,146,60,0.22)',
-  red:         '#f87171',
-  redBg:       'rgba(248,113,113,0.08)',
-  redBorder:   'rgba(248,113,113,0.22)',
-  purple:      '#a78bfa',
-  purpleBg:    'rgba(167,139,250,0.08)',
-  purpleBorder:'rgba(167,139,250,0.22)',
+  bg: "#12140a",
+  bgCard: "#1a1e0e",
+  accent: "#c8ff00",
+  accentDark: "#12140a",
+  white: "#ffffff",
+  textBody: "#cbd5e1",
+  textMuted: "#64748b",
+  border: "rgba(255,255,255,0.09)",
+  borderFaint: "rgba(255,255,255,0.05)",
+  green: "#34d399",
+  greenBg: "rgba(52,211,153,0.08)",
+  greenBorder: "rgba(52,211,153,0.22)",
+  blue: "#60a5fa",
+  blueBg: "rgba(96,165,250,0.08)",
+  blueBorder: "rgba(96,165,250,0.22)",
+  orange: "#fb923c",
+  orangeBg: "rgba(251,146,60,0.08)",
+  orangeBorder: "rgba(251,146,60,0.22)",
+  red: "#f87171",
+  redBg: "rgba(248,113,113,0.08)",
+  redBorder: "rgba(248,113,113,0.22)",
+  purple: "#a78bfa",
+  purpleBg: "rgba(167,139,250,0.08)",
+  purpleBorder: "rgba(167,139,250,0.22)",
 } as const;
 
 /* ─────────────────────────────────────────
    ROLE CONFIG
 ───────────────────────────────────────── */
-const ROLE_CFG: Record<string, { color: string; bg: string; border: string; label: string; icon: React.ElementType }> = {
-  PLATFORM_ADMIN: { color: T.red,    bg: T.redBg,    border: T.redBorder,    label: 'Platform Admin', icon: Shield    },
-  COMPANY_ADMIN:  { color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Company Admin',  icon: UserCog   },
-  EMPLOYEE:       { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Employee',       icon: User      },
+const ROLE_CFG: Record<
+  string,
+  {
+    color: string;
+    bg: string;
+    border: string;
+    label: string;
+    icon: React.ElementType;
+  }
+> = {
+  PLATFORM_ADMIN: {
+    color: T.red,
+    bg: T.redBg,
+    border: T.redBorder,
+    label: "Platform Admin",
+    icon: Shield,
+  },
+  COMPANY_ADMIN: {
+    color: T.blue,
+    bg: T.blueBg,
+    border: T.blueBorder,
+    label: "Company Admin",
+    icon: UserCog,
+  },
+  EMPLOYEE: {
+    color: T.green,
+    bg: T.greenBg,
+    border: T.greenBorder,
+    label: "Employee",
+    icon: User,
+  },
 };
 
 /* ─────────────────────────────────────────
@@ -177,9 +215,12 @@ const STYLES = `
   .aw-modal-in { animation: aw-modal-in 0.28s ease both; }
 `;
 
-if (typeof document !== 'undefined' && !document.getElementById('aw-um-styles')) {
-  const tag = document.createElement('style');
-  tag.id = 'aw-um-styles';
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("aw-um-styles")
+) {
+  const tag = document.createElement("style");
+  tag.id = "aw-um-styles";
   tag.textContent = STYLES;
   document.head.appendChild(tag);
 }
@@ -187,46 +228,176 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-um-styles'))
 /* ─────────────────────────────────────────
    HELPERS
 ───────────────────────────────────────── */
-interface Company { id: string; name: string; }
+interface Company {
+  id: string;
+  name: string;
+}
 
 const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   const cfg = ROLE_CFG[role] ?? ROLE_CFG.EMPLOYEE;
   const Icon = cfg.icon;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 700, letterSpacing: '0.4px', background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "3px 10px",
+        borderRadius: 9999,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.4px",
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        color: cfg.color,
+      }}
+    >
       <Icon size={10} /> {cfg.label}
     </span>
   );
 };
 
-const Avatar: React.FC<{ name: string; size?: number }> = ({ name, size = 32 }) => (
-  <div style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.40, fontWeight: 700, color: T.accent, flexShrink: 0 }}>
-    {name?.charAt(0)?.toUpperCase() || '?'}
+const Avatar: React.FC<{ name: string; size?: number }> = ({
+  name,
+  size = 32,
+}) => (
+  <div
+    style={{
+      width: size,
+      height: size,
+      borderRadius: "50%",
+      background: "rgba(200,255,0,0.08)",
+      border: "1px solid rgba(200,255,0,0.20)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: size * 0.4,
+      fontWeight: 700,
+      color: T.accent,
+      flexShrink: 0,
+    }}
+  >
+    {name?.charAt(0)?.toUpperCase() || "?"}
   </div>
 );
 
 /* ─────────────────────────────────────────
    MODAL WRAPPER
 ───────────────────────────────────────── */
-const Modal: React.FC<{ title: string; subtitle?: string; icon?: React.ElementType; iconColor?: string; onClose: () => void; children: React.ReactNode; maxWidth?: number }> = ({
-  title, subtitle, icon: Icon, iconColor = T.accent, onClose, children, maxWidth = 480,
+const Modal: React.FC<{
+  title: string;
+  subtitle?: string;
+  icon?: React.ElementType;
+  iconColor?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  maxWidth?: number;
+}> = ({
+  title,
+  subtitle,
+  icon: Icon,
+  iconColor = T.accent,
+  onClose,
+  children,
+  maxWidth = 480,
 }) => (
-  <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(10,12,6,0.82)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }} onClick={onClose}>
-    <div className="aw-modal-in" style={{ width: '100%', maxWidth, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.55)', fontFamily: "'Inter', sans-serif" }} onClick={e => e.stopPropagation()}>
-      <div style={{ height: 3, background: 'linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))' }} />
-      <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 50,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24,
+      background: "rgba(10,12,6,0.82)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+    }}
+    onClick={onClose}
+  >
+    <div
+      className="aw-modal-in"
+      style={{
+        width: "100%",
+        maxWidth,
+        background: T.bgCard,
+        border: `1px solid ${T.border}`,
+        borderRadius: 16,
+        overflow: "hidden",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.55)",
+        fontFamily: "'Inter', sans-serif",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        style={{
+          height: 3,
+          background: "linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))",
+        }}
+      />
+      <div
+        style={{
+          padding: "18px 22px",
+          borderBottom: `1px solid ${T.borderFaint}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {Icon && (
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: `${iconColor}14`, border: `1px solid ${iconColor}28`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                background: `${iconColor}14`,
+                border: `1px solid ${iconColor}28`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <Icon size={16} style={{ color: iconColor }} />
             </div>
           )}
           <div>
-            <h2 style={{ fontSize: 15, fontWeight: 800, color: T.white, margin: 0 }}>{title}</h2>
-            {subtitle && <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>{subtitle}</p>}
+            <h2
+              style={{
+                fontSize: 15,
+                fontWeight: 800,
+                color: T.white,
+                margin: 0,
+              }}
+            >
+              {title}
+            </h2>
+            {subtitle && (
+              <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>
+                {subtitle}
+              </p>
+            )}
           </div>
         </div>
-        <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer' }}><X size={13} /></button>
+        <button
+          onClick={onClose}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(255,255,255,0.05)",
+            border: `1px solid ${T.borderFaint}`,
+            color: T.textMuted,
+            cursor: "pointer",
+          }}
+        >
+          <X size={13} />
+        </button>
       </div>
       {children}
     </div>
@@ -237,251 +408,635 @@ const Modal: React.FC<{ title: string; subtitle?: string; icon?: React.ElementTy
    COMPONENT
 ═══════════════════════════════════════════ */
 export const UsersManagementPage: React.FC = () => {
-  const { user }    = useAuth();
-  const [users, setUsers]       = useState<UserType[]>([]);
+  const { user } = useAuth();
+  const [users, setUsers] = useState<UserType[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [filterCompany, setFilterCompany] = useState('');
-  const [filterRole, setFilterRole]       = useState('');
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterCompany, setFilterCompany] = useState("");
+  const [filterRole, setFilterRole] = useState("");
 
   /* Modals */
-  const [showAddModal, setShowAddModal]     = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showPassModal, setShowPassModal]   = useState(false);
-  const [uploadCompanyId, setUploadCompanyId] = useState('');
-  const [submitting, setSubmitting]         = useState(false);
-  const [confirmPw, setConfirmPw]           = useState('');
-  const [pwError, setPwError]               = useState('');
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [uploadCompanyId, setUploadCompanyId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
 
-  const [newUser, setNewUser] = useState({ full_name: '', email: '', phone: '', password: '', role: 'EMPLOYEE', company_id: '' });
+  const [newUser, setNewUser] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    password: "",
+    role: "EMPLOYEE",
+    company_id: "",
+  });
 
   const [pendingAction, setPendingAction] = useState<{
-    type: 'role_change' | 'delete' | 'reset_password';
-    userId: string; userEmail: string; newRole?: string; newPassword?: string;
+    type: "role_change" | "delete" | "reset_password";
+    userId: string;
+    userEmail: string;
+    newRole?: string;
+    newPassword?: string;
   } | null>(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [usersRes, compsRes] = await Promise.all([
-        supabase.from('users').select('*').order('created_at', { ascending: false }),
-        supabase.from('companies').select('id, name').order('name'),
+        supabase
+          .from("users")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase.from("companies").select("id, name").order("name"),
       ]);
       if (usersRes.data) setUsers(usersRes.data);
       if (compsRes.data) setCompanies(compsRes.data);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getCompanyName = (id?: string) => id ? companies.find(c => c.id === id)?.name || '—' : '—';
+  const getCompanyName = (id?: string) =>
+    id ? companies.find((c) => c.id === id)?.name || "—" : "—";
 
-  const filtered = users.filter(u => {
+  const filtered = users.filter((u) => {
     const q = search.toLowerCase();
-    return (u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-      && (!filterCompany || u.company_id === filterCompany)
-      && (!filterRole    || u.role === filterRole);
+    return (
+      (u.full_name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)) &&
+      (!filterCompany || u.company_id === filterCompany) &&
+      (!filterRole || u.role === filterRole)
+    );
   });
 
   /* ── Actions ── */
   const verifyPw = async (pw: string) => {
     if (!user?.email) return false;
-    const { error } = await supabase.auth.signInWithPassword({ email: user.email, password: pw });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: pw,
+    });
     return !error;
   };
 
   const handlePwConfirm = async () => {
-    if (!confirmPw) { setPwError('Please enter your password'); return; }
+    if (!confirmPw) {
+      setPwError("Please enter your password");
+      return;
+    }
     const ok = await verifyPw(confirmPw);
-    if (!ok) { setPwError('Invalid password. Please try again.'); return; }
+    if (!ok) {
+      setPwError("Invalid password. Please try again.");
+      return;
+    }
     if (pendingAction) {
       switch (pendingAction.type) {
-        case 'role_change':     await executeRoleChange(pendingAction.userId, pendingAction.newRole!); break;
-        case 'delete':          await executeDelete(pendingAction.userId); break;
-        case 'reset_password':  await executeResetPw(pendingAction.userId, pendingAction.userEmail, pendingAction.newPassword!); break;
+        case "role_change":
+          await executeRoleChange(pendingAction.userId, pendingAction.newRole!);
+          break;
+        case "delete":
+          await executeDelete(pendingAction.userId);
+          break;
+        case "reset_password":
+          await executeResetPw(
+            pendingAction.userId,
+            pendingAction.userEmail,
+            pendingAction.newPassword!
+          );
+          break;
       }
     }
-    setShowPassModal(false); setConfirmPw(''); setPwError(''); setPendingAction(null);
+    setShowPassModal(false);
+    setConfirmPw("");
+    setPwError("");
+    setPendingAction(null);
   };
 
   const executeRoleChange = async (userId: string, newRole: string) => {
-    await supabase.from('users').update({ role: newRole }).eq('id', userId);
-    await supabase.from('audit_logs').insert([{ user_id: user?.id, action_type: 'ROLE_CHANGE', entity_type: 'USER', entity_id: userId, description: `Changed role to ${newRole}`, new_value: { role: newRole } }]);
+    await supabase.from("users").update({ role: newRole }).eq("id", userId);
+    await supabase
+      .from("audit_logs")
+      .insert([
+        {
+          user_id: user?.id,
+          action_type: "ROLE_CHANGE",
+          entity_type: "USER",
+          entity_id: userId,
+          description: `Changed role to ${newRole}`,
+          new_value: { role: newRole },
+        },
+      ]);
     await loadData();
   };
 
   const executeDelete = async (userId: string) => {
-    const { data: res, error } = await supabase.functions.invoke('user-admin', { body: { action: 'deleteUser', userId } });
-    if (error || !res?.success) { alert('Failed to delete user'); return; }
-    await supabase.from('audit_logs').insert([{ user_id: user?.id, action_type: 'DELETE_USER', entity_type: 'USER', entity_id: userId, description: 'Deleted user' }]);
+    const { data: res, error } = await supabase.functions.invoke("user-admin", {
+      body: { action: "deleteUser", userId },
+    });
+    if (error || !res?.success) {
+      alert("Failed to delete user");
+      return;
+    }
+    await supabase
+      .from("audit_logs")
+      .insert([
+        {
+          user_id: user?.id,
+          action_type: "DELETE_USER",
+          entity_type: "USER",
+          entity_id: userId,
+          description: "Deleted user",
+        },
+      ]);
     await loadData();
   };
 
-  const executeResetPw = async (userId: string, userEmail: string, newPw: string) => {
-    const { data: res, error } = await supabase.functions.invoke('user-admin', { body: { action: 'resetPassword', userId, password: newPw } });
-    if (error || !res?.success) { alert('Failed to reset password'); return; }
-    await supabase.from('audit_logs').insert([{ user_id: user?.id, action_type: 'RESET_PASSWORD', entity_type: 'USER', entity_id: userId, description: `Password reset for ${userEmail}` }]);
-    alert('Password reset successfully!');
+  const executeResetPw = async (
+    userId: string,
+    userEmail: string,
+    newPw: string
+  ) => {
+    const { data: res, error } = await supabase.functions.invoke("user-admin", {
+      body: { action: "resetPassword", userId, password: newPw },
+    });
+    if (error || !res?.success) {
+      alert("Failed to reset password");
+      return;
+    }
+    await supabase
+      .from("audit_logs")
+      .insert([
+        {
+          user_id: user?.id,
+          action_type: "RESET_PASSWORD",
+          entity_type: "USER",
+          entity_id: userId,
+          description: `Password reset for ${userEmail}`,
+        },
+      ]);
+    alert("Password reset successfully!");
   };
 
-  const handleRoleChange = (userId: string, newRole: string, userEmail: string) => {
-    if (!confirm('Change this user\'s role?')) return;
-    setPendingAction({ type: 'role_change', userId, userEmail, newRole });
+  const handleRoleChange = (
+    userId: string,
+    newRole: string,
+    userEmail: string
+  ) => {
+    if (!confirm("Change this user's role?")) return;
+    setPendingAction({ type: "role_change", userId, userEmail, newRole });
     setShowPassModal(true);
   };
 
   const handleResetPassword = (userId: string, userEmail: string) => {
     const pw = prompt(`New password for ${userEmail}:`);
     if (!pw) return;
-    if (pw.length < 6) { alert('Password must be at least 6 characters'); return; }
+    if (pw.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
     if (!confirm(`Reset password for ${userEmail}?`)) return;
-    setPendingAction({ type: 'reset_password', userId, userEmail, newPassword: pw });
+    setPendingAction({
+      type: "reset_password",
+      userId,
+      userEmail,
+      newPassword: pw,
+    });
     setShowPassModal(true);
   };
 
   const handleDelete = (userId: string, userEmail: string) => {
-    if (!confirm('Delete this user? This cannot be undone.')) return;
-    setPendingAction({ type: 'delete', userId, userEmail });
+    if (!confirm("Delete this user? This cannot be undone.")) return;
+    setPendingAction({ type: "delete", userId, userEmail });
     setShowPassModal(true);
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUser.full_name || !newUser.email || !newUser.password) { alert('Fill in all required fields'); return; }
+    if (!newUser.full_name || !newUser.email || !newUser.password) {
+      alert("Fill in all required fields");
+      return;
+    }
     setSubmitting(true);
     try {
-      const { data: res, error } = await supabase.functions.invoke('user-admin', {
-        body: { action: 'createUser', full_name: newUser.full_name, email: newUser.email.toLowerCase(), phone: newUser.phone || null, password: newUser.password, role: newUser.role, company_id: newUser.company_id || null },
-      });
-      if (error || !res?.success) throw new Error(res?.error || 'Failed to create user');
-      await supabase.from('audit_logs').insert([{ user_id: user?.id, action_type: 'CREATE_USER', entity_type: 'USER', description: `Created user: ${newUser.email}`, new_value: { email: newUser.email, role: newUser.role } }]);
+      const { data: res, error } = await supabase.functions.invoke(
+        "user-admin",
+        {
+          body: {
+            action: "createUser",
+            full_name: newUser.full_name,
+            email: newUser.email.toLowerCase(),
+            phone: newUser.phone || null,
+            password: newUser.password,
+            role: newUser.role,
+            company_id: newUser.company_id || null,
+          },
+        }
+      );
+      if (error || !res?.success)
+        throw new Error(res?.error || "Failed to create user");
+      await supabase
+        .from("audit_logs")
+        .insert([
+          {
+            user_id: user?.id,
+            action_type: "CREATE_USER",
+            entity_type: "USER",
+            description: `Created user: ${newUser.email}`,
+            new_value: { email: newUser.email, role: newUser.role },
+          },
+        ]);
       setShowAddModal(false);
-      setNewUser({ full_name: '', email: '', phone: '', password: '', role: 'EMPLOYEE', company_id: '' });
+      setNewUser({
+        full_name: "",
+        email: "",
+        phone: "",
+        password: "",
+        role: "EMPLOYEE",
+        company_id: "",
+      });
       await loadData();
-    } catch { alert('Failed to add user. Email might already exist.'); }
-    finally { setSubmitting(false); }
+    } catch {
+      alert("Failed to add user. Email might already exist.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !uploadCompanyId) { alert('Select a company and file'); return; }
+    if (!file || !uploadCompanyId) {
+      alert("Select a company and file");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string;
-        const lines = text.split('\n').filter(l => l.trim());
-        if (lines.length < 2) { alert('File is empty or incorrectly formatted'); return; }
-        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
-        const emailIdx = headers.findIndex(h => h.includes('email'));
-        const nameIdx  = headers.findIndex(h => h.includes('name'));
-        const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('mobile'));
-        const deptIdx  = headers.findIndex(h => h.includes('department'));
-        if (emailIdx === -1 || nameIdx === -1) { alert('File must contain email and name columns'); return; }
+        const lines = text.split("\n").filter((l) => l.trim());
+        if (lines.length < 2) {
+          alert("File is empty or incorrectly formatted");
+          return;
+        }
+        const headers = lines[0]
+          .toLowerCase()
+          .split(",")
+          .map((h) => h.trim());
+        const emailIdx = headers.findIndex((h) => h.includes("email"));
+        const nameIdx = headers.findIndex((h) => h.includes("name"));
+        const phoneIdx = headers.findIndex(
+          (h) => h.includes("phone") || h.includes("mobile")
+        );
+        const deptIdx = headers.findIndex((h) => h.includes("department"));
+        if (emailIdx === -1 || nameIdx === -1) {
+          alert("File must contain email and name columns");
+          return;
+        }
         const employees: any[] = [];
         for (let i = 1; i < lines.length; i++) {
-          const vals = lines[i].split(',').map(v => v.trim());
+          const vals = lines[i].split(",").map((v) => v.trim());
           const email = vals[emailIdx]?.toLowerCase();
-          const name  = vals[nameIdx];
+          const name = vals[nameIdx];
           if (!email || !name) continue;
-          employees.push({ email, full_name: name, phone: phoneIdx !== -1 ? vals[phoneIdx] : null, department: deptIdx !== -1 ? vals[deptIdx] : null, password: 'Password123!', role: 'EMPLOYEE', company_id: uploadCompanyId });
+          employees.push({
+            email,
+            full_name: name,
+            phone: phoneIdx !== -1 ? vals[phoneIdx] : null,
+            department: deptIdx !== -1 ? vals[deptIdx] : null,
+            password: "Password123!",
+            role: "EMPLOYEE",
+            company_id: uploadCompanyId,
+          });
         }
-        if (!employees.length) { alert('No valid data in file'); return; }
-        const { data: res, error } = await supabase.functions.invoke('user-admin', { body: { action: 'bulkCreate', users: employees } });
+        if (!employees.length) {
+          alert("No valid data in file");
+          return;
+        }
+        const { data: res, error } = await supabase.functions.invoke(
+          "user-admin",
+          { body: { action: "bulkCreate", users: employees } }
+        );
         if (error) throw error;
-        await supabase.from('audit_logs').insert([{ user_id: user?.id, action_type: 'UPLOAD_EMPLOYEES', entity_type: 'EMPLOYEE', description: `Uploaded ${res?.succeeded ?? 0} employees` }]);
-        setShowUploadModal(false); setUploadCompanyId('');
+        await supabase
+          .from("audit_logs")
+          .insert([
+            {
+              user_id: user?.id,
+              action_type: "UPLOAD_EMPLOYEES",
+              entity_type: "EMPLOYEE",
+              description: `Uploaded ${res?.succeeded ?? 0} employees`,
+            },
+          ]);
+        setShowUploadModal(false);
+        setUploadCompanyId("");
         await loadData();
-        alert(`Added ${res?.succeeded ?? 0} employees. Failed: ${res?.failed ?? 0}`);
-      } catch { alert('Failed to upload. Check data format.'); }
+        alert(
+          `Added ${res?.succeeded ?? 0} employees. Failed: ${res?.failed ?? 0}`
+        );
+      } catch {
+        alert("Failed to upload. Check data format.");
+      }
     };
     reader.readAsText(file);
   };
 
   const exportCSV = () => {
-    const csv = ['Name,Email,Phone,Role,Company', ...filtered.map(u => `${u.full_name},${u.email},${u.phone || ''},${u.role},${getCompanyName(u.company_id)}`)].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = `users-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    const csv = [
+      "Name,Email,Phone,Role,Company",
+      ...filtered.map(
+        (u) =>
+          `${u.full_name},${u.email},${u.phone || ""},${
+            u.role
+          },${getCompanyName(u.company_id)}`
+      ),
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `users-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   /* Loading */
-  if (loading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
-    </div>
-  );
+  if (loading)
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "80px 0",
+          gap: 14,
+          fontFamily: "Inter, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            border: "3px solid rgba(255,255,255,0.06)",
+            borderTopColor: T.accent,
+            animation: "aw-spin 0.8s linear infinite",
+          }}
+        />
+      </div>
+    );
 
   /* Stats */
-  const roleCounts = { PLATFORM_ADMIN: 0, COMPANY_ADMIN: 0, EMPLOYEE: 0 } as Record<string, number>;
-  users.forEach(u => { if (roleCounts[u.role] !== undefined) roleCounts[u.role]++; });
+  const roleCounts = {
+    PLATFORM_ADMIN: 0,
+    COMPANY_ADMIN: 0,
+    EMPLOYEE: 0,
+  } as Record<string, number>;
+  users.forEach((u) => {
+    if (roleCounts[u.role] !== undefined) roleCounts[u.role]++;
+  });
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
-
       {/* ── Page header ── */}
-      <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
+      <div
+        className="aw-fade-up"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 22,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 5,
+            }}
+          >
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: "rgba(200,255,0,0.08)",
+                border: "1px solid rgba(200,255,0,0.20)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <Users size={18} style={{ color: T.accent }} />
             </div>
-            <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>User Management</h1>
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: T.white,
+                letterSpacing: "-0.3px",
+                margin: 0,
+              }}
+            >
+              User Management
+            </h1>
           </div>
-          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Manage all users and permissions across the platform.</p>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+            Manage all users and permissions across the platform.
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="aw-um-btn-ghost" onClick={exportCSV}><Download size={13} /> Export CSV</button>
-          <button className="aw-um-btn-green" onClick={() => setShowUploadModal(true)}><Upload size={13} /> Bulk Upload</button>
-          <button className="aw-um-btn-primary" onClick={() => setShowAddModal(true)}><Plus size={13} /> Add User</button>
+        <div
+          style={{
+            display: "flex",
+            gap: 9,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <button className="aw-um-btn-ghost" onClick={exportCSV}>
+            <Download size={13} /> Export CSV
+          </button>
+          <button
+            className="aw-um-btn-green"
+            onClick={() => setShowUploadModal(true)}
+          >
+            <Upload size={13} /> Bulk Upload
+          </button>
+          <button
+            className="aw-um-btn-primary"
+            onClick={() => setShowAddModal(true)}
+          >
+            <Plus size={13} /> Add User
+          </button>
         </div>
       </div>
 
       {/* ── Role stats ── */}
-      <div className="aw-fade-up" style={{ animationDelay: '0.04s', display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+      <div
+        className="aw-fade-up"
+        style={{
+          animationDelay: "0.04s",
+          display: "flex",
+          gap: 10,
+          marginBottom: 18,
+          flexWrap: "wrap",
+        }}
+      >
         {Object.entries(ROLE_CFG).map(([role, cfg]) => {
           const Icon = cfg.icon;
           return (
-            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: cfg.bg, border: `1px solid ${cfg.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              key={role}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 16px",
+                background: T.bgCard,
+                border: `1px solid ${T.border}`,
+                borderRadius: 10,
+              }}
+            >
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: cfg.bg,
+                  border: `1px solid ${cfg.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <Icon size={14} style={{ color: cfg.color }} />
               </div>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: T.white, lineHeight: 1 }}>{roleCounts[role] ?? 0}</div>
-                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>{cfg.label}</div>
+                <div
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 900,
+                    color: T.white,
+                    lineHeight: 1,
+                  }}
+                >
+                  {roleCounts[role] ?? 0}
+                </div>
+                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>
+                  {cfg.label}
+                </div>
               </div>
             </div>
           );
         })}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 12, color: T.textMuted }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "10px 16px",
+            background: T.bgCard,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            fontSize: 12,
+            color: T.textMuted,
+          }}
+        >
           <Users size={12} style={{ color: T.accent }} />
-          Showing <strong style={{ color: T.textBody }}>{filtered.length}</strong> of <strong style={{ color: T.textBody }}>{users.length}</strong>
+          Showing{" "}
+          <strong style={{ color: T.textBody }}>
+            {filtered.length}
+          </strong> of{" "}
+          <strong style={{ color: T.textBody }}>{users.length}</strong>
         </div>
       </div>
 
       {/* ── Filters ── */}
-      <div className="aw-fade-up" style={{ animationDelay: '0.06s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div
+        className="aw-fade-up"
+        style={{
+          animationDelay: "0.06s",
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 12,
+          padding: "14px 16px",
+          marginBottom: 16,
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         {/* Search */}
-        <div style={{ flex: '2 1 200px', position: 'relative' }}>
-          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+        <div style={{ flex: "2 1 200px", position: "relative" }}>
+          <Search
+            size={14}
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: T.textMuted,
+              pointerEvents: "none",
+            }}
+          />
           <input
             className="aw-um-input"
             style={{ paddingLeft: 36 }}
             placeholder="Search by name or email…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 0 }}><X size={13} /></button>}
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              style={{
+                position: "absolute",
+                right: 11,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: T.textMuted,
+                padding: 0,
+              }}
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
 
-        <select className="aw-um-select" style={{ flex: '1 1 160px' }} value={filterCompany} onChange={e => setFilterCompany(e.target.value)}>
+        <select
+          className="aw-um-select"
+          style={{ flex: "1 1 160px" }}
+          value={filterCompany}
+          onChange={(e) => setFilterCompany(e.target.value)}
+        >
           <option value="">All Companies</option>
-          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
         </select>
 
-        <select className="aw-um-select" style={{ flex: '1 1 140px' }} value={filterRole} onChange={e => setFilterRole(e.target.value)}>
+        <select
+          className="aw-um-select"
+          style={{ flex: "1 1 140px" }}
+          value={filterRole}
+          onChange={(e) => setFilterRole(e.target.value)}
+        >
           <option value="">All Roles</option>
           <option value="PLATFORM_ADMIN">Platform Admin</option>
           <option value="COMPANY_ADMIN">Company Admin</option>
@@ -490,8 +1045,17 @@ export const UsersManagementPage: React.FC = () => {
       </div>
 
       {/* ── Table ── */}
-      <div className="aw-fade-up" style={{ animationDelay: '0.09s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-        <div className="aw-um-scroll" style={{ overflowX: 'auto' }}>
+      <div
+        className="aw-fade-up"
+        style={{
+          animationDelay: "0.09s",
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 14,
+          overflow: "hidden",
+        }}
+      >
+        <div className="aw-um-scroll" style={{ overflowX: "auto" }}>
           <table className="aw-um-table">
             <thead>
               <tr>
@@ -500,42 +1064,72 @@ export const UsersManagementPage: React.FC = () => {
                 <th>Phone</th>
                 <th>Role</th>
                 <th>Company</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(u => (
+              {filtered.map((u) => (
                 <tr key={u.id}>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
                       <Avatar name={u.full_name} />
-                      <span style={{ fontWeight: 600, color: T.white }}>{u.full_name}</span>
+                      <span style={{ fontWeight: 600, color: T.white }}>
+                        {u.full_name}
+                      </span>
                     </div>
                   </td>
                   <td style={{ color: T.textMuted }}>{u.email}</td>
-                  <td style={{ color: T.textMuted }}>{u.phone || '—'}</td>
-                  <td><RoleBadge role={u.role} /></td>
+                  <td style={{ color: T.textMuted }}>{u.phone || "—"}</td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textMuted }}>
+                    <RoleBadge role={u.role} />
+                  </td>
+                  <td>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        color: T.textMuted,
+                      }}
+                    >
                       <Building2 size={11} />
                       {getCompanyName(u.company_id)}
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
-                      <button className="aw-um-icon-btn reset" title="Reset Password" onClick={() => handleResetPassword(u.id, u.email)}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        gap: 7,
+                      }}
+                    >
+                      <button
+                        className="aw-um-icon-btn reset"
+                        title="Reset Password"
+                        onClick={() => handleResetPassword(u.id, u.email)}
+                      >
                         <Key size={13} />
                       </button>
                       <select
                         className="aw-um-role-select"
                         value={u.role}
-                        onChange={e => handleRoleChange(u.id, e.target.value, u.email)}
+                        onChange={(e) =>
+                          handleRoleChange(u.id, e.target.value, u.email)
+                        }
                       >
                         <option value="PLATFORM_ADMIN">Platform Admin</option>
                         <option value="COMPANY_ADMIN">Company Admin</option>
                         <option value="EMPLOYEE">Employee</option>
                       </select>
-                      <button className="aw-um-icon-btn del" title="Delete" onClick={() => handleDelete(u.id, u.email)}>
+                      <button
+                        className="aw-um-icon-btn del"
+                        title="Delete"
+                        onClick={() => handleDelete(u.id, u.email)}
+                      >
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -547,52 +1141,178 @@ export const UsersManagementPage: React.FC = () => {
         </div>
 
         {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '52px 24px' }}>
-            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <div style={{ textAlign: "center", padding: "52px 24px" }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,0.03)",
+                border: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 14px",
+              }}
+            >
               <Users size={22} style={{ color: T.textMuted }} />
             </div>
-            <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>No users matching your filters</p>
+            <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+              No users matching your filters
+            </p>
           </div>
         )}
       </div>
 
       {/* ═══════════ ADD USER MODAL ═══════════ */}
       {showAddModal && (
-        <Modal title="Add New User" subtitle="Fill in the user details" icon={Plus} onClose={() => setShowAddModal(false)}>
+        <Modal
+          title="Add New User"
+          subtitle="Fill in the user details"
+          icon={Plus}
+          onClose={() => setShowAddModal(false)}
+        >
           <form onSubmit={handleAddUser}>
-            <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div><label className="aw-um-label">Full Name <span style={{ color: T.accent }}>*</span></label>
-                <input className="aw-um-input" required placeholder="John Smith" value={newUser.full_name} onChange={e => setNewUser(p => ({ ...p, full_name: e.target.value }))} />
+            <div
+              style={{
+                padding: "18px 22px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <div>
+                <label className="aw-um-label">
+                  Full Name <span style={{ color: T.accent }}>*</span>
+                </label>
+                <input
+                  className="aw-um-input"
+                  required
+                  placeholder="John Smith"
+                  value={newUser.full_name}
+                  onChange={(e) =>
+                    setNewUser((p) => ({ ...p, full_name: e.target.value }))
+                  }
+                />
               </div>
-              <div><label className="aw-um-label">Email <span style={{ color: T.accent }}>*</span></label>
-                <input className="aw-um-input" type="email" required placeholder="john@company.com" value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} />
+              <div>
+                <label className="aw-um-label">
+                  Email <span style={{ color: T.accent }}>*</span>
+                </label>
+                <input
+                  className="aw-um-input"
+                  type="email"
+                  required
+                  placeholder="john@company.com"
+                  value={newUser.email}
+                  onChange={(e) =>
+                    setNewUser((p) => ({ ...p, email: e.target.value }))
+                  }
+                />
               </div>
-              <div><label className="aw-um-label">Password <span style={{ color: T.accent }}>*</span></label>
-                <input className="aw-um-input" type="password" required minLength={6} value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
+              <div>
+                <label className="aw-um-label">
+                  Password <span style={{ color: T.accent }}>*</span>
+                </label>
+                <input
+                  className="aw-um-input"
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newUser.password}
+                  onChange={(e) =>
+                    setNewUser((p) => ({ ...p, password: e.target.value }))
+                  }
+                />
               </div>
-              <div><label className="aw-um-label">Phone</label>
-                <input className="aw-um-input" type="tel" placeholder="+966 5x xxx xxxx" value={newUser.phone} onChange={e => setNewUser(p => ({ ...p, phone: e.target.value }))} />
+              <div>
+                <label className="aw-um-label">Phone</label>
+                <input
+                  className="aw-um-input"
+                  type="tel"
+                  placeholder="+966 5x xxx xxxx"
+                  value={newUser.phone}
+                  onChange={(e) =>
+                    setNewUser((p) => ({ ...p, phone: e.target.value }))
+                  }
+                />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><label className="aw-um-label">Role <span style={{ color: T.accent }}>*</span></label>
-                  <select className="aw-um-select" value={newUser.role} onChange={e => setNewUser(p => ({ ...p, role: e.target.value }))}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <label className="aw-um-label">
+                    Role <span style={{ color: T.accent }}>*</span>
+                  </label>
+                  <select
+                    className="aw-um-select"
+                    value={newUser.role}
+                    onChange={(e) =>
+                      setNewUser((p) => ({ ...p, role: e.target.value }))
+                    }
+                  >
                     <option value="EMPLOYEE">Employee</option>
                     <option value="COMPANY_ADMIN">Company Admin</option>
                     <option value="PLATFORM_ADMIN">Platform Admin</option>
                   </select>
                 </div>
-                <div><label className="aw-um-label">Company</label>
-                  <select className="aw-um-select" value={newUser.company_id} onChange={e => setNewUser(p => ({ ...p, company_id: e.target.value }))}>
+                <div>
+                  <label className="aw-um-label">Company</label>
+                  <select
+                    className="aw-um-select"
+                    value={newUser.company_id}
+                    onChange={(e) =>
+                      setNewUser((p) => ({ ...p, company_id: e.target.value }))
+                    }
+                  >
                     <option value="">— Select —</option>
-                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
             </div>
-            <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10 }}>
-              <button type="button" className="aw-um-btn-ghost" onClick={() => setShowAddModal(false)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
-              <button type="submit" className="aw-um-save-btn" disabled={submitting}>
-                {submitting ? <><Loader2 size={14} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Creating…</> : <><Save size={14} /> Add User</>}
+            <div
+              style={{
+                padding: "14px 22px",
+                borderTop: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                className="aw-um-btn-ghost"
+                onClick={() => setShowAddModal(false)}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="aw-um-save-btn"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2
+                      size={14}
+                      style={{ animation: "aw-spin 0.8s linear infinite" }}
+                    />{" "}
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    <Save size={14} /> Add User
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -601,52 +1321,190 @@ export const UsersManagementPage: React.FC = () => {
 
       {/* ═══════════ BULK UPLOAD MODAL ═══════════ */}
       {showUploadModal && (
-        <Modal title="Bulk Upload Employees" subtitle="Upload a CSV file" icon={Upload} iconColor={T.green} onClose={() => { setShowUploadModal(false); setUploadCompanyId(''); }}>
-          <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ padding: '12px 16px', background: T.blueBg, border: `1px solid ${T.blueBorder}`, borderRadius: 10, fontSize: 13, color: T.blue }}>
-              <strong style={{ display: 'block', marginBottom: 6 }}>Required CSV Format:</strong>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12 }}>
-                {['First row: column headers (name, email, phone, department)', 'Email and name are required', 'Phone and department are optional', 'Default password: Password123!'].map(tip => (
-                  <div key={tip} style={{ display: 'flex', gap: 7 }}><span style={{ color: T.accent }}>·</span>{tip}</div>
+        <Modal
+          title="Bulk Upload Employees"
+          subtitle="Upload a CSV file"
+          icon={Upload}
+          iconColor={T.green}
+          onClose={() => {
+            setShowUploadModal(false);
+            setUploadCompanyId("");
+          }}
+        >
+          <div
+            style={{
+              padding: "18px 22px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 16px",
+                background: T.blueBg,
+                border: `1px solid ${T.blueBorder}`,
+                borderRadius: 10,
+                fontSize: 13,
+                color: T.blue,
+              }}
+            >
+              <strong style={{ display: "block", marginBottom: 6 }}>
+                Required CSV Format:
+              </strong>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3,
+                  fontSize: 12,
+                }}
+              >
+                {[
+                  "First row: column headers (name, email, phone, department)",
+                  "Email and name are required",
+                  "Phone and department are optional",
+                  "Default password: Password123!",
+                ].map((tip) => (
+                  <div key={tip} style={{ display: "flex", gap: 7 }}>
+                    <span style={{ color: T.accent }}>·</span>
+                    {tip}
+                  </div>
                 ))}
               </div>
             </div>
-            <div><label className="aw-um-label">Select Company <span style={{ color: T.accent }}>*</span></label>
-              <select className="aw-um-select" value={uploadCompanyId} onChange={e => setUploadCompanyId(e.target.value)} required>
+            <div>
+              <label className="aw-um-label">
+                Select Company <span style={{ color: T.accent }}>*</span>
+              </label>
+              <select
+                className="aw-um-select"
+                value={uploadCompanyId}
+                onChange={(e) => setUploadCompanyId(e.target.value)}
+                required
+              >
                 <option value="">— Select Company —</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </div>
-            <div><label className="aw-um-label">CSV File</label>
-              <input type="file" accept=".csv" onChange={handleCSVUpload}
-                style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.textBody, fontFamily: 'inherit', cursor: 'pointer' }} />
+            <div>
+              <label className="aw-um-label">CSV File</label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleCSVUpload}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: T.textBody,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                }}
+              />
             </div>
           </div>
-          <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.borderFaint}` }}>
-            <button className="aw-um-btn-ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={() => { setShowUploadModal(false); setUploadCompanyId(''); }}>Cancel</button>
+          <div
+            style={{
+              padding: "14px 22px",
+              borderTop: `1px solid ${T.borderFaint}`,
+            }}
+          >
+            <button
+              className="aw-um-btn-ghost"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => {
+                setShowUploadModal(false);
+                setUploadCompanyId("");
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </Modal>
       )}
 
       {/* ═══════════ PASSWORD CONFIRM MODAL ═══════════ */}
       {showPassModal && (
-        <Modal title="Confirm Your Identity" subtitle="Enter your password to proceed" icon={Key} iconColor={T.orange} onClose={() => { setShowPassModal(false); setConfirmPw(''); setPwError(''); setPendingAction(null); }} maxWidth={400}>
-          <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Modal
+          title="Confirm Your Identity"
+          subtitle="Enter your password to proceed"
+          icon={Key}
+          iconColor={T.orange}
+          onClose={() => {
+            setShowPassModal(false);
+            setConfirmPw("");
+            setPwError("");
+            setPendingAction(null);
+          }}
+          maxWidth={400}
+        >
+          <div
+            style={{
+              padding: "18px 22px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
             <div>
               <label className="aw-um-label">Your Password</label>
               <input
-                className="aw-um-input" type="password" autoFocus
+                className="aw-um-input"
+                type="password"
+                autoFocus
                 placeholder="Enter your password"
                 value={confirmPw}
-                onChange={e => { setConfirmPw(e.target.value); setPwError(''); }}
-                onKeyDown={e => { if (e.key === 'Enter') handlePwConfirm(); }}
+                onChange={(e) => {
+                  setConfirmPw(e.target.value);
+                  setPwError("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handlePwConfirm();
+                }}
               />
-              {pwError && <p style={{ fontSize: 12, color: T.red, marginTop: 5 }}>{pwError}</p>}
+              {pwError && (
+                <p style={{ fontSize: 12, color: T.red, marginTop: 5 }}>
+                  {pwError}
+                </p>
+              )}
             </div>
           </div>
-          <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10 }}>
-            <button className="aw-um-btn-ghost" onClick={() => { setShowPassModal(false); setConfirmPw(''); setPwError(''); setPendingAction(null); }} style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>
-            <button className="aw-um-save-btn" onClick={handlePwConfirm} style={{ background: T.orange, boxShadow: '0 0 16px rgba(251,146,60,0.20)' }}>
+          <div
+            style={{
+              padding: "14px 22px",
+              borderTop: `1px solid ${T.borderFaint}`,
+              display: "flex",
+              gap: 10,
+            }}
+          >
+            <button
+              className="aw-um-btn-ghost"
+              onClick={() => {
+                setShowPassModal(false);
+                setConfirmPw("");
+                setPwError("");
+                setPendingAction(null);
+              }}
+              style={{ flex: 1, justifyContent: "center" }}
+            >
+              Cancel
+            </button>
+            <button
+              className="aw-um-save-btn"
+              onClick={handlePwConfirm}
+              style={{
+                background: T.orange,
+                boxShadow: "0 0 16px rgba(251,146,60,0.20)",
+              }}
+            >
               Confirm
             </button>
           </div>
