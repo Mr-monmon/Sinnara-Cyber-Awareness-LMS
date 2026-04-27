@@ -1,37 +1,45 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import {
-  Building2, Loader2, Mail, Send, Users, CheckCircle,
-  AlertCircle, Image as ImageIcon, X,
+  Building2,
+  Loader2,
+  Mail,
+  Send,
+  Users,
+  CheckCircle,
+  AlertCircle,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import Quill from "quill";
 import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
+import { brandedEmailLayout } from "../../lib/email";
 
 /* ─────────────────────────────────────────
    TOKENS
 ───────────────────────────────────────── */
 const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
-  blueBorder:  'rgba(96,165,250,0.22)',
-  red:         '#f87171',
-  redBg:       'rgba(248,113,113,0.08)',
-  redBorder:   'rgba(248,113,113,0.22)',
-  orange:      '#fb923c',
-  orangeBg:    'rgba(251,146,60,0.08)',
+  bg: "#12140a",
+  bgCard: "#1a1e0e",
+  accent: "#c8ff00",
+  accentDark: "#12140a",
+  white: "#ffffff",
+  textBody: "#cbd5e1",
+  textMuted: "#64748b",
+  border: "rgba(255,255,255,0.09)",
+  borderFaint: "rgba(255,255,255,0.05)",
+  green: "#34d399",
+  greenBg: "rgba(52,211,153,0.08)",
+  greenBorder: "rgba(52,211,153,0.22)",
+  blue: "#60a5fa",
+  blueBg: "rgba(96,165,250,0.08)",
+  blueBorder: "rgba(96,165,250,0.22)",
+  red: "#f87171",
+  redBg: "rgba(248,113,113,0.08)",
+  redBorder: "rgba(248,113,113,0.22)",
+  orange: "#fb923c",
+  orangeBg: "rgba(251,146,60,0.08)",
 } as const;
 
 /* ─────────────────────────────────────────
@@ -149,9 +157,12 @@ const STYLES = `
   .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
 `;
 
-if (typeof document !== 'undefined' && !document.getElementById('aw-ep-styles')) {
-  const tag = document.createElement('style');
-  tag.id = 'aw-ep-styles';
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("aw-ep-styles")
+) {
+  const tag = document.createElement("style");
+  tag.id = "aw-ep-styles";
   tag.textContent = STYLES;
   document.head.appendChild(tag);
 }
@@ -160,84 +171,169 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-ep-styles'))
    CONSTANTS (unchanged)
 ───────────────────────────────────────── */
 type TargetScope = "all" | "department";
-const ALLOWED_IMAGE_TYPES = ["image/png","image/jpeg","image/jpg","image/gif","image/webp"];
+const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
-const EMAIL_BODY_ALLOWED_TAGS = ["a","blockquote","br","code","div","em","h1","h2","h3","i","img","li","ol","p","pre","span","strong","u","ul"];
-const EMAIL_BODY_ALLOWED_ATTR = ["alt","height","href","rel","src","style","target","width"];
+const EMAIL_BODY_ALLOWED_TAGS = [
+  "a",
+  "blockquote",
+  "br",
+  "code",
+  "div",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "i",
+  "img",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "span",
+  "strong",
+  "u",
+  "ul",
+];
+const EMAIL_BODY_ALLOWED_ATTR = [
+  "alt",
+  "height",
+  "href",
+  "rel",
+  "src",
+  "style",
+  "target",
+  "width",
+];
 
-interface DepartmentRow { id: string; name: string; }
-interface RecipientRow  { id: string; email: string; full_name: string; }
+interface DepartmentRow {
+  id: string;
+  name: string;
+}
+interface RecipientRow {
+  id: string;
+  email: string;
+  full_name: string;
+}
 
 function escapeHtml(text: string) {
-  return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 function sanitizeEmailBody(html: string) {
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS: EMAIL_BODY_ALLOWED_TAGS, ALLOWED_ATTR: EMAIL_BODY_ALLOWED_ATTR });
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: EMAIL_BODY_ALLOWED_TAGS,
+    ALLOWED_ATTR: EMAIL_BODY_ALLOWED_ATTR,
+  });
 }
 function normalizeEditorHtml(html: string, plainText: string) {
   return plainText.trim().length > 0 || /<img\b/i.test(html) ? html : "";
 }
 function buildMessageHtml(fullName: string, bodyHtml: string) {
-  return `<div style="margin:0;padding:32px 16px;background:#12140a;font-family:Arial,sans-serif;color:#ffffff;"><div style="max-width:600px;margin:0 auto;background:rgba(200,255,0,0.03);border:1px solid rgba(255,255,255,0.10);border-radius:18px;overflow:hidden;"><div style="padding:32px;background:linear-gradient(135deg,#12140a 0%,#1f2610 100%);border-bottom:1px solid rgba(255,255,255,0.10);"><p style="margin:0 0 10px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:#c8ff00;">Awareone</p><h1 style="margin:0;font-size:22px;line-height:1.3;">Hello, ${escapeHtml(fullName)}</h1></div><div style="padding:32px;"><div style="font-size:15px;line-height:1.8;color:#94a3b8;">${bodyHtml}</div></div></div></div>`;
+  return brandedEmailLayout(`
+    <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
+      <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone</p>
+      <h1 style="margin:0; font-size:22px; line-height:1.3;">Hello, ${escapeHtml(fullName)}</h1>
+    </div>
+    <div style="padding:32px;">
+      <div style="margin:0; font-size:15px; line-height:1.8; color:#94a3b8;">${bodyHtml}</div>
+    </div>
+  `);
 }
 
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
 const EmailPage = () => {
-  const [companies, setCompanies]       = useState<Company[]>([]);
-  const [departments, setDepartments]   = useState<DepartmentRow[]>([]);
-  const [companyId, setCompanyId]       = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [targetScope, setTargetScope]   = useState<TargetScope>('all');
-  const [subject, setSubject]           = useState('');
-  const [messageHtml, setMessageHtml]   = useState('');
-  const [messagePlainText, setMessagePlainText] = useState('');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
+  const [companyId, setCompanyId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [targetScope, setTargetScope] = useState<TargetScope>("all");
+  const [subject, setSubject] = useState("");
+  const [messageHtml, setMessageHtml] = useState("");
+  const [messagePlainText, setMessagePlainText] = useState("");
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadingDepts, setLoadingDepts] = useState(false);
-  const [sending, setSending]           = useState(false);
+  const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [error, setError]               = useState('');
-  const [success, setSuccess]           = useState('');
-  const [sendProgress, setSendProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [sendProgress, setSendProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
-  const quillHostRef      = useRef<HTMLDivElement | null>(null);
-  const quillInstanceRef  = useRef<Quill | null>(null);
-  const imageInputRef     = useRef<HTMLInputElement | null>(null);
+  const quillHostRef = useRef<HTMLDivElement | null>(null);
+  const quillInstanceRef = useRef<Quill | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const selectionIndexRef = useRef<number | null>(null);
 
   /* Load companies */
   useEffect(() => {
     const load = async () => {
-      setLoadingCompanies(true); setError('');
+      setLoadingCompanies(true);
+      setError("");
       try {
-        const { data, error: e } = await supabase.from("companies").select("id, name").order("name");
+        const { data, error: e } = await supabase
+          .from("companies")
+          .select("id, name")
+          .order("name");
         if (e) throw e;
         setCompanies((data as Company[]) || []);
-      } catch { setError("Failed to load companies."); }
-      finally { setLoadingCompanies(false); }
+      } catch {
+        setError("Failed to load companies.");
+      } finally {
+        setLoadingCompanies(false);
+      }
     };
     load();
   }, []);
 
   /* Load departments */
   useEffect(() => {
-    if (!companyId) { setDepartments([]); setDepartmentId(''); return; }
+    if (!companyId) {
+      setDepartments([]);
+      setDepartmentId("");
+      return;
+    }
     const load = async () => {
       setLoadingDepts(true);
       try {
-        const { data, error: e } = await supabase.from("departments").select("id, name").eq("company_id", companyId).order("name");
+        const { data, error: e } = await supabase
+          .from("departments")
+          .select("id, name")
+          .eq("company_id", companyId)
+          .order("name");
         if (e) throw e;
-        setDepartments((data as DepartmentRow[]) || []); setDepartmentId('');
-      } catch { setError("Failed to load departments."); }
-      finally { setLoadingDepts(false); }
+        setDepartments((data as DepartmentRow[]) || []);
+        setDepartmentId("");
+      } catch {
+        setError("Failed to load departments.");
+      } finally {
+        setLoadingDepts(false);
+      }
     };
     load();
   }, [companyId]);
 
   useEffect(() => {
-    if (targetScope === "department" && !loadingDepts && companyId && departments.length === 0) {
-      setTargetScope("all"); setDepartmentId('');
+    if (
+      targetScope === "department" &&
+      !loadingDepts &&
+      companyId &&
+      departments.length === 0
+    ) {
+      setTargetScope("all");
+      setDepartmentId("");
     }
   }, [targetScope, loadingDepts, companyId, departments.length]);
 
@@ -245,249 +341,614 @@ const EmailPage = () => {
   useEffect(() => {
     if (!quillHostRef.current || quillInstanceRef.current) return;
     const host = quillHostRef.current;
-    host.innerHTML = '';
-    const editorEl = document.createElement('div');
-    editorEl.style.minHeight = '280px';
+    host.innerHTML = "";
+    const editorEl = document.createElement("div");
+    editorEl.style.minHeight = "280px";
     host.appendChild(editorEl);
     const quill = new Quill(editorEl, {
-      theme: 'snow', placeholder: 'Write your email here…',
-      modules: { toolbar: [[{ header: [1, 2, 3, false] }], ['bold','italic','underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link','blockquote','image'], ['clean']] },
+      theme: "snow",
+      placeholder: "Write your email here…",
+      modules: {
+        toolbar: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          ["link", "blockquote", "image"],
+          ["clean"],
+        ],
+      },
     });
-    quill.on('text-change', () => {
+    quill.on("text-change", () => {
       const pt = quill.getText().trim();
       const html = normalizeEditorHtml(quill.root.innerHTML, pt);
-      setMessageHtml(prev => prev === html ? prev : html);
-      setMessagePlainText(prev => prev === pt ? prev : pt);
+      setMessageHtml((prev) => (prev === html ? prev : html));
+      setMessagePlainText((prev) => (prev === pt ? prev : pt));
     });
-    quill.on('selection-change', range => { if (range) selectionIndexRef.current = range.index; });
-    (quill.getModule('toolbar') as any).addHandler('image', () => imageInputRef.current?.click());
+    quill.on("selection-change", (range) => {
+      if (range) selectionIndexRef.current = range.index;
+    });
+    (quill.getModule("toolbar") as any).addHandler("image", () =>
+      imageInputRef.current?.click()
+    );
     quillInstanceRef.current = quill;
-    return () => { if (quillHostRef.current) quillHostRef.current.innerHTML = ''; quillInstanceRef.current = null; };
+    return () => {
+      if (quillHostRef.current) quillHostRef.current.innerHTML = "";
+      quillInstanceRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
     const quill = quillInstanceRef.current;
     if (!quill) return;
-    const curr = normalizeEditorHtml(quill.root.innerHTML, quill.getText().trim());
-    if (!messageHtml) { if (curr) quill.setText(''); return; }
+    const curr = normalizeEditorHtml(
+      quill.root.innerHTML,
+      quill.getText().trim()
+    );
+    if (!messageHtml) {
+      if (curr) quill.setText("");
+      return;
+    }
     if (curr !== messageHtml) quill.clipboard.dangerouslyPasteHTML(messageHtml);
   }, [messageHtml]);
 
-  useEffect(() => { quillInstanceRef.current?.enable(!(sending || uploadingImage)); }, [sending, uploadingImage]);
+  useEffect(() => {
+    quillInstanceRef.current?.enable(!(sending || uploadingImage));
+  }, [sending, uploadingImage]);
 
   /* Image upload */
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; e.target.value = '';
+    const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) { setError('Please upload a PNG, JPG, GIF, or WebP image.'); return; }
-    if (file.size > MAX_IMAGE_SIZE_BYTES) { setError('Images must be 5 MB or smaller.'); return; }
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setError("Please upload a PNG, JPG, GIF, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError("Images must be 5 MB or smaller.");
+      return;
+    }
     const quill = quillInstanceRef.current;
-    if (!quill) { setError('Editor not ready.'); return; }
-    setError(''); setSuccess(''); setUploadingImage(true);
+    if (!quill) {
+      setError("Editor not ready.");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    setUploadingImage(true);
     try {
-      const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const ext = (
+        file.name.split(".").pop() ||
+        file.type.split("/")[1] ||
+        "png"
+      )
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
       const filePath = `platform-admin/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('emails').upload(filePath, file, { cacheControl: '3600', contentType: file.type, upsert: false });
+      const { error: upErr } = await supabase.storage
+        .from("emails")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
       if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from('emails').getPublicUrl(filePath);
-      if (!urlData.publicUrl) throw new Error('Could not get image URL.');
-      const idx = selectionIndexRef.current ?? Math.max(quill.getLength() - 1, 0);
-      quill.focus(); quill.setSelection(idx, 0, 'silent');
-      quill.insertEmbed(idx, 'image', urlData.publicUrl, 'api');
+      const { data: urlData } = supabase.storage
+        .from("emails")
+        .getPublicUrl(filePath);
+      if (!urlData.publicUrl) throw new Error("Could not get image URL.");
+      const idx =
+        selectionIndexRef.current ?? Math.max(quill.getLength() - 1, 0);
+      quill.focus();
+      quill.setSelection(idx, 0, "silent");
+      quill.insertEmbed(idx, "image", urlData.publicUrl, "api");
       const [leaf] = quill.getLeaf(idx);
       if (leaf?.domNode instanceof HTMLImageElement) {
-        leaf.domNode.setAttribute('alt', file.name || 'Uploaded image');
-        leaf.domNode.setAttribute('width', '560');
-        leaf.domNode.setAttribute('style', 'max-width:100%;height:auto;display:block;margin:16px auto;border-radius:12px;');
+        leaf.domNode.setAttribute("alt", file.name || "Uploaded image");
+        leaf.domNode.setAttribute("width", "560");
+        leaf.domNode.setAttribute(
+          "style",
+          "max-width:100%;height:auto;display:block;margin:16px auto;border-radius:12px;"
+        );
       }
-      quill.insertText(idx + 1, '\n', 'api');
-      quill.setSelection(idx + 2, 0, 'silent');
+      quill.insertText(idx + 1, "\n", "api");
+      quill.setSelection(idx + 2, 0, "silent");
       selectionIndexRef.current = idx + 2;
-    } catch { setError('Failed to upload image. Please try again.'); }
-    finally { setUploadingImage(false); }
+    } catch {
+      setError("Failed to upload image. Please try again.");
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   /* Submit */
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError(''); setSuccess('');
+    setError("");
+    setSuccess("");
     const trimSub = subject.trim();
     const sanitized = sanitizeEmailBody(messageHtml);
-    const hasContent = messagePlainText.trim().length > 0 || /<img\b/i.test(sanitized);
-    if (!companyId)               { setError('Please select a company.'); return; }
-    if (!trimSub)                 { setError('Please enter a subject.'); return; }
-    if (!hasContent)              { setError('Please write the email content.'); return; }
-    if (targetScope === 'department' && !departmentId) { setError('Please select a department.'); return; }
+    const hasContent =
+      messagePlainText.trim().length > 0 || /<img\b/i.test(sanitized);
+    if (!companyId) {
+      setError("Please select a company.");
+      return;
+    }
+    if (!trimSub) {
+      setError("Please enter a subject.");
+      return;
+    }
+    if (!hasContent) {
+      setError("Please write the email content.");
+      return;
+    }
+    if (targetScope === "department" && !departmentId) {
+      setError("Please select a department.");
+      return;
+    }
 
-    let q = supabase.from("users").select("id, email, full_name").eq("company_id", companyId).in("role", ["EMPLOYEE","COMPANY_ADMIN"]);
-    if (targetScope === 'department') q = q.eq("department_id", departmentId);
+    let q = supabase
+      .from("users")
+      .select("id, email, full_name")
+      .eq("company_id", companyId)
+      .in("role", ["EMPLOYEE", "COMPANY_ADMIN"]);
+    if (targetScope === "department") q = q.eq("department_id", departmentId);
     const { data: rows, error: usersErr } = await q;
-    if (usersErr) { setError("Could not load recipients."); return; }
+    if (usersErr) {
+      setError("Could not load recipients.");
+      return;
+    }
 
     const seen = new Set<string>();
-    const recipients = ((rows || []) as RecipientRow[]).filter(r => {
-      const em = (r.email || '').trim().toLowerCase();
+    const recipients = ((rows || []) as RecipientRow[]).filter((r) => {
+      const em = (r.email || "").trim().toLowerCase();
       if (!em || seen.has(em)) return false;
-      seen.add(em); return true;
+      seen.add(em);
+      return true;
     });
-    if (recipients.length === 0) { setError('No users match this selection.'); return; }
+    if (recipients.length === 0) {
+      setError("No users match this selection.");
+      return;
+    }
 
-    setSending(true); setSendProgress({ done: 0, total: recipients.length });
+    setSending(true);
+    setSendProgress({ done: 0, total: recipients.length });
     let failed = 0;
     try {
       for (let i = 0; i < recipients.length; i++) {
         const r = recipients[i];
-        const { error: fnErr } = await supabase.functions.invoke("send-email", { body: { to: r.email, subject: trimSub, html: buildMessageHtml(r.full_name || 'there', sanitized) } });
-        if (fnErr) { console.error(fnErr); failed++; }
+        const { error: fnErr } = await supabase.functions.invoke("send-email", {
+          body: {
+            to: r.email,
+            subject: trimSub,
+            html: buildMessageHtml(r.full_name || "there", sanitized),
+          },
+        });
+        if (fnErr) {
+          console.error(fnErr);
+          failed++;
+        }
         setSendProgress({ done: i + 1, total: recipients.length });
       }
       if (failed > 0) {
-        setError(`Sent to ${recipients.length - failed} of ${recipients.length}; ${failed} failed.`);
+        setError(
+          `Sent to ${recipients.length - failed} of ${
+            recipients.length
+          }; ${failed} failed.`
+        );
       } else {
-        setSuccess(`Email sent to ${recipients.length} recipient${recipients.length !== 1 ? 's' : ''} ✓`);
-        setSubject(''); setMessageHtml(''); setMessagePlainText('');
+        setSuccess(
+          `Email sent to ${recipients.length} recipient${
+            recipients.length !== 1 ? "s" : ""
+          } ✓`
+        );
+        setSubject("");
+        setMessageHtml("");
+        setMessagePlainText("");
       }
-    } catch { setError('Sending failed. Please try again.'); }
-    finally { setSending(false); setTimeout(() => setSendProgress(null), 3000); }
+    } catch {
+      setError("Sending failed. Please try again.");
+    } finally {
+      setSending(false);
+      setTimeout(() => setSendProgress(null), 3000);
+    }
   };
 
-  const pct = sendProgress ? Math.round((sendProgress.done / sendProgress.total) * 100) : 0;
-  const isDisabled = sending || uploadingImage || loadingCompanies || !companyId || (targetScope === 'department' && !departmentId);
+  const pct = sendProgress
+    ? Math.round((sendProgress.done / sendProgress.total) * 100)
+    : 0;
+  const isDisabled =
+    sending ||
+    uploadingImage ||
+    loadingCompanies ||
+    !companyId ||
+    (targetScope === "department" && !departmentId);
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 22 }}>
-
+    <div
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        gap: 22,
+      }}
+    >
       {/* ── Page header ── */}
-      <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 10, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        className="aw-fade-up"
+        style={{ display: "flex", alignItems: "center", gap: 12 }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            background: T.blueBg,
+            border: `1px solid ${T.blueBorder}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <Mail size={18} style={{ color: T.blue }} />
         </div>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>Send Email</h1>
-          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Send a message to company users or a specific department.</p>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: T.white,
+              letterSpacing: "-0.3px",
+              margin: 0,
+            }}
+          >
+            Send Email
+          </h1>
+          <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
+            Send a message to company users or a specific department.
+          </p>
         </div>
       </div>
 
       {/* ── Feedback messages ── */}
       {error && (
-        <div className="aw-fade-up" style={{ padding: '12px 16px', background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: T.red }}>
+        <div
+          className="aw-fade-up"
+          style={{
+            padding: "12px 16px",
+            background: T.redBg,
+            border: `1px solid ${T.redBorder}`,
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            fontSize: 13,
+            color: T.red,
+          }}
+        >
           <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
           <span style={{ flex: 1 }}>{error}</span>
-          <button onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.red, padding: 0 }}><X size={13} /></button>
+          <button
+            onClick={() => setError("")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: T.red,
+              padding: 0,
+            }}
+          >
+            <X size={13} />
+          </button>
         </div>
       )}
       {success && (
-        <div className="aw-fade-up" style={{ padding: '12px 16px', background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: T.green }}>
+        <div
+          className="aw-fade-up"
+          style={{
+            padding: "12px 16px",
+            background: T.greenBg,
+            border: `1px solid ${T.greenBorder}`,
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 13,
+            color: T.green,
+          }}
+        >
           <CheckCircle size={15} /> {success}
         </div>
       )}
 
       {/* ── Form ── */}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: 16 }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: 16,
+          }}
+        >
           {/* ── Left: Targeting ── */}
-          <div className="aw-fade-up" style={{ animationDelay: '0.05s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            className="aw-fade-up"
+            style={{
+              animationDelay: "0.05s",
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 14,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 20px",
+                borderBottom: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
               <Users size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Recipients</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>
+                Recipients
+              </span>
             </div>
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
+            <div
+              style={{
+                padding: "16px 20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
               {/* Company */}
               <div>
                 <label className="aw-ep-label">
-                  <Building2 size={11} style={{ display: 'inline', marginRight: 5, verticalAlign: 'middle' }} />
+                  <Building2
+                    size={11}
+                    style={{
+                      display: "inline",
+                      marginRight: 5,
+                      verticalAlign: "middle",
+                    }}
+                  />
                   Company <span style={{ color: T.accent }}>*</span>
                 </label>
-                <select className="aw-ep-select" value={companyId} onChange={e => setCompanyId(e.target.value)} disabled={loadingCompanies || sending || uploadingImage} required>
-                  <option value="">{loadingCompanies ? 'Loading…' : 'Select a company'}</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <select
+                  className="aw-ep-select"
+                  value={companyId}
+                  onChange={(e) => setCompanyId(e.target.value)}
+                  disabled={loadingCompanies || sending || uploadingImage}
+                  required
+                >
+                  <option value="">
+                    {loadingCompanies ? "Loading…" : "Select a company"}
+                  </option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               {/* Target scope */}
               <div>
                 <label className="aw-ep-label">Send to</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 7 }}
+                >
                   {/* All users */}
-                  <div className={`aw-ep-radio-row ${targetScope === 'all' ? 'selected' : ''}`}
-                    onClick={() => !sending && !uploadingImage && setTargetScope('all')}>
+                  <div
+                    className={`aw-ep-radio-row ${
+                      targetScope === "all" ? "selected" : ""
+                    }`}
+                    onClick={() =>
+                      !sending && !uploadingImage && setTargetScope("all")
+                    }
+                  >
                     <div className="aw-ep-radio-dot">
-                      {targetScope === 'all' && <div className="aw-ep-radio-inner" />}
+                      {targetScope === "all" && (
+                        <div className="aw-ep-radio-inner" />
+                      )}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: targetScope === 'all' ? T.white : T.textBody }}>All Company Users</div>
-                      <div style={{ fontSize: 11, color: T.textMuted }}>Employees & Company Admins</div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: targetScope === "all" ? T.white : T.textBody,
+                        }}
+                      >
+                        All Company Users
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>
+                        Employees & Company Admins
+                      </div>
                     </div>
                   </div>
 
                   {/* Specific department */}
                   <div
-                    className={`aw-ep-radio-row ${targetScope === 'department' ? 'selected' : ''} ${!companyId || loadingDepts || departments.length === 0 ? 'disabled' : ''}`}
-                    onClick={() => { if (!companyId || loadingDepts || departments.length === 0 || sending || uploadingImage) return; setTargetScope('department'); }}
+                    className={`aw-ep-radio-row ${
+                      targetScope === "department" ? "selected" : ""
+                    } ${
+                      !companyId || loadingDepts || departments.length === 0
+                        ? "disabled"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      if (
+                        !companyId ||
+                        loadingDepts ||
+                        departments.length === 0 ||
+                        sending ||
+                        uploadingImage
+                      )
+                        return;
+                      setTargetScope("department");
+                    }}
                   >
                     <div className="aw-ep-radio-dot">
-                      {targetScope === 'department' && <div className="aw-ep-radio-inner" />}
+                      {targetScope === "department" && (
+                        <div className="aw-ep-radio-inner" />
+                      )}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: targetScope === 'department' ? T.white : T.textBody }}>Specific Department</div>
-                      <div style={{ fontSize: 11, color: T.textMuted }}>{!companyId ? 'Select a company first' : departments.length === 0 && !loadingDepts ? 'No departments found' : 'Target one department only'}</div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color:
+                            targetScope === "department" ? T.white : T.textBody,
+                        }}
+                      >
+                        Specific Department
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>
+                        {!companyId
+                          ? "Select a company first"
+                          : departments.length === 0 && !loadingDepts
+                          ? "No departments found"
+                          : "Target one department only"}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Department selector */}
-              {targetScope === 'department' && (
+              {targetScope === "department" && (
                 <div>
-                  <label className="aw-ep-label">Department <span style={{ color: T.accent }}>*</span></label>
-                  <select className="aw-ep-select" value={departmentId} onChange={e => setDepartmentId(e.target.value)} disabled={!companyId || loadingDepts || sending || uploadingImage}>
-                    <option value="">{loadingDepts ? 'Loading departments…' : 'Select a department'}</option>
-                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  <label className="aw-ep-label">
+                    Department <span style={{ color: T.accent }}>*</span>
+                  </label>
+                  <select
+                    className="aw-ep-select"
+                    value={departmentId}
+                    onChange={(e) => setDepartmentId(e.target.value)}
+                    disabled={
+                      !companyId || loadingDepts || sending || uploadingImage
+                    }
+                  >
+                    <option value="">
+                      {loadingDepts
+                        ? "Loading departments…"
+                        : "Select a department"}
+                    </option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
 
               {/* Recipient count pill */}
               {companyId && (
-                <div style={{ padding: '8px 12px', background: 'rgba(200,255,0,0.05)', border: '1px solid rgba(200,255,0,0.16)', borderRadius: 8, fontSize: 12, color: T.textBody }}>
-                  {targetScope === 'all'
-                    ? '📩 Will be sent to all employees & admins in this company'
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "rgba(200,255,0,0.05)",
+                    border: "1px solid rgba(200,255,0,0.16)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: T.textBody,
+                  }}
+                >
+                  {targetScope === "all"
+                    ? "📩 Will be sent to all employees & admins in this company"
                     : departmentId
-                    ? '📩 Will be sent to all users in the selected department'
-                    : '🔍 Select a department to continue'
-                  }
+                    ? "📩 Will be sent to all users in the selected department"
+                    : "🔍 Select a department to continue"}
                 </div>
               )}
             </div>
           </div>
 
           {/* ── Right: Subject ── */}
-          <div className="aw-fade-up" style={{ animationDelay: '0.08s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            className="aw-fade-up"
+            style={{
+              animationDelay: "0.08s",
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 14,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 20px",
+                borderBottom: `1px solid ${T.borderFaint}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
               <Mail size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Email Details</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>
+                Email Details
+              </span>
             </div>
-            <div style={{ padding: '16px 20px', flex: 1 }}>
-              <label className="aw-ep-label">Subject Line <span style={{ color: T.accent }}>*</span></label>
+            <div style={{ padding: "16px 20px", flex: 1 }}>
+              <label className="aw-ep-label">
+                Subject Line <span style={{ color: T.accent }}>*</span>
+              </label>
               <input
                 className="aw-ep-input"
                 type="text"
                 placeholder="e.g. Important Security Update"
                 value={subject}
-                onChange={e => setSubject(e.target.value)}
+                onChange={(e) => setSubject(e.target.value)}
                 disabled={sending || uploadingImage}
               />
-              <p style={{ fontSize: 11, color: T.textMuted, marginTop: 8 }}>This will appear as the email subject in the recipient's inbox.</p>
+              <p style={{ fontSize: 11, color: T.textMuted, marginTop: 8 }}>
+                This will appear as the email subject in the recipient's inbox.
+              </p>
 
               {/* Tips */}
-              <div style={{ marginTop: 16, padding: '12px 14px', background: T.orangeBg, border: '1px solid rgba(251,146,60,0.22)', borderRadius: 9 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: 12, fontWeight: 700, color: T.orange }}>
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "12px 14px",
+                  background: T.orangeBg,
+                  border: "1px solid rgba(251,146,60,0.22)",
+                  borderRadius: 9,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: T.orange,
+                  }}
+                >
                   <ImageIcon size={12} /> Image Upload Tips
                 </div>
-                <ul style={{ fontSize: 11, color: T.textBody, margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <ul
+                  style={{
+                    fontSize: 11,
+                    color: T.textBody,
+                    margin: 0,
+                    paddingLeft: 14,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
                   <li>Use the toolbar image button to embed images</li>
                   <li>Supported: PNG, JPG, GIF, WebP</li>
                   <li>Max size: 5 MB per image</li>
@@ -498,44 +959,123 @@ const EmailPage = () => {
         </div>
 
         {/* ── Email Editor ── */}
-        <div className="aw-fade-up" style={{ animationDelay: '0.12s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          className="aw-fade-up"
+          style={{
+            animationDelay: "0.12s",
+            background: T.bgCard,
+            border: `1px solid ${T.border}`,
+            borderRadius: 14,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 20px",
+              borderBottom: `1px solid ${T.borderFaint}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Mail size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Email Content</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>
+                Email Content
+              </span>
             </div>
             {uploadingImage && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.orange }}>
-                <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Uploading image…
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  color: T.orange,
+                }}
+              >
+                <Loader2
+                  size={13}
+                  style={{ animation: "aw-spin 0.8s linear infinite" }}
+                />{" "}
+                Uploading image…
               </div>
             )}
           </div>
-          <div style={{ padding: '16px 20px' }}>
+          <div style={{ padding: "16px 20px" }}>
             <div className="aw-ep-editor-wrap">
               <div ref={quillHostRef} />
             </div>
           </div>
-          <input ref={imageInputRef} type="file" accept={ALLOWED_IMAGE_TYPES.join(",")} style={{ display: 'none' }} onChange={handleImageUpload} />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept={ALLOWED_IMAGE_TYPES.join(",")}
+            style={{ display: "none" }}
+            onChange={handleImageUpload}
+          />
         </div>
 
         {/* ── Send button + progress ── */}
-        <div className="aw-fade-up" style={{ animationDelay: '0.16s', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <button type="submit" className="aw-ep-send-btn" disabled={isDisabled}>
-            {sending || uploadingImage
-              ? <><Loader2 size={16} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> {sending ? 'Sending…' : 'Uploading image…'}</>
-              : <><Send size={15} /> Send Email</>
-            }
+        <div
+          className="aw-fade-up"
+          style={{
+            animationDelay: "0.16s",
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="submit"
+            className="aw-ep-send-btn"
+            disabled={isDisabled}
+          >
+            {sending || uploadingImage ? (
+              <>
+                <Loader2
+                  size={16}
+                  style={{ animation: "aw-spin 0.8s linear infinite" }}
+                />{" "}
+                {sending ? "Sending…" : "Uploading image…"}
+              </>
+            ) : (
+              <>
+                <Send size={15} /> Send Email
+              </>
+            )}
           </button>
 
           {/* Progress */}
           {sendProgress && (
-            <div style={{ flex: 1, minWidth: 200, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.textBody }}>
-                <span>Sending {sendProgress.done} of {sendProgress.total} emails…</span>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 200,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 12,
+                  color: T.textBody,
+                }}
+              >
+                <span>
+                  Sending {sendProgress.done} of {sendProgress.total} emails…
+                </span>
                 <span style={{ color: T.accent, fontWeight: 700 }}>{pct}%</span>
               </div>
               <div className="aw-ep-progress-track">
-                <div className="aw-ep-progress-fill" style={{ width: `${pct}%` }} />
+                <div
+                  className="aw-ep-progress-fill"
+                  style={{ width: `${pct}%` }}
+                />
               </div>
             </div>
           )}
