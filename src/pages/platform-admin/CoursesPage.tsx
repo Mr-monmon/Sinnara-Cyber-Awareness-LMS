@@ -21,6 +21,8 @@ export const CoursesPage: React.FC = () => {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
+    title_ar: "",
+    description_ar: "",
     content_type: "TEXT" as "VIDEO" | "SLIDES" | "TEXT",
     duration_minutes: 30,
     order_index: 0,
@@ -76,6 +78,9 @@ export const CoursesPage: React.FC = () => {
     try {
       const coursePayload = {
         ...formData,
+        title_ar: formData.title_ar.trim() || formData.title.trim(),
+        description_ar:
+          formData.description_ar.trim() || formData.description.trim(),
         certificate_id: formData.certificate_id || null,
       };
 
@@ -97,6 +102,8 @@ export const CoursesPage: React.FC = () => {
       setFormData({
         title: "",
         description: "",
+        title_ar: "",
+        description_ar: "",
         content_type: "TEXT",
         duration_minutes: 30,
         order_index: 0,
@@ -114,6 +121,8 @@ export const CoursesPage: React.FC = () => {
     setFormData({
       title: course.title,
       description: course.description,
+      title_ar: course.title_ar || "",
+      description_ar: course.description_ar || "",
       content_type: course.content_type,
       duration_minutes: course.duration_minutes,
       order_index: course.order_index,
@@ -217,6 +226,8 @@ export const CoursesPage: React.FC = () => {
             setFormData({
               title: "",
               description: "",
+              title_ar: "",
+              description_ar: "",
               content_type: "TEXT",
               duration_minutes: 30,
               order_index: courses.length,
@@ -334,6 +345,41 @@ export const CoursesPage: React.FC = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Arabic Course Title
+                </label>
+                <input
+                  type="text"
+                  dir="rtl"
+                  value={formData.title_ar}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title_ar: e.target.value })
+                  }
+                  placeholder="Uses Course Title when left blank"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Arabic Description
+                </label>
+                <textarea
+                  dir="rtl"
+                  rows={3}
+                  value={formData.description_ar}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      description_ar: e.target.value,
+                    })
+                  }
+                  placeholder="Uses Description when left blank"
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 />
               </div>

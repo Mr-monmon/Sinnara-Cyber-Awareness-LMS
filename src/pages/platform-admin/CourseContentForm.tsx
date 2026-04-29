@@ -4,13 +4,29 @@ import Quill from 'quill';
 import { supabase } from '../../lib/supabase';
 import { Course } from '../../lib/types';
 
+type SectionType = 'VIDEO' | 'ARTICLE' | 'QUIZ';
+
+type QuizQuestion = {
+  question: string;
+  options: string[];
+  correct_answer: string;
+};
+
+type CourseSectionContentData = {
+  questions?: QuizQuestion[];
+  [key: string]: unknown;
+};
+
 export interface CourseSection {
   id: string;
   course_id: string;
   title: string;
-  section_type: 'VIDEO' | 'ARTICLE' | 'QUIZ';
+  section_type: SectionType;
   content: string;
-  content_data: any;
+  content_data: CourseSectionContentData;
+  content_data_ar: CourseSectionContentData | null;
+  title_ar: string | null;
+  content_ar: string | null;
   duration_minutes: number;
   order_index: number;
   created_at: string;
@@ -27,8 +43,10 @@ interface CourseContentFormProps {
 
 const defaultFormData = {
   title: '',
-  section_type: 'VIDEO' as 'VIDEO' | 'ARTICLE' | 'QUIZ',
+  title_ar: '',
+  section_type: 'VIDEO' as SectionType,
   content: '',
+  content_ar: '',
   duration_minutes: 10
 };
 
@@ -50,15 +68,16 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
   onSaved
 }) => {
   const [formData, setFormData] = useState(defaultFormData);
-  const [quizQuestions, setQuizQuestions] = useState<Array<{
-    question: string;
-    options: string[];
-    correct_answer: string;
-  }>>([]);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [arabicQuizQuestions, setArabicQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(defaultQuestion);
+  const [currentArabicQuestion, setCurrentArabicQuestion] = useState(defaultQuestion);
   const [articlePlainText, setArticlePlainText] = useState('');
+  const [arabicArticlePlainText, setArabicArticlePlainText] = useState('');
   const quillContainerRef = useRef<HTMLDivElement | null>(null);
   const quillInstanceRef = useRef<Quill | null>(null);
+  const arabicQuillContainerRef = useRef<HTMLDivElement | null>(null);
+  const arabicQuillInstanceRef = useRef<Quill | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -66,8 +85,10 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     if (editingSection) {
       setFormData({
         title: editingSection.title,
+        title_ar: editingSection.title_ar || '',
         section_type: editingSection.section_type,
         content: editingSection.content || '',
+        content_ar: editingSection.content_ar || '',
         duration_minutes: editingSection.duration_minutes
       });
       if (editingSection.section_type === 'QUIZ' && editingSection.content_data?.questions) {
@@ -75,13 +96,29 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       } else {
         setQuizQuestions([]);
       }
+      if (editingSection.section_type === 'QUIZ' && editingSection.content_data_ar?.questions) {
+        setArabicQuizQuestions(editingSection.content_data_ar.questions);
+      } else {
+        setArabicQuizQuestions([]);
+      }
     } else {
       setFormData(defaultFormData);
       setQuizQuestions([]);
+      setArabicQuizQuestions([]);
     }
 
     setCurrentQuestion(defaultQuestion);
+    setCurrentArabicQuestion(defaultQuestion);
   }, [editingSection, open]);
+
+  useEffect(() => {
+    if (open && formData.section_type === 'ARTICLE') return;
+
+    quillInstanceRef.current = null;
+    arabicQuillInstanceRef.current = null;
+    setArticlePlainText('');
+    setArabicArticlePlainText('');
+  }, [formData.section_type, open]);
 
   useEffect(() => {
     if (!open || formData.section_type !== 'ARTICLE') return;
@@ -130,13 +167,62 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     }
   }, [formData.content, formData.section_type, open]);
 
+  useEffect(() => {
+    if (!open || formData.section_type !== 'ARTICLE') return;
+    if (!arabicQuillContainerRef.current) return;
+
+    if (!arabicQuillInstanceRef.current) {
+      arabicQuillInstanceRef.current = new Quill(arabicQuillContainerRef.current, {
+        theme: 'snow',
+        placeholder: 'Write Arabic article content here...',
+        modules: {
+          toolbar: [
+            [{ header: [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link', 'blockquote', 'code-block'],
+            ['clean']
+          ]
+        }
+      });
+      arabicQuillInstanceRef.current.root.setAttribute('dir', 'rtl');
+      arabicQuillInstanceRef.current.root.style.textAlign = 'right';
+
+      arabicQuillInstanceRef.current.on('text-change', () => {
+        const quill = arabicQuillInstanceRef.current;
+        if (!quill) return;
+        const html = quill.root.innerHTML;
+        const plainText = quill.getText().trim();
+        setFormData((prev) => (prev.content_ar === html ? prev : { ...prev, content_ar: html }));
+        setArabicArticlePlainText(plainText);
+      });
+    }
+
+    const quill = arabicQuillInstanceRef.current;
+    if (!quill) return;
+
+    const incomingHtml = formData.content_ar || '';
+    const currentHtml = quill.root.innerHTML;
+
+    if (incomingHtml && incomingHtml !== currentHtml) {
+      quill.clipboard.dangerouslyPasteHTML(incomingHtml);
+      setArabicArticlePlainText(quill.getText().trim());
+      return;
+    }
+
+    if (!incomingHtml && currentHtml !== '<p><br></p>') {
+      quill.setText('');
+      setArabicArticlePlainText('');
+    }
+  }, [formData.content_ar, formData.section_type, open]);
+
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      let contentData = {};
+      let contentData: CourseSectionContentData = {};
 
       if (formData.section_type === 'ARTICLE' && articlePlainText.trim().length === 0) {
         alert('Article content is required');
@@ -151,10 +237,20 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
         contentData = { questions: quizQuestions };
       }
 
+      const contentDataAr = formData.section_type === 'QUIZ' && arabicQuizQuestions.length > 0
+        ? { questions: arabicQuizQuestions }
+        : contentData;
+      const contentAr = formData.section_type === 'ARTICLE'
+        ? (arabicArticlePlainText.trim().length > 0 ? formData.content_ar : formData.content)
+        : (formData.content_ar.trim() || formData.content);
+
       const sectionData = {
         ...formData,
+        title_ar: formData.title_ar.trim() || formData.title.trim(),
+        content_ar: contentAr,
         course_id: course.id,
         content_data: contentData,
+        content_data_ar: contentDataAr,
         order_index: editingSection ? editingSection.order_index : sectionsCount
       };
 
@@ -213,8 +309,44 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     setCurrentQuestion(defaultQuestion);
   };
 
+  const handleAddArabicQuestion = () => {
+    const options = [
+      currentArabicQuestion.option1,
+      currentArabicQuestion.option2,
+      currentArabicQuestion.option3,
+      currentArabicQuestion.option4
+    ].filter(o => o.trim());
+
+    if (options.length < 2) {
+      alert('At least two Arabic options are required');
+      return;
+    }
+
+    if (!currentArabicQuestion.question.trim()) {
+      alert('Arabic question is required');
+      return;
+    }
+
+    if (!options.includes(currentArabicQuestion.correct_answer)) {
+      alert('The Arabic correct answer must be one of the Arabic options');
+      return;
+    }
+
+    setArabicQuizQuestions([...arabicQuizQuestions, {
+      question: currentArabicQuestion.question,
+      options: options,
+      correct_answer: currentArabicQuestion.correct_answer
+    }]);
+
+    setCurrentArabicQuestion(defaultQuestion);
+  };
+
   const handleRemoveQuestion = (index: number) => {
     setQuizQuestions(quizQuestions.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveArabicQuestion = (index: number) => {
+    setArabicQuizQuestions(arabicQuizQuestions.filter((_, i) => i !== index));
   };
 
   return (
@@ -241,13 +373,28 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
+              Arabic Section Title
+            </label>
+            <input
+              type="text"
+              dir="rtl"
+              value={formData.title_ar}
+              onChange={(e) => setFormData({ ...formData, title_ar: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Uses Section Title when left blank"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
               Section Type *
             </label>
             <select
               value={formData.section_type}
               onChange={(e) => {
-                setFormData({ ...formData, section_type: e.target.value as 'VIDEO' | 'ARTICLE' | 'QUIZ' });
+                setFormData({ ...formData, section_type: e.target.value as SectionType });
                 setQuizQuestions([]);
+                setArabicQuizQuestions([]);
               }}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
@@ -272,28 +419,58 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
           </div>
 
           {formData.section_type === 'VIDEO' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Video Link (YouTube, Vimeo, etc.) *
-              </label>
-              <input
-                type="url"
-                required
-                value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="https://youtube.com/watch?v=..."
-              />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Video Link (YouTube, Vimeo, etc.) *
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="https://youtube.com/watch?v=..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Arabic Video Link
+                </label>
+                <input
+                  type="url"
+                  value={formData.content_ar}
+                  onChange={(e) => setFormData({ ...formData, content_ar: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Uses Video Link when left blank"
+                />
+              </div>
             </div>
           )}
 
           {formData.section_type === 'ARTICLE' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Article Content *
-              </label>
-              <div className="w-full border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
-                <div ref={quillContainerRef} className="min-h-[240px] [&_.ql-editor]:min-h-[200px]" />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Article Content *
+                </label>
+                <div className="w-full border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+                  <div ref={quillContainerRef} className="min-h-[240px] [&_.ql-editor]:min-h-[200px]" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Arabic Article Content
+                </label>
+                <div className="w-full border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+                  <div
+                    ref={arabicQuillContainerRef}
+                    dir="rtl"
+                    className="min-h-[240px] [&_.ql-editor]:min-h-[200px] [&_.ql-editor]:text-right"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -426,6 +603,142 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-slate-200 pt-6 space-y-6">
+                <div className="bg-slate-50 rounded-xl p-6 space-y-4">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Add Arabic Question</h3>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Arabic Question *
+                    </label>
+                    <textarea
+                      rows={2}
+                      dir="rtl"
+                      value={currentArabicQuestion.question}
+                      onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, question: e.target.value })}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                      placeholder="Uses English quiz questions when left blank"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Arabic Option 1 *
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={currentArabicQuestion.option1}
+                        onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, option1: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Arabic Option 2 *
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={currentArabicQuestion.option2}
+                        onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, option2: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Arabic Option 3
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={currentArabicQuestion.option3}
+                        onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, option3: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Arabic Option 4
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={currentArabicQuestion.option4}
+                        onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, option4: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Arabic Correct Answer *
+                    </label>
+                    <input
+                      type="text"
+                      dir="rtl"
+                      value={currentArabicQuestion.correct_answer}
+                      onChange={(e) => setCurrentArabicQuestion({ ...currentArabicQuestion, correct_answer: e.target.value })}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      placeholder="The correct answer must match one of the Arabic options"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddArabicQuestion}
+                    className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+                  >
+                    Add Arabic Question to List
+                  </button>
+                </div>
+
+                {arabicQuizQuestions.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                      Added Arabic Questions ({arabicQuizQuestions.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {arabicQuizQuestions.map((q, index) => (
+                        <div key={index} className="bg-slate-50 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <span className="font-semibold text-slate-900 text-sm text-right flex-1" dir="rtl">
+                              {index + 1}. {q.question}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveArabicQuestion(index)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="space-y-1 text-xs text-right" dir="rtl">
+                            {q.options.map((opt, i) => (
+                              <div
+                                key={i}
+                                className={`px-2 py-1 rounded ${
+                                  opt === q.correct_answer
+                                    ? 'bg-green-100 text-green-800 font-medium'
+                                    : 'text-slate-600'
+                                }`}
+                              >
+                                • {opt} {opt === q.correct_answer && '✓'}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

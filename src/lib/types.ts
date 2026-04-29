@@ -36,6 +36,8 @@ export interface Course {
   id: string;
   title: string;
   description: string;
+  title_ar: string | null;
+  description_ar: string | null;
   department_ids: string[] | null;
   content_type: 'VIDEO' | 'SLIDES' | 'TEXT';
   content_url: string | null;

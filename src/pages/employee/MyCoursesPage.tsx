@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { BookOpen, PlayCircle, CheckCircle, Clock, Award, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -103,6 +103,15 @@ interface CourseProgress {
   progress_percentage: number; status: string;
   completed_at: string | null; assigned_at: string;
 }
+interface EmployeeCourseRow {
+  courses: Course | null;
+  course_id: string | null;
+  employee_id: string;
+  progress_percentage: number | string | null;
+  status: string;
+  completed_at: string | null;
+  assigned_at: string;
+}
 type Props = { navigateToCertificates: () => void; };
 
 /* ═══════════════════════════════════════════
@@ -116,10 +125,9 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const [loading, setLoading]             = useState(true);
   const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
+  const isArabic = currentLanguage?.toLowerCase().startsWith("ar") ?? false;
 
-  useEffect(() => { loadCourses(); }, [user]);
-
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     if (!user) return;
     try {
       const { data, error } = await supabase
@@ -128,13 +136,14 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
         .eq("employee_id", user.id);
       if (error) throw error;
       if (data) {
-        setCourses(data.map((ec: any) => ec.courses).filter(Boolean));
+        const rows = data as EmployeeCourseRow[];
+        setCourses(rows.map((ec) => ec.courses).filter((course): course is Course => Boolean(course)));
         const progressMap: Record<string, CourseProgress> = {};
-        data.forEach((ec: any) => {
+        rows.forEach((ec) => {
           if (ec.course_id) {
             progressMap[ec.course_id] = {
               course_id: ec.course_id, employee_id: ec.employee_id,
-              progress_percentage: parseFloat(ec.progress_percentage) || 0,
+              progress_percentage: Number(ec.progress_percentage) || 0,
               status: ec.status, completed_at: ec.completed_at, assigned_at: ec.assigned_at,
             };
           }
@@ -143,7 +152,9 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       }
     } catch (err) { console.error("Error loading courses:", err); }
     finally { setLoading(false); }
-  };
+  }, [user]);
+
+  useEffect(() => { loadCourses(); }, [loadCourses]);
 
   const handleStartCourse = async (course: Course, status: StatusKey) => {
     if (!user) return;
@@ -168,13 +179,24 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
     return "ASSIGNED";
   };
 
+  const getCourseDisplayText = (course: Course) => ({
+    title: isArabic ? course.title_ar || course.title : course.title,
+    description: isArabic
+      ? course.description_ar || course.description
+      : course.description,
+  });
+
   /* ── Course viewer ── */
-  if (viewingCourse) return (
-    <CourseViewerPage
-      courseId={viewingCourse.id} courseTitle={viewingCourse.title}
-      onBack={() => { setViewingCourse(null); loadCourses(); }}
-    />
-  );
+  if (viewingCourse) {
+    const viewingCourseText = getCourseDisplayText(viewingCourse);
+
+    return (
+      <CourseViewerPage
+        courseId={viewingCourse.id} courseTitle={viewingCourseText.title}
+        onBack={() => { setViewingCourse(null); loadCourses(); }}
+      />
+    );
+  }
 
   /* ── Loading ── */
   if (loading) return (
@@ -259,6 +281,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
             const cfg        = STATUS_CONFIG[status];
             const isCompleted  = status === 'COMPLETED';
             const isInProgress = status === 'IN_PROGRESS';
+            const courseText = getCourseDisplayText(course);
 
             return (
               <div
@@ -288,13 +311,13 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                   </div>
 
                   {/* Title */}
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 6px', lineHeight: '22px' }}>
-                    {course.title}
+                  <h3 dir={isArabic ? "rtl" : "ltr"} style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 6px', lineHeight: '22px' }}>
+                    {courseText.title}
                   </h3>
 
                   {/* Description */}
-                  <p style={{ fontSize: 13, color: T.textMuted, margin: '0 0 14px', lineHeight: '20px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {course.description}
+                  <p dir={isArabic ? "rtl" : "ltr"} style={{ fontSize: 13, color: T.textMuted, margin: '0 0 14px', lineHeight: '20px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {courseText.description}
                   </p>
 
                   {/* Duration */}

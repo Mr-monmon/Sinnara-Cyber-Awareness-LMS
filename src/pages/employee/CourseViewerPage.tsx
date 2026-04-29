@@ -135,16 +135,32 @@ if (typeof document !== "undefined" && !document.getElementById("aw-course-viewe
 /* ─────────────────────────────────────────
    TYPES
 ───────────────────────────────────────── */
+type QuizQuestion = {
+  question: string;
+  options: string[];
+  correct_answer: string;
+};
+
+type CourseSectionContentData = {
+  questions?: QuizQuestion[];
+  [key: string]: unknown;
+};
+
 interface CourseSection {
   id: string; course_id: string; title: string;
+  title_ar: string | null;
   section_type: "VIDEO" | "ARTICLE" | "QUIZ";
-  content: string; content_data: any;
+  content: string; content_ar: string | null;
+  content_data: CourseSectionContentData;
+  content_data_ar: CourseSectionContentData | null;
   duration_minutes: number; order_index: number;
 }
 interface SectionProgress {
   id: string; section_id: string;
   completed: boolean; completed_at: string | null;
 }
+type SectionProgressRow = SectionProgress;
+
 interface CourseViewerProps {
   courseId: string; courseTitle: string; onBack: () => void;
 }
@@ -173,10 +189,12 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const [quizAnswers, setQuizAnswers]     = useState<Record<number, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore]         = useState(0);
-  const currentLanguage = i18n.resolvedLanguage;
+  const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
   const isRtl = i18n.dir() === "rtl";
+  const isArabic = currentLanguage.toLowerCase().startsWith("ar");
 
   useEffect(() => { loadCourseData(); }, [courseId, user?.id]);
+  useEffect(() => { setQuizSubmitted(false); setQuizAnswers({}); setQuizScore(0); }, [currentLanguage]);
 
   const loadCourseData = async () => {
     if (!user) return;
@@ -189,7 +207,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     if (sectionsRes.data) setSections(sectionsRes.data);
     const progressMap: Record<string, SectionProgress> = {};
     if (progressRes.data) {
-      progressRes.data.forEach((p: any) => {
+      (progressRes.data as SectionProgressRow[]).forEach((p) => {
         progressMap[p.section_id] = { id: p.id, section_id: p.section_id, completed: p.completed, completed_at: p.completed_at };
       });
     }
@@ -203,6 +221,10 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 
   const isSectionCompleted  = (sectionId: string) => progress[sectionId]?.completed || false;
   const canAccessSection    = (index: number) => index === 0 || isSectionCompleted(sections[index - 1]?.id);
+  const getSectionTitle      = (section: CourseSection) => isArabic ? section.title_ar || section.title : section.title;
+  const getSectionContent    = (section: CourseSection) => isArabic ? section.content_ar || section.content : section.content;
+  const getSectionData       = (section: CourseSection) => isArabic ? section.content_data_ar || section.content_data : section.content_data;
+  const getSectionQuestions  = (section: CourseSection) => getSectionData(section).questions || [];
 
   const convertYouTubeUrl = (url: string) => {
     if (!url) return url;
@@ -276,9 +298,10 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 
   const handleSubmitQuiz = () => {
     if (!currentSection || currentSection.section_type !== "QUIZ") return;
-    const questions = currentSection.content_data?.questions || [];
+    const questions = getSectionQuestions(currentSection);
+    if (questions.length === 0) return;
     let correct = 0;
-    questions.forEach((q: any, i: number) => { if (quizAnswers[i] === q.correct_answer) correct++; });
+    questions.forEach((q, i) => { if (quizAnswers[i] === q.correct_answer) correct++; });
     const score = Math.round((correct / questions.length) * 100);
     setQuizScore(score); setQuizSubmitted(true);
     if (score >= 60) markSectionComplete(currentSection.id);
@@ -302,6 +325,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 
   const cfg = typeConfig[currentSection.section_type];
   const SectionIcon = cfg.Icon;
+  const currentSectionTitle = getSectionTitle(currentSection);
+  const currentSectionContent = getSectionContent(currentSection);
+  const currentSectionQuestions = getSectionQuestions(currentSection);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", minHeight: '100vh', background: T.bg }}>
@@ -382,7 +408,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   {/* Label */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: isCurrent ? T.white : completed ? T.textLabel : T.textMuted, lineHeight: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {section.title}
+                      {getSectionTitle(section)}
                     </div>
                     <div style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>
                       {formatLocalizedNumber(section.duration_minutes, currentLanguage)} {t("labels.minutes", { ns: "common" })}
@@ -415,7 +441,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
               </div>
               <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 800, color: T.white, margin: '0 0 3px', letterSpacing: '-0.2px' }}>
-                  {currentSection.title}
+                  {currentSectionTitle}
                 </h2>
                 <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
                   {t("courseViewer.sectionOf", { ns: "employee", current: formatLocalizedNumber(currentSectionIndex + 1, currentLanguage), total: formatLocalizedNumber(totalSections, currentLanguage) })}
@@ -434,9 +460,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
             {currentSection.section_type === "VIDEO" && (
               <div style={{ padding: '24px' }}>
                 <div style={{ position: 'relative', paddingTop: '56.25%', background: '#000', borderRadius: 10, overflow: 'hidden', marginBottom: 20, border: `1px solid ${T.border}` }}>
-                  {currentSection.content.includes("youtube.com") || currentSection.content.includes("youtu.be") ? (
+                  {currentSectionContent.includes("youtube.com") || currentSectionContent.includes("youtu.be") ? (
                     <iframe
-                      src={convertYouTubeUrl(currentSection.content)}
+                      src={convertYouTubeUrl(currentSectionContent)}
                       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
@@ -444,7 +470,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   ) : (
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                       <PlayCircle size={48} style={{ color: T.textMuted, opacity: 0.50 }} />
-                      <a href={currentSection.content} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: T.blue, textDecoration: 'none' }}>
+                      <a href={currentSectionContent} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: T.blue, textDecoration: 'none' }}>
                         {t("courseViewer.videoLink", { ns: "employee" })}
                       </a>
                     </div>
@@ -463,8 +489,8 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
             {/* ── ARTICLE ── */}
             {currentSection.section_type === "ARTICLE" && (
               <div style={{ padding: '24px' }}>
-                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20, color: '#ffffff' }}>
-                  <ArticlePreview html={currentSection.content} />
+                <div dir={isRtl ? "rtl" : "ltr"} style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20, color: '#ffffff', textAlign: isRtl ? 'right' : 'left' }}>
+                  <ArticlePreview html={currentSectionContent} />
                 </div>
                 {!isSectionCompleted(currentSection.id) && (
                   <button className="aw-btn-green" onClick={() => markSectionComplete(currentSection.id)}>
@@ -481,14 +507,14 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                 {!quizSubmitted ? (
                   <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
-                      {currentSection.content_data?.questions?.map((q: any, qIdx: number) => (
+                      {currentSectionQuestions.map((q, qIdx) => (
                         <div key={qIdx} style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 12 }}>
                           {/* Question */}
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.22)', fontSize: 11, fontWeight: 800, color: '#fbbf24', flexShrink: 0 }}>
                               {qIdx + 1}
                             </span>
-                            <p style={{ fontSize: 15, fontWeight: 600, color: T.white, margin: 0, lineHeight: '22px' }}>{q.question}</p>
+                            <p dir={isRtl ? "rtl" : "ltr"} style={{ fontSize: 15, fontWeight: 600, color: T.white, margin: 0, lineHeight: '22px', textAlign: isRtl ? 'right' : 'left' }}>{q.question}</p>
                           </div>
                           {/* Options */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -515,9 +541,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 
                     <button
                       className="aw-btn-accent"
-                      disabled={Object.keys(quizAnswers).length !== currentSection.content_data?.questions?.length}
+                      disabled={Object.keys(quizAnswers).length !== currentSectionQuestions.length}
                       onClick={handleSubmitQuiz}
-                      style={Object.keys(quizAnswers).length !== currentSection.content_data?.questions?.length ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)', boxShadow: 'none', cursor: 'not-allowed' } : {}}
+                      style={Object.keys(quizAnswers).length !== currentSectionQuestions.length ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)', boxShadow: 'none', cursor: 'not-allowed' } : {}}
                     >
                       <ClipboardCheck size={16} />
                       {t("courseViewer.submitAnswers", { ns: "employee" })}
