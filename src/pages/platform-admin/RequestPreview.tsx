@@ -1,6 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { RequestWithCompany } from "../../lib/types";
+import { RequestWithCompany, User } from "../../lib/types";
+
+type DepartmentOption = {
+  id: string;
+  name: string;
+};
+
+type TargetUser = Pick<User, "id" | "full_name" | "email" | "department_id">;
 
 type Props = {
   selectedRequest: RequestWithCompany;
@@ -13,33 +21,106 @@ const RequestPreview = ({
   updateSelectedRequest,
   getStatusColor,
 }: Props) => {
-  const [departments, setDepartments] = useState<string[]>([]);
-  const loadDepartments = async () => {
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [users, setUsers] = useState<TargetUser[]>([]);
+
+  const loadTargetData = useCallback(async () => {
+    setDepartments([]);
+    setUsers([]);
+
     const { data } = await supabase
       .from("departments")
-      .select("name")
+      .select("id, name")
       .in("id", selectedRequest.target_departments);
-    if (data) setDepartments(data.map((d) => d.name));
+
+    if (data) setDepartments(data);
+
+    const { data: users } = await supabase
+      .from("users")
+      .select("id, full_name, email, department_id")
+      .eq("company_id", selectedRequest.company_id)
+      .in("department_id", data?.map((d) => d.id) || []);
+
+    if (users) setUsers(users as TargetUser[]);
+  }, [selectedRequest]);
+
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    const normalized = value == null ? "" : String(value);
+    return `"${normalized.replace(/"/g, '""')}"`;
+  };
+
+  const exportUsersCsv = () => {
+    if (users.length === 0) return;
+
+    const departmentNameById = new Map(
+      departments.map((department) => [department.id, department.name])
+    );
+    const headers = ["Full Name", "Email", "Company", "Department"];
+    const rows = users.map((user) =>
+      [
+        escapeCsvValue(user.full_name),
+        escapeCsvValue(user.email),
+        escapeCsvValue(selectedRequest.companies?.name),
+        escapeCsvValue(
+          user.department_id ? departmentNameById.get(user.department_id) : ""
+        ),
+      ].join(",")
+    );
+    const csvContent = [
+      headers.map((header) => escapeCsvValue(header)).join(","),
+      ...rows,
+    ].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const date = new Date().toISOString().split("T")[0];
+    const safeTicketNumber = selectedRequest.ticket_number
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+
+    link.href = url;
+    link.download = `request-users-${
+      safeTicketNumber || "request"
+    }-${date}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
-    loadDepartments();
-  }, [selectedRequest]);
+    loadTargetData();
+  }, [loadTargetData]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
         <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-900">
               Request Details
             </h2>
-            <button
-              onClick={() => updateSelectedRequest(null)}
-              className="text-slate-400 hover:text-slate-600"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={exportUsersCsv}
+                disabled={users.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  users.length === 0
+                    ? "No users available to export"
+                    : "Export users as CSV"
+                }
+              >
+                <Download className="h-4 w-4" />
+                Export Users
+              </button>
+              <button
+                onClick={() => updateSelectedRequest(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         </div>
         <div className="p-6 space-y-4">
@@ -92,7 +173,9 @@ const RequestPreview = ({
             </div>
             <div>
               <div className="text-sm text-slate-600">Target Departments</div>
-              <div className="font-semibold">{departments.join(", ")}</div>
+              <div className="font-semibold">
+                {departments.map((department) => department.name).join(", ")}
+              </div>
             </div>
             <div>
               <div className="text-sm text-slate-600">Priority</div>

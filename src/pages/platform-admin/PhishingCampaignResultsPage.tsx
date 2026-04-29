@@ -52,8 +52,6 @@ export const PhishingCampaignResultsPage: React.FC = () => {
   const [targetData, setTargetData] = useState<TargetData[]>([]);
   const [viewDetailsModal, setViewDetailsModal] = useState(false);
 
-  console.log(campaigns);
-
   const sanitizedEmailHtml = React.useMemo(
     () =>
       selectedCampaign?.email_html_body
