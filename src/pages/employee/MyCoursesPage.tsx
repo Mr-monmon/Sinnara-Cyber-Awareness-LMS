@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, PlayCircle, CheckCircle, Clock, Award, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -31,10 +31,10 @@ const T = {
 
 type StatusKey = 'COMPLETED' | 'IN_PROGRESS' | 'ASSIGNED';
 
-const STATUS_CONFIG: Record<StatusKey, { color: string; bg: string; border: string; barColor: string }> = {
-  COMPLETED:   { color: T.green,  bg: T.greenBg,  border: T.greenBorder, barColor: T.green  },
-  IN_PROGRESS: { color: T.blue,   bg: T.blueBg,   border: T.blueBorder,  barColor: T.blue   },
-  ASSIGNED:    { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint, barColor: T.textMuted },
+const STATUS_CONFIG: Record<StatusKey, { color: string; bg: string; border: string }> = {
+  COMPLETED:   { color: T.green,     bg: T.greenBg, border: T.greenBorder },
+  IN_PROGRESS: { color: T.blue,      bg: T.blueBg,  border: T.blueBorder  },
+  ASSIGNED:    { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint },
 };
 
 /* ─────────────────────────────────────────
@@ -60,7 +60,6 @@ const STYLES = `
     transform: translateY(-2px);
   }
 
-  /* ── Course action btn ── */
   .aw-course-btn {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
     padding: 11px 18px; border-radius: 9px; border: none; cursor: pointer;
@@ -99,20 +98,25 @@ if (typeof document !== "undefined" && !document.getElementById("aw-courses-styl
    TYPES
 ───────────────────────────────────────── */
 interface CourseProgress {
-  course_id: string; employee_id: string;
-  progress_percentage: number; status: string;
-  completed_at: string | null; assigned_at: string;
+  course_id:           string;
+  employee_id:         string;
+  progress_percentage: number;
+  status:              string;
+  completed_at:        string | null;
+  assigned_at:         string;
 }
+
 interface EmployeeCourseRow {
-  courses: Course | null;
-  course_id: string | null;
-  employee_id: string;
+  courses:             Course | null;
+  course_id:           string | null;
+  employee_id:         string;
   progress_percentage: number | string | null;
-  status: string;
-  completed_at: string | null;
-  assigned_at: string;
+  status:              string;
+  completed_at:        string | null;
+  assigned_at:         string;
 }
-type Props = { navigateToCertificates: () => void; };
+
+type Props = { navigateToCertificates: () => void };
 
 /* ═══════════════════════════════════════════
    COMPONENT
@@ -120,55 +124,140 @@ type Props = { navigateToCertificates: () => void; };
 export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
-  const [courses, setCourses]             = useState<Course[]>([]);
+
+  const [courses, setCourses]               = useState<Course[]>([]);
   const [courseProgress, setCourseProgress] = useState<Record<string, CourseProgress>>({});
-  const [loading, setLoading]             = useState(true);
-  const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [viewingCourse, setViewingCourse]   = useState<Course | null>(null);
+
   const currentLanguage = i18n.resolvedLanguage;
   const isArabic = currentLanguage?.toLowerCase().startsWith("ar") ?? false;
 
   const loadCourses = useCallback(async () => {
     if (!user) return;
     try {
+      // ── Step 1: Which courses are assigned to this company? ──────────────
+      const { data: ccData } = await supabase
+        .from("company_courses")
+        .select("course_id")
+        .eq("company_id", user.company_id);
+
+      const companyCourseIds: string[] = (ccData ?? []).map((r: any) => r.course_id);
+
+      if (companyCourseIds.length === 0) {
+        // Company has no courses assigned at all
+        setCourses([]);
+        setCourseProgress({});
+        setLoading(false);
+        return;
+      }
+
+      // ── Step 2: Department restrictions for this company's courses ────────
+      // A course with NO rows in company_course_departments = visible to ALL depts.
+      // A course WITH rows = only those specific departments can see it.
+      const { data: deptRestrictions } = await supabase
+        .from("company_course_departments")
+        .select("course_id, department_id")
+        .eq("company_id", user.company_id)
+        .in("course_id", companyCourseIds);
+
+      // Build map: courseId → Set of allowed department IDs
+      const courseDeptMap: Record<string, string[]> = {};
+      (deptRestrictions ?? []).forEach((r: any) => {
+        if (!courseDeptMap[r.course_id]) courseDeptMap[r.course_id] = [];
+        courseDeptMap[r.course_id].push(r.department_id);
+      });
+
+      // ── Step 3: Filter to courses this employee can access ────────────────
+      const accessibleCourseIds = companyCourseIds.filter(courseId => {
+        const allowedDepts = courseDeptMap[courseId];
+
+        // No dept restrictions → everyone in the company can see it
+        if (!allowedDepts || allowedDepts.length === 0) return true;
+
+        // Employee has a department → check if it's in the allowed list
+        if (user.department_id) {
+          return allowedDepts.includes(user.department_id);
+        }
+
+        // Employee has no department → only show unrestricted courses
+        return false;
+      });
+
+      if (accessibleCourseIds.length === 0) {
+        setCourses([]);
+        setCourseProgress({});
+        setLoading(false);
+        return;
+      }
+
+      // ── Step 4: Load employee_courses only for accessible courses ─────────
       const { data, error } = await supabase
         .from("employee_courses")
         .select("*, courses:course_id (*)")
-        .eq("employee_id", user.id);
+        .eq("employee_id", user.id)
+        .in("course_id", accessibleCourseIds);
+
       if (error) throw error;
+
       if (data) {
         const rows = data as EmployeeCourseRow[];
-        setCourses(rows.map((ec) => ec.courses).filter((course): course is Course => Boolean(course)));
+
+        // Courses the employee is enrolled in (within accessible list)
+        const enrolledCourses = rows
+          .map(ec => ec.courses)
+          .filter((c): c is Course => Boolean(c));
+
+        // Also include courses the employee is NOT yet enrolled in
+        // (accessible but not yet in employee_courses — shouldn't happen normally,
+        //  but handles edge cases where assignment is via company_courses but not employee_courses)
+        const enrolledIds = new Set(enrolledCourses.map(c => c.id));
+        const unenrolledIds = accessibleCourseIds.filter(id => !enrolledIds.has(id));
+
+        let allAccessibleCourses = enrolledCourses;
+
+        if (unenrolledIds.length > 0) {
+          const { data: extraCourses } = await supabase
+            .from("courses")
+            .select("*")
+            .in("id", unenrolledIds);
+          if (extraCourses) {
+            allAccessibleCourses = [...enrolledCourses, ...extraCourses as Course[]];
+          }
+        }
+
+        // Sort by order_index
+        allAccessibleCourses.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+        setCourses(allAccessibleCourses);
+
+        // Build progress map
         const progressMap: Record<string, CourseProgress> = {};
-        rows.forEach((ec) => {
+        rows.forEach(ec => {
           if (ec.course_id) {
             progressMap[ec.course_id] = {
-              course_id: ec.course_id, employee_id: ec.employee_id,
+              course_id:           ec.course_id,
+              employee_id:         ec.employee_id,
               progress_percentage: Number(ec.progress_percentage) || 0,
-              status: ec.status, completed_at: ec.completed_at, assigned_at: ec.assigned_at,
+              status:              ec.status,
+              completed_at:        ec.completed_at,
+              assigned_at:         ec.assigned_at,
             };
           }
         });
         setCourseProgress(progressMap);
       }
-    } catch (err) { console.error("Error loading courses:", err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error("Error loading courses:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
   useEffect(() => { loadCourses(); }, [loadCourses]);
 
-  const handleStartCourse = async (course: Course, status: StatusKey) => {
-    if (!user) return;
-    if (status === "COMPLETED") { navigateToCertificates(); return; }
-    const existingProgress = courseProgress[course.id];
-    if (existingProgress?.status === "ASSIGNED") {
-      await supabase.from("employee_courses")
-        .update({ status: "IN_PROGRESS", started_at: new Date().toISOString() })
-        .eq("employee_id", user.id).eq("course_id", course.id);
-    }
-    setViewingCourse(course);
-  };
-
-  const getCourseProgress = (courseId: string) => courseProgress[courseId]?.progress_percentage || 0;
+  /* ── Helpers ── */
+  const getCourseProgress = (courseId: string) =>
+    courseProgress[courseId]?.progress_percentage || 0;
 
   const getCourseStatus = (courseId: string): StatusKey => {
     const prog = courseProgress[courseId];
@@ -186,13 +275,29 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       : course.description,
   });
 
+  /* ── Start / continue / view certificate ── */
+  const handleStartCourse = async (course: Course, status: StatusKey) => {
+    if (!user) return;
+    if (status === "COMPLETED") { navigateToCertificates(); return; }
+
+    const existingProgress = courseProgress[course.id];
+    if (existingProgress?.status === "ASSIGNED") {
+      await supabase
+        .from("employee_courses")
+        .update({ status: "IN_PROGRESS", started_at: new Date().toISOString() })
+        .eq("employee_id", user.id)
+        .eq("course_id", course.id);
+    }
+    setViewingCourse(course);
+  };
+
   /* ── Course viewer ── */
   if (viewingCourse) {
     const viewingCourseText = getCourseDisplayText(viewingCourse);
-
     return (
       <CourseViewerPage
-        courseId={viewingCourse.id} courseTitle={viewingCourseText.title}
+        courseId={viewingCourse.id}
+        courseTitle={viewingCourseText.title}
         onBack={() => { setViewingCourse(null); loadCourses(); }}
       />
     );
@@ -239,10 +344,10 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       {courses.length > 0 && (
         <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
           {[
-            { icon: BookOpen,     color: T.accent,    bg: 'rgba(200,255,0,0.08)',  border: 'rgba(200,255,0,0.20)',  label: t("courses.summary.total",      { ns: "employee" }), value: courses.length   },
-            { icon: CheckCircle,  color: T.green,     bg: T.greenBg,              border: T.greenBorder,          label: t("courses.summary.completed",  { ns: "employee" }), value: completedCount   },
-            { icon: Clock,        color: '#fbbf24',   bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.22)', label: t("courses.summary.inProgress", { ns: "employee" }), value: inProgressCount  },
-            { icon: PlayCircle,   color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint,          label: t("courses.summary.notStarted", { ns: "employee" }), value: notStartedCount  },
+            { icon: BookOpen,    color: T.accent,    bg: 'rgba(200,255,0,0.08)',   border: 'rgba(200,255,0,0.20)',   label: t("courses.summary.total",      { ns: "employee" }), value: courses.length   },
+            { icon: CheckCircle, color: T.green,     bg: T.greenBg,               border: T.greenBorder,            label: t("courses.summary.completed",  { ns: "employee" }), value: completedCount   },
+            { icon: Clock,       color: '#fbbf24',   bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.22)',  label: t("courses.summary.inProgress", { ns: "employee" }), value: inProgressCount  },
+            { icon: PlayCircle,  color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint,            label: t("courses.summary.notStarted", { ns: "employee" }), value: notStartedCount  },
           ].map(({ icon: Icon, color, bg, border, label, value }) => (
             <div key={label} style={{ padding: '14px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, minWidth: 150 }}>
               <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -276,12 +381,12 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
         /* ── Courses grid ── */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {courses.map((course, idx) => {
-            const progress   = getCourseProgress(course.id);
-            const status     = getCourseStatus(course.id);
-            const cfg        = STATUS_CONFIG[status];
+            const progress     = getCourseProgress(course.id);
+            const status       = getCourseStatus(course.id);
+            const cfg          = STATUS_CONFIG[status];
             const isCompleted  = status === 'COMPLETED';
             const isInProgress = status === 'IN_PROGRESS';
-            const courseText = getCourseDisplayText(course);
+            const courseText   = getCourseDisplayText(course);
 
             return (
               <div
@@ -293,7 +398,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                 {/* Status bar */}
                 <div style={{ height: 3, background: `linear-gradient(90deg, ${cfg.color}, ${cfg.color}30)` }} />
 
-                <div style={{ padding: '20px 22px 22px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div style={{ padding: '20px 22px 22px', flex: 1, display: 'flex', flexDirection: 'column' }}>
 
                   {/* Card header */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
