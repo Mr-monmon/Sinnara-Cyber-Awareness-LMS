@@ -406,12 +406,12 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       */}
       <div
         className="aw-modal-in"
+        dir="ltr"
         style={{
           width: '100%', maxWidth: 760,
           background: T.bgCard,
           border: `1px solid ${T.border}`,
           borderRadius: 18,
-          /* ✅ No overflow:hidden here — let the inner form body scroll */
           maxHeight: '94vh',
           boxShadow: '0 40px 100px rgba(0,0,0,0.60)',
           fontFamily: "'Inter', sans-serif",
