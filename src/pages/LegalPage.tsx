@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Shield, FileText, CheckSquare, Square,
-  ChevronDown, X, BookOpen,
+  ChevronDown, BookOpen,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────
