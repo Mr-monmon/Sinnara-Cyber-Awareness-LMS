@@ -165,9 +165,6 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
   <!-- Radial glow bottom-left (CSS only) -->
   <div style="position:absolute;bottom:-60px;left:0;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(200,255,0,0.07) 0%,transparent 65%);pointer-events:none;"></div>
 
-  <!-- Dot grid (CSS background-image) -->
-  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(200,255,0,0.18) 1px,transparent 1px);background-size:24px 24px;opacity:.18;pointer-events:none;"></div>
-
   <!-- Corner accent top-right (CSS border trick) -->
   <div style="position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 90px 90px 0;border-color:transparent rgba(200,255,0,0.18) transparent transparent;pointer-events:none;"></div>
   <div style="position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 60px 60px 0;border-color:transparent rgba(200,255,0,0.10) transparent transparent;pointer-events:none;"></div>
