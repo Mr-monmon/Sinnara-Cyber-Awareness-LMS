@@ -159,122 +159,83 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
   return DOMPurify.sanitize(`
 <div style="width:800px;height:566px;background:#12140a;font-family:'Arial',Arial,sans-serif;position:relative;overflow:hidden;display:flex;box-sizing:border-box;">
 
-  <!-- Background: radial glow top-right -->
-  <div style="position:absolute;top:-120px;right:-80px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(200,255,0,0.09) 0%,transparent 65%);pointer-events:none;"></div>
+  <!-- Radial glow top-right (CSS only) -->
+  <div style="position:absolute;top:-100px;right:-60px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(200,255,0,0.10) 0%,transparent 65%);pointer-events:none;"></div>
 
-  <!-- Background: radial glow bottom-left -->
-  <div style="position:absolute;bottom:-60px;left:20px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(200,255,0,0.06) 0%,transparent 65%);pointer-events:none;"></div>
+  <!-- Radial glow bottom-left (CSS only) -->
+  <div style="position:absolute;bottom:-60px;left:0;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(200,255,0,0.07) 0%,transparent 65%);pointer-events:none;"></div>
 
-  <!-- Grid dots pattern -->
-  <svg style="position:absolute;top:0;right:0;width:600px;height:566px;opacity:.04;pointer-events:none;" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <pattern id="gdots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-        <circle cx="2" cy="2" r="1.5" fill="#c8ff00"/>
-      </pattern>
-    </defs>
-    <rect width="600" height="566" fill="url(#gdots)"/>
-  </svg>
+  <!-- Dot grid (CSS background-image) -->
+  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(200,255,0,0.18) 1px,transparent 1px);background-size:24px 24px;opacity:.18;pointer-events:none;"></div>
 
-  <!-- Corner flourish top-right -->
-  <svg style="position:absolute;top:0;right:0;width:140px;height:140px;opacity:.22;pointer-events:none;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140">
-    <path d="M140 0 L140 50 Q140 0 90 0 Z" fill="#c8ff00"/>
-    <path d="M140 0 L140 80 Q140 0 60 0 Z" fill="none" stroke="#c8ff00" stroke-width="1"/>
-    <path d="M140 0 L140 110 Q140 0 30 0 Z" fill="none" stroke="#c8ff00" stroke-width=".6"/>
-  </svg>
+  <!-- Corner accent top-right (CSS border trick) -->
+  <div style="position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 90px 90px 0;border-color:transparent rgba(200,255,0,0.18) transparent transparent;pointer-events:none;"></div>
+  <div style="position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 60px 60px 0;border-color:transparent rgba(200,255,0,0.10) transparent transparent;pointer-events:none;"></div>
 
-  <!-- Corner flourish bottom-left -->
-  <svg style="position:absolute;bottom:0;left:0;width:100px;height:100px;opacity:.22;pointer-events:none;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <path d="M0 100 L0 50 Q0 100 50 100 Z" fill="#c8ff00"/>
-    <path d="M0 100 L0 20 Q0 100 80 100 Z" fill="none" stroke="#c8ff00" stroke-width="1"/>
-    <path d="M0 100 L0 10 Q0 100 90 100 Z" fill="none" stroke="#c8ff00" stroke-width=".6"/>
-  </svg>
+  <!-- Corner accent bottom-left -->
+  <div style="position:absolute;bottom:0;left:0;width:0;height:0;border-style:solid;border-width:70px 0 0 70px;border-color:transparent transparent transparent rgba(200,255,0,0.16);pointer-events:none;"></div>
 
   <!-- Vertical divider -->
   <div style="position:absolute;left:230px;top:30px;bottom:30px;width:1px;background:linear-gradient(to bottom,transparent,rgba(200,255,0,0.30),rgba(200,255,0,0.30),transparent);z-index:2;"></div>
 
-  <!-- ═══ LEFT PANEL ═══ -->
+  <!-- LEFT PANEL -->
   <div style="width:230px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:30px 20px;position:relative;z-index:3;">
 
-    <!-- Static rings -->
-    <div style="position:absolute;top:50%;left:50%;margin:-85px 0 0 -85px;width:170px;height:170px;border-radius:50%;border:1px dashed rgba(200,255,0,0.16);pointer-events:none;"></div>
-    <div style="position:absolute;top:50%;left:50%;margin:-65px 0 0 -65px;width:130px;height:130px;border-radius:50%;border:1px solid rgba(200,255,0,0.08);pointer-events:none;"></div>
+    <!-- Decorative rings (CSS borders) -->
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:170px;height:170px;border-radius:50%;border:1px dashed rgba(200,255,0,0.18);pointer-events:none;"></div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:130px;height:130px;border-radius:50%;border:1px solid rgba(200,255,0,0.10);pointer-events:none;"></div>
 
-    <!-- Logo -->
-    <div style="position:relative;z-index:1;">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="250 290 760 730" width="76" height="76" style="display:block;filter:drop-shadow(0 0 12px rgba(200,255,0,0.45));">
-        <path d="M0 0 C20 0 22 1 27.56 1.08 C35.10 1.03 39.25 1.01 48.20 0.95 C62.37 0.88 80.68 0.81 102.68 0.67 C124.93 0.57 136.70 0.50 147.79 0.45 C163.09 0.43 170.02 2.19 176.87 8.75 C180.36 14.79 181.78 18.20 186.75 28.56 C191 37 192.41 39.81 195.25 45.43 C198.07 51.08 201.43 58.43 204 63 C209.78 74.88 211.18 78.25 220.33 97.59 C225 109 227.30 112.59 233.06 123.5 C239 136 242.37 142.94 257.28 173.65 C270 206 272 205 277.93 217.25 C285 234 295 254 299 260.68 C302 272 304 272 309.49 283.20 C318 305 321.37 307.72 327.74 325.05 C338 343 339 346 350.31 370.25 C354 377 358 390 363.37 396.62 C381 443 385.55 459.19 376.18 492.93 C366 504 362.96 511.27 353.25 517.37 C326.25 529.48 293.34 535.53 278 536 C265.75 522 251.54 500.07 243 490 C213.94 466.17 192.13 459.25 167.11 461.33 C119 475 88.01 487.22 74.18 493.18 C-63 536 -105.29 540.39 -177.93 511.56 C-221.63 440.70 -229.81 410.08 -226 348 C-218.58 305.54 -200.60 268.05 -184.12 231.51 C-178 218 -153 171 -148 154.12 C-142 142 -134.21 126.21 -110 78 C-86.29 32 -78 17 -71 5 C-67 4 -58.80 0.88 0 1 Z" fill="#c8ff00" transform="translate(319,357)"/>
-        <path d="M0 0 C7.67 0.004 15.57 -0.007 27.52 0.026 C35.31 2.26 47.5 3.82 62.31 6.26 C80.31 10.26 103.80 17.55 119.31 23.26 C156.06 42.70 177 57.20 207.31 85.26 C227.31 109.26 243.31 131.26 260.31 160.26 C277.31 211.26 284.93 272.76 284.31 290.26 C278.43 341.51 268.31 374.13 264.31 385.26 C250.31 411.26 235.06 437.45 211.31 465.26 C196.31 481.26 184.31 491.26 160.31 508.26 C134.93 522.95 109.31 534.26 78.34 543.88 C57.31 548.26 43.31 551.26 21.78 552.39 C-25.68 550.26 -69.03 541.29 -92.68 525.26 C-90.50 513.93 -85.16 491.47 -99.68 418.01 C-117.68 376.26 -147.89 317.92 -153.68 306.26 C-167.68 276.26 -182.68 245.26 -209.68 187.26 C-228.68 149.20 -221.68 127.26 -213.68 116.765 C-197.68 96.26 -191.68 91.26 -168.68 68.26 C-140.39 45.92 -87.68 21.26 -56.68 10.26 C-22.83 3.30 -7.84 0.01 0 0 Z" fill="#c8ff00" transform="translate(814.6875,337.734375)"/>
-      </svg>
+    <!-- Brand mark (CSS shield shape) -->
+    <div style="position:relative;z-index:1;width:68px;height:76px;background:linear-gradient(135deg,rgba(200,255,0,0.18) 0%,rgba(200,255,0,0.06) 100%);border:1.5px solid rgba(200,255,0,0.45);border-radius:12px 12px 50% 50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 18px rgba(200,255,0,0.25);">
+      <div style="font-size:22px;font-weight:900;color:#c8ff00;letter-spacing:-1px;">A1</div>
     </div>
 
     <!-- Brand name -->
     <div style="text-align:center;position:relative;z-index:1;">
-      <div style="font-size:18px;font-weight:900;letter-spacing:1px;color:#ffffff;">AWARE<span style="color:#c8ff00;">ONE</span></div>
-      <div style="width:36px;height:1.5px;background:#c8ff00;margin:6px auto;"></div>
+      <div style="font-size:17px;font-weight:900;letter-spacing:1px;color:#ffffff;">AWARE<span style="color:#c8ff00;">ONE</span></div>
+      <div style="width:36px;height:2px;background:#c8ff00;margin:6px auto;"></div>
       <div style="font-size:8px;letter-spacing:3px;color:rgba(200,255,0,0.65);text-transform:uppercase;">Cybersecurity Training</div>
     </div>
 
-    <!-- Seal -->
-    <div style="position:relative;z-index:1;margin-top:6px;">
-      <svg width="68" height="68" viewBox="0 0 68 68" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="34" cy="34" r="30" fill="none" stroke="rgba(200,255,0,0.30)" stroke-width="1.5" stroke-dasharray="4 3"/>
-        <circle cx="34" cy="34" r="23" fill="rgba(200,255,0,0.06)" stroke="rgba(200,255,0,0.22)" stroke-width="1"/>
-        <text x="34" y="30" text-anchor="middle" font-family="Arial" font-size="6.5" font-weight="700" fill="#c8ff00" letter-spacing="1.5">CERTIFIED</text>
-        <text x="34" y="40" text-anchor="middle" font-family="Arial" font-size="6" fill="rgba(200,255,0,0.60)" letter-spacing="1">COMPLETION</text>
-        <path d="M22 44 Q34 48 46 44" fill="none" stroke="rgba(200,255,0,0.35)" stroke-width=".8"/>
-      </svg>
+    <!-- Seal (CSS circles + text) -->
+    <div style="position:relative;z-index:1;width:70px;height:70px;border-radius:50%;border:1.5px dashed rgba(200,255,0,0.32);display:flex;align-items:center;justify-content:center;background:rgba(200,255,0,0.05);margin-top:6px;">
+      <div style="width:56px;height:56px;border-radius:50%;border:1px solid rgba(200,255,0,0.22);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;">
+        <div style="font-size:6px;font-weight:700;letter-spacing:1.5px;color:#c8ff00;text-transform:uppercase;">CERTIFIED</div>
+        <div style="width:24px;height:1px;background:rgba(200,255,0,0.40);"></div>
+        <div style="font-size:5.5px;color:rgba(200,255,0,0.55);letter-spacing:1px;">COMPLETION</div>
+      </div>
     </div>
 
   </div>
 
-  <!-- ═══ RIGHT PANEL ═══ -->
+  <!-- RIGHT PANEL -->
   <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:40px 44px 36px 36px;position:relative;z-index:3;">
 
-    <!-- Accent line -->
     <div style="width:48px;height:2px;background:#c8ff00;margin-bottom:18px;"></div>
-
-    <!-- Label -->
     <div style="font-size:10px;font-weight:700;letter-spacing:4px;color:rgba(200,255,0,0.70);text-transform:uppercase;margin-bottom:10px;">Certificate of Completion</div>
-
-    <!-- Heading -->
-    <div style="font-size:30px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;line-height:1.2;margin-bottom:6px;">This certifies that</div>
-
-    <!-- Employee name -->
-    <div style="font-size:36px;font-weight:700;color:#c8ff00;letter-spacing:-0.5px;line-height:1.1;margin:10px 0;word-break:break-word;">${data.employeeName}</div>
-
-    <!-- Separator -->
+    <div style="font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;line-height:1.2;margin-bottom:6px;">This certifies that</div>
+    <div style="font-size:34px;font-weight:700;color:#c8ff00;letter-spacing:-0.5px;line-height:1.1;margin:10px 0;word-break:break-word;">${data.employeeName}</div>
     <div style="width:100%;height:1px;background:linear-gradient(to right,rgba(200,255,0,0.25),transparent);margin:10px 0 14px;"></div>
-
-    <!-- Description -->
     <div style="font-size:12px;color:rgba(203,213,225,0.85);line-height:1.7;margin-bottom:16px;">
-      has successfully completed the training course and demonstrated<br/>
-      proficiency in the required competencies and assessments.
+      has successfully completed the training course and demonstrated<br/>proficiency in the required competencies and assessments.
     </div>
 
-    <!-- Course name -->
     <div style="background:rgba(200,255,0,0.06);border:1px solid rgba(200,255,0,0.20);border-radius:8px;padding:12px 16px;margin-bottom:18px;">
       <div style="font-size:9px;font-weight:700;letter-spacing:2.5px;color:rgba(200,255,0,0.60);text-transform:uppercase;margin-bottom:5px;">Course</div>
-      <div style="font-size:17px;font-weight:700;color:#ffffff;word-break:break-word;">${data.courseName}</div>
+      <div style="font-size:16px;font-weight:700;color:#ffffff;word-break:break-word;">${data.courseName}</div>
     </div>
 
-    <!-- Date + Certificate Number side by side -->
     <div style="display:flex;gap:12px;margin-bottom:20px;">
-
-      <!-- Completion date -->
       <div style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;">
         <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:rgba(200,255,0,0.55);text-transform:uppercase;margin-bottom:4px;">Date of Completion</div>
         <div style="font-size:13px;font-weight:700;color:#cbd5e1;">${data.rawCompletionDate}</div>
       </div>
-
-      <!-- Certificate number -->
       <div style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;">
         <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:rgba(200,255,0,0.55);text-transform:uppercase;margin-bottom:4px;">Certificate No.</div>
         <div style="font-size:12px;font-weight:700;color:#cbd5e1;font-family:monospace;letter-spacing:0.5px;">${data.rawCertificateNumber}</div>
       </div>
-
     </div>
 
-    <!-- Signature + branding -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;">
       <div>
         <div style="width:110px;height:1px;background:rgba(255,255,255,0.20);margin-bottom:5px;"></div>
@@ -287,7 +248,6 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
     </div>
 
   </div>
-
 </div>`, { USE_PROFILES: { html: true } });
 };
 
