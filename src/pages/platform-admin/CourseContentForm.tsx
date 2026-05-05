@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Trash2, Plus, Video, FileText, ClipboardCheck,
-  X, Save, Loader2, CheckCircle, Globe,
+  X, Save, Loader2, CheckCircle,
 } from 'lucide-react';
 import Quill from 'quill';
 import { supabase } from '../../lib/supabase';
 import { Course } from '../../lib/types';
 
 /* ─────────────────────────────────────────
-   TYPES (re-exported for CourseContentManager)
+   TYPES
 ───────────────────────────────────────── */
 type SectionType = 'VIDEO' | 'ARTICLE' | 'QUIZ';
 type QuizQuestion = { question: string; options: string[]; correct_answer: string; };
@@ -54,13 +54,8 @@ const T = {
   purple:      '#a78bfa',
   purpleBg:    'rgba(167,139,250,0.08)',
   purpleBorder:'rgba(167,139,250,0.22)',
-  orange:      '#fb923c',
-  orangeBg:    'rgba(251,146,60,0.08)',
 } as const;
 
-/* ─────────────────────────────────────────
-   SECTION TYPE CONFIG
-───────────────────────────────────────── */
 const TYPES = [
   { key: 'VIDEO',   icon: Video,          color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Video'   },
   { key: 'ARTICLE', icon: FileText,       color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Article' },
@@ -68,12 +63,11 @@ const TYPES = [
 ] as const;
 
 /* ─────────────────────────────────────────
-   CSS — id = "aw-ccf-styles" (unique)
+   CSS
 ───────────────────────────────────────── */
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-  /* ── Form inputs ── */
   .aw-ccf-input, .aw-ccf-select, .aw-ccf-textarea {
     width: 100%; background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.09);
@@ -102,7 +96,6 @@ const STYLES = `
     margin-bottom: 7px; letter-spacing: 0.3px; font-family: 'Inter', sans-serif;
   }
 
-  /* ── Section type selector ── */
   .aw-ccf-type-btn {
     flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
     padding: 12px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
@@ -112,19 +105,17 @@ const STYLES = `
   }
   .aw-ccf-type-btn:hover { background: rgba(255,255,255,0.05); }
 
-  /* ── Quiz question card ── */
   .aw-ccf-q-card {
     background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07);
     border-radius: 10px; padding: 14px 16px; font-family: 'Inter', sans-serif;
   }
 
-  /* ── Add question box ── */
   .aw-ccf-q-box {
     background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.07);
     border-radius: 12px; padding: 18px; font-family: 'Inter', sans-serif;
   }
 
-  /* ── Quill dark override ── */
+  /* ── Quill dark ── */
   .aw-ccf-editor-wrap .ql-toolbar {
     background: rgba(255,255,255,0.04) !important;
     border-color: rgba(255,255,255,0.09) !important;
@@ -147,7 +138,7 @@ const STYLES = `
   .aw-ccf-editor-wrap .ql-editor { min-height: 180px; color: #1a1a1a !important; }
   .aw-ccf-editor-wrap .ql-editor.ql-blank::before { color: #9ca3af !important; font-style: normal !important; }
 
-  /* ── Primary btn ── */
+  /* ── Buttons ── */
   .aw-ccf-save-btn {
     flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
     padding: 13px 20px; border-radius: 10px; border: none; cursor: pointer;
@@ -168,14 +159,13 @@ const STYLES = `
 
   .aw-ccf-add-q-btn {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 11px 16px; border-radius: 9px; border: none; cursor: pointer;
+    padding: 11px 16px; border-radius: 9px; cursor: pointer;
     font-size: 13px; font-weight: 700; font-family: 'Inter', sans-serif;
     background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.25);
     color: #34d399; transition: all 0.18s;
   }
   .aw-ccf-add-q-btn:hover { background: rgba(52,211,153,0.18); }
 
-  /* ── Option correct radio ── */
   .aw-ccf-opt-radio {
     display: flex; align-items: center; gap: 9px;
     padding: 9px 13px; border-radius: 8px; cursor: pointer;
@@ -185,18 +175,42 @@ const STYLES = `
   .aw-ccf-opt-radio.correct { background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.28); }
   .aw-ccf-opt-radio:hover:not(.correct) { background: rgba(255,255,255,0.04); }
 
-  /* ── Divider with label ── */
-  .aw-ccf-divider {
-    display: flex; align-items: center; gap: 12px; margin: 6px 0;
+  /* ════════════════════════════════════
+     SCROLLBAR — visible, mouse-friendly
+  ════════════════════════════════════ */
+  .aw-ccf-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(200,255,0,0.30) rgba(255,255,255,0.04);
   }
-  .aw-ccf-divider::before, .aw-ccf-divider::after {
-    content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.07);
+  .aw-ccf-scroll::-webkit-scrollbar { width: 6px; }
+  .aw-ccf-scroll::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.03);
+    border-radius: 9999px;
+    margin: 4px 0;
+  }
+  .aw-ccf-scroll::-webkit-scrollbar-thumb {
+    background: rgba(200,255,0,0.28);
+    border-radius: 9999px;
+    border: 1px solid rgba(200,255,0,0.10);
+  }
+  .aw-ccf-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(200,255,0,0.50);
   }
 
-  /* ── Scrollbar ── */
-  .aw-ccf-scroll::-webkit-scrollbar { width: 4px; }
-  .aw-ccf-scroll::-webkit-scrollbar-track { background: transparent; }
-  .aw-ccf-scroll::-webkit-scrollbar-thumb { background: rgba(200,255,0,0.20); border-radius: 9999px; }
+  /* Same for the questions list scroll */
+  .aw-ccf-qlist-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(200,255,0,0.25) transparent;
+  }
+  .aw-ccf-qlist-scroll::-webkit-scrollbar { width: 5px; }
+  .aw-ccf-qlist-scroll::-webkit-scrollbar-track { background: transparent; }
+  .aw-ccf-qlist-scroll::-webkit-scrollbar-thumb {
+    background: rgba(200,255,0,0.25);
+    border-radius: 9999px;
+  }
+  .aw-ccf-qlist-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(200,255,0,0.45);
+  }
 
   @keyframes aw-spin    { to { transform: rotate(360deg); } }
   @keyframes aw-modal-in { from { opacity:0; transform:scale(0.97) translateY(14px); } to { opacity:1; transform:scale(1) translateY(0); } }
@@ -222,11 +236,13 @@ const defaultForm = {
 const defaultQ = { question: '', option1: '', option2: '', option3: '', option4: '', correct_answer: '' };
 
 /* ─────────────────────────────────────────
-   SECTION HEADER COMPONENT
+   SECTION BLOCK
 ───────────────────────────────────────── */
-const SectionBlock: React.FC<{ title: string; subtitle?: string; icon?: React.ElementType; color?: string; children: React.ReactNode }> = ({
-  title, subtitle, icon: Icon, color = T.accent, children,
-}) => (
+const SectionBlock: React.FC<{
+  title: string; subtitle?: string;
+  icon?: React.ElementType; color?: string;
+  children: React.ReactNode;
+}> = ({ title, subtitle, icon: Icon, color = T.accent, children }) => (
   <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
     <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 9 }}>
       {Icon && (
@@ -251,21 +267,20 @@ const SectionBlock: React.FC<{ title: string; subtitle?: string; icon?: React.El
 export const CourseContentForm: React.FC<CourseContentFormProps> = ({
   course, sectionsCount, editingSection, open, onClose, onSaved,
 }) => {
-  const [form, setForm]                   = useState({ ...defaultForm });
-  const [quizQ, setQuizQ]                 = useState<QuizQuestion[]>([]);
-  const [quizQAr, setQuizQAr]             = useState<QuizQuestion[]>([]);
-  const [curQ, setCurQ]                   = useState({ ...defaultQ });
-  const [curQAr, setCurQAr]               = useState({ ...defaultQ });
-  const [articlePt, setArticlePt]         = useState('');
-  const [articlePtAr, setArticlePtAr]     = useState('');
-  const [saving, setSaving]               = useState(false);
+  const [form, setForm]               = useState({ ...defaultForm });
+  const [quizQ, setQuizQ]             = useState<QuizQuestion[]>([]);
+  const [quizQAr, setQuizQAr]         = useState<QuizQuestion[]>([]);
+  const [curQ, setCurQ]               = useState({ ...defaultQ });
+  const [curQAr, setCurQAr]           = useState({ ...defaultQ });
+  const [articlePt, setArticlePt]     = useState('');
+  const [articlePtAr, setArticlePtAr] = useState('');
+  const [saving, setSaving]           = useState(false);
 
-  const quillRef     = useRef<HTMLDivElement | null>(null);
-  const quillInst    = useRef<Quill | null>(null);
-  const quillArRef   = useRef<HTMLDivElement | null>(null);
-  const quillArInst  = useRef<Quill | null>(null);
+  const quillRef    = useRef<HTMLDivElement | null>(null);
+  const quillInst   = useRef<Quill | null>(null);
+  const quillArRef  = useRef<HTMLDivElement | null>(null);
+  const quillArInst = useRef<Quill | null>(null);
 
-  /* ── Init form ── */
   useEffect(() => {
     if (!open) return;
     if (editingSection) {
@@ -283,14 +298,12 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     setCurQ({ ...defaultQ }); setCurQAr({ ...defaultQ });
   }, [editingSection, open]);
 
-  /* Reset quill on type change */
   useEffect(() => {
     if (open && form.section_type === 'ARTICLE') return;
     quillInst.current = null; quillArInst.current = null;
     setArticlePt(''); setArticlePtAr('');
   }, [form.section_type, open]);
 
-  /* Init English Quill */
   useEffect(() => {
     if (!open || form.section_type !== 'ARTICLE' || !quillRef.current) return;
     if (!quillInst.current) {
@@ -308,7 +321,6 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     else if (!incoming && q.root.innerHTML !== '<p><br></p>') { q.setText(''); setArticlePt(''); }
   }, [form.content, form.section_type, open]);
 
-  /* Init Arabic Quill */
   useEffect(() => {
     if (!open || form.section_type !== 'ARTICLE' || !quillArRef.current) return;
     if (!quillArInst.current) {
@@ -330,34 +342,26 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
   if (!open) return null;
 
-  /* ── Add question helpers ── */
   const buildQ = (d: typeof defaultQ): QuizQuestion | null => {
     const opts = [d.option1, d.option2, d.option3, d.option4].filter(o => o.trim());
-    if (!d.question.trim()) { alert('Question is required'); return null; }
-    if (opts.length < 2)    { alert('At least 2 options required'); return null; }
+    if (!d.question.trim())             { alert('Question is required'); return null; }
+    if (opts.length < 2)                { alert('At least 2 options required'); return null; }
     if (!opts.includes(d.correct_answer)) { alert('Correct answer must match one of the options'); return null; }
     return { question: d.question, options: opts, correct_answer: d.correct_answer };
   };
 
-  const handleAddQ = () => {
-    const q = buildQ(curQ); if (!q) return;
-    setQuizQ(prev => [...prev, q]); setCurQ({ ...defaultQ });
-  };
-  const handleAddQAr = () => {
-    const q = buildQ(curQAr); if (!q) return;
-    setQuizQAr(prev => [...prev, q]); setCurQAr({ ...defaultQ });
-  };
+  const handleAddQ   = () => { const q = buildQ(curQ);   if (!q) return; setQuizQ(prev => [...prev, q]);   setCurQ({ ...defaultQ }); };
+  const handleAddQAr = () => { const q = buildQ(curQAr); if (!q) return; setQuizQAr(prev => [...prev, q]); setCurQAr({ ...defaultQ }); };
 
-  /* ── Submit ── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.section_type === 'ARTICLE' && !articlePt.trim()) { alert('Article content is required'); return; }
-    if (form.section_type === 'QUIZ' && quizQ.length === 0) { alert('At least one question required'); return; }
+    if (form.section_type === 'QUIZ' && quizQ.length === 0)   { alert('At least one question required'); return; }
     setSaving(true);
     try {
-      const contentData = form.section_type === 'QUIZ' ? { questions: quizQ } : {};
+      const contentData   = form.section_type === 'QUIZ' ? { questions: quizQ } : {};
       const contentDataAr = form.section_type === 'QUIZ' && quizQAr.length > 0 ? { questions: quizQAr } : contentData;
-      const contentAr = form.section_type === 'ARTICLE'
+      const contentAr     = form.section_type === 'ARTICLE'
         ? (articlePtAr.trim() ? form.content_ar : form.content)
         : (form.content_ar.trim() || form.content);
       const payload = {
@@ -379,21 +383,56 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     finally { setSaving(false); }
   };
 
-  /* Current type config */
   const typeCfg = TYPES.find(t => t.key === form.section_type) ?? TYPES[0];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(10,12,6,0.86)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
-      onClick={onClose}>
-      <div className="aw-modal-in aw-ccf-scroll"
-        style={{ width: '100%', maxWidth: 760, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, overflow: 'hidden', overflowY: 'auto', maxHeight: '94vh', boxShadow: '0 40px 100px rgba(0,0,0,0.60)', fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column' }}
-        onClick={e => e.stopPropagation()}>
-
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+        background: 'rgba(10,12,6,0.86)',
+        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+      }}
+      onClick={onClose}
+    >
+      {/*
+        ════════════════════════════════════════════════════════
+        KEY FIX: The modal is a flex column with maxHeight.
+        - overflow: hidden on the outer div (clip sides, allow inner scroll)
+        - The form uses flex:1 + minHeight:0 so it can shrink
+        - The scrollable body uses flex:1 + minHeight:0 + overflowY:auto
+        ════════════════════════════════════════════════════════
+      */}
+      <div
+        className="aw-modal-in"
+        style={{
+          width: '100%', maxWidth: 760,
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 18,
+          /* ✅ No overflow:hidden here — let the inner form body scroll */
+          maxHeight: '94vh',
+          boxShadow: '0 40px 100px rgba(0,0,0,0.60)',
+          fontFamily: "'Inter', sans-serif",
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Accent bar */}
-        <div style={{ height: 3, background: 'linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))', flexShrink: 0 }} />
+        <div style={{ height: 3, background: 'linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))', borderRadius: '18px 18px 0 0', flexShrink: 0 }} />
 
         {/* Sticky header */}
-        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: T.bgCard, position: 'sticky', top: 0, zIndex: 5 }}>
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: `1px solid ${T.borderFaint}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+          background: T.bgCard,
+          borderRadius: '0',
+          zIndex: 5,
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
             <div style={{ width: 36, height: 36, borderRadius: 9, background: typeCfg.bg, border: `1px solid ${typeCfg.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <typeCfg.icon size={16} style={{ color: typeCfg.color }} />
@@ -405,16 +444,40 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>{course.title}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer' }}>
+          <button
+            onClick={onClose}
+            style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer' }}
+          >
             <X size={14} />
           </button>
         </div>
 
-        {/* Form body */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }} className="aw-ccf-scroll">
-
-            {/* ── Section Type picker ── */}
+        {/* Form — flex:1 + minHeight:0 is the critical fix */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            flex: 1,
+            minHeight: 0,          /* ✅ KEY FIX: allows flex child to shrink and scroll */
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Scrollable body — flex:1 + minHeight:0 + overflowY:auto */}
+          <div
+            className="aw-ccf-scroll"
+            style={{
+              flex: 1,
+              minHeight: 0,         /* ✅ KEY FIX */
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: '20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            {/* Section Type picker */}
             <div>
               <label className="aw-ccf-label">Section Type <span style={{ color: T.accent }}>*</span></label>
               <div style={{ display: 'flex', gap: 9 }}>
@@ -433,7 +496,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               </div>
             </div>
 
-            {/* ── Basic info ── */}
+            {/* Basic Info */}
             <SectionBlock title="Basic Info" icon={FileText} color={T.accent}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 <div>
@@ -441,7 +504,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
                   <input className="aw-ccf-input" type="text" required placeholder="e.g. Introduction to Cybersecurity" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="aw-ccf-label">Title (Arabic) <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional — falls back to English)</span></label>
+                  <label className="aw-ccf-label">Title (Arabic) <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
                   <input className="aw-ccf-input" type="text" dir="rtl" placeholder="العنوان بالعربي" value={form.title_ar} onChange={e => setForm(p => ({ ...p, title_ar: e.target.value }))} />
                 </div>
                 <div>
@@ -451,7 +514,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               </div>
             </SectionBlock>
 
-            {/* ── VIDEO ── */}
+            {/* VIDEO */}
             {form.section_type === 'VIDEO' && (
               <SectionBlock title="Video Links" icon={Video} color={T.blue}>
                 <div>
@@ -465,59 +528,47 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
               </SectionBlock>
             )}
 
-            {/* ── ARTICLE ── */}
+            {/* ARTICLE */}
             {form.section_type === 'ARTICLE' && (
               <SectionBlock title="Article Content" icon={FileText} color={T.green}>
                 <div>
                   <label className="aw-ccf-label">Content (English) <span style={{ color: T.accent }}>*</span></label>
-                  <div className="aw-ccf-editor-wrap">
-                    <div ref={quillRef} />
-                  </div>
+                  <div className="aw-ccf-editor-wrap"><div ref={quillRef} /></div>
                 </div>
                 <div>
                   <label className="aw-ccf-label">Content (Arabic) <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
-                  <div className="aw-ccf-editor-wrap">
-                    <div ref={quillArRef} dir="rtl" />
-                  </div>
+                  <div className="aw-ccf-editor-wrap"><div ref={quillArRef} dir="rtl" /></div>
                 </div>
               </SectionBlock>
             )}
 
-            {/* ── QUIZ ── */}
+            {/* QUIZ */}
             {form.section_type === 'QUIZ' && (
               <>
-                {/* ── English questions ── */}
                 <QuizBuilder
-                  title="English Questions"
-                  badge={`${quizQ.length} added`}
-                  color={T.blue}
-                  questions={quizQ}
-                  current={curQ}
-                  setCurrent={setCurQ}
-                  onAdd={handleAddQ}
-                  onRemove={i => setQuizQ(prev => prev.filter((_, j) => j !== i))}
+                  title="English Questions" badge={`${quizQ.length} added`} color={T.blue}
+                  questions={quizQ} current={curQ} setCurrent={setCurQ}
+                  onAdd={handleAddQ} onRemove={i => setQuizQ(prev => prev.filter((_, j) => j !== i))}
                   rtl={false}
                 />
-
-                {/* ── Arabic questions ── */}
                 <QuizBuilder
-                  title="Arabic Questions"
-                  badge={`${quizQAr.length} added`}
-                  color={T.purple}
-                  questions={quizQAr}
-                  current={curQAr}
-                  setCurrent={setCurQAr}
-                  onAdd={handleAddQAr}
-                  onRemove={i => setQuizQAr(prev => prev.filter((_, j) => j !== i))}
-                  rtl={true}
-                  placeholder="Uses English questions when left blank"
+                  title="Arabic Questions" badge={`${quizQAr.length} added`} color={T.purple}
+                  questions={quizQAr} current={curQAr} setCurrent={setCurQAr}
+                  onAdd={handleAddQAr} onRemove={i => setQuizQAr(prev => prev.filter((_, j) => j !== i))}
+                  rtl={true} placeholder="Uses English questions when left blank"
                 />
               </>
             )}
           </div>
 
           {/* Sticky footer */}
-          <div style={{ padding: '14px 24px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10, flexShrink: 0, background: T.bgCard }}>
+          <div style={{
+            padding: '14px 24px',
+            borderTop: `1px solid ${T.borderFaint}`,
+            display: 'flex', gap: 10,
+            flexShrink: 0,
+            background: T.bgCard,
+          }}>
             <button type="button" className="aw-ccf-cancel-btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="aw-ccf-save-btn" disabled={saving}>
               {saving
@@ -533,7 +584,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 };
 
 /* ─────────────────────────────────────────
-   QUIZ BUILDER SUB-COMPONENT
+   QUIZ BUILDER
 ───────────────────────────────────────── */
 const QuizBuilder: React.FC<{
   title: string; badge: string; color: string;
@@ -546,16 +597,28 @@ const QuizBuilder: React.FC<{
   placeholder?: string;
 }> = ({ title, badge, color, questions, current, setCurrent, onAdd, onRemove, rtl, placeholder }) => (
   <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 13, overflow: 'hidden' }}>
+    {/* Header */}
     <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 9 }}>
       <ClipboardCheck size={13} style={{ color }} />
       <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>{title}</span>
       <span style={{ marginLeft: 'auto', fontSize: 11, color, fontWeight: 700 }}>{badge}</span>
     </div>
+
     <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* Added questions */}
+      {/* ── Questions list — scrollable, max 320px ── */}
       {questions.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div
+          className="aw-ccf-qlist-scroll"
+          style={{
+            maxHeight: 320,        /* ✅ показывает ~3 вопроса, остальные скроллятся */
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            paddingRight: 4,       /* пространство для скроллбара */
+          }}
+        >
           {questions.map((q, idx) => (
             <div key={idx} className="aw-ccf-q-card">
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
@@ -580,20 +643,32 @@ const QuizBuilder: React.FC<{
         </div>
       )}
 
-      {/* Add question form */}
+      {/* ── Add question form — always visible ── */}
       <div className="aw-ccf-q-box">
         <p style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 12 }}>+ New Question</p>
 
         <div style={{ marginBottom: 10 }}>
           <label className="aw-ccf-label">Question <span style={{ color: T.accent }}>*</span></label>
-          <textarea className="aw-ccf-textarea" rows={2} dir={rtl ? 'rtl' : 'ltr'} placeholder={placeholder || 'Enter question here…'} value={current.question} onChange={e => setCurrent({ ...current, question: e.target.value })} />
+          <textarea
+            className="aw-ccf-textarea" rows={2}
+            dir={rtl ? 'rtl' : 'ltr'}
+            placeholder={placeholder || 'Enter question here…'}
+            value={current.question}
+            onChange={e => setCurrent({ ...current, question: e.target.value })}
+          />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           {([['option1','Option 1 *'],['option2','Option 2 *'],['option3','Option 3'],['option4','Option 4']] as [keyof typeof defaultQ, string][]).map(([key, label]) => (
             <div key={key}>
               <label className="aw-ccf-label">{label}</label>
-              <input className="aw-ccf-input" type="text" dir={rtl ? 'rtl' : 'ltr'} value={current[key] as string} onChange={e => setCurrent({ ...current, [key]: e.target.value })} style={{ fontSize: 13 }} />
+              <input
+                className="aw-ccf-input" type="text"
+                dir={rtl ? 'rtl' : 'ltr'}
+                value={current[key] as string}
+                onChange={e => setCurrent({ ...current, [key]: e.target.value })}
+                style={{ fontSize: 13 }}
+              />
             </div>
           ))}
         </div>
@@ -602,14 +677,20 @@ const QuizBuilder: React.FC<{
           <label className="aw-ccf-label">Correct Answer <span style={{ color: T.accent }}>*</span></label>
           {[current.option1, current.option2, current.option3, current.option4].filter(o => o.trim()).length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[current.option1, current.option2, current.option3, current.option4].filter(o => o.trim()).map((opt, i) => (
-                <div key={i} className={`aw-ccf-opt-radio ${current.correct_answer === opt ? 'correct' : ''}`} onClick={() => setCurrent({ ...current, correct_answer: opt })}>
-                  <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${current.correct_answer === opt ? T.green : 'rgba(255,255,255,0.20)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.18s' }}>
-                    {current.correct_answer === opt && <div style={{ width: 7, height: 7, borderRadius: '50%', background: T.green }} />}
+              {[current.option1, current.option2, current.option3, current.option4]
+                .filter(o => o.trim())
+                .map((opt, i) => (
+                  <div
+                    key={i}
+                    className={`aw-ccf-opt-radio ${current.correct_answer === opt ? 'correct' : ''}`}
+                    onClick={() => setCurrent({ ...current, correct_answer: opt })}
+                  >
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${current.correct_answer === opt ? T.green : 'rgba(255,255,255,0.20)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.18s' }}>
+                      {current.correct_answer === opt && <div style={{ width: 7, height: 7, borderRadius: '50%', background: T.green }} />}
+                    </div>
+                    <span style={{ fontSize: 13, color: current.correct_answer === opt ? T.green : T.textBody, direction: rtl ? 'rtl' : 'ltr' }}>{opt}</span>
                   </div>
-                  <span style={{ fontSize: 13, color: current.correct_answer === opt ? T.green : T.textBody, direction: rtl ? 'rtl' : 'ltr' }}>{opt}</span>
-                </div>
-              ))}
+                ))}
             </div>
           ) : (
             <p style={{ fontSize: 12, color: T.textMuted, padding: '8px 0' }}>Fill in options above to select the correct answer</p>
