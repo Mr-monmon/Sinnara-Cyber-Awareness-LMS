@@ -476,19 +476,16 @@ CREATE POLICY rls_phishing_campaign_targets_company_admin ON public.phishing_cam
   );
 
 -- ──────────────────────────────────────────────────────────────
--- AUDIT_LOGS
+-- AUDIT_LOGS (no company_id column — only platform admin)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_audit_logs_platform_admin ON public.audit_logs
   FOR ALL TO authenticated
   USING (public.is_platform_admin())
   WITH CHECK (public.is_platform_admin());
 
-CREATE POLICY rls_audit_logs_company_read ON public.audit_logs
+CREATE POLICY rls_audit_logs_self_read ON public.audit_logs
   FOR SELECT TO authenticated
-  USING (
-    public.get_my_role() = 'COMPANY_ADMIN'
-    AND company_id = public.get_my_company_id()
-  );
+  USING (user_id::text = auth.uid()::text);
 
 -- ──────────────────────────────────────────────────────────────
 -- DEPARTMENT_VULNERABILITY_STATS
@@ -542,17 +539,28 @@ CREATE POLICY rls_fraud_ack_company_admin ON public.fraud_alert_acknowledgments
   );
 
 -- ──────────────────────────────────────────────────────────────
--- SUPPORT_TICKET
+-- SUPPORT_TICKET (uses user_id, cast to text to handle either type)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_support_ticket_platform_admin ON public.support_ticket
   FOR ALL TO authenticated
   USING (public.is_platform_admin())
   WITH CHECK (public.is_platform_admin());
 
-CREATE POLICY rls_support_ticket_company ON public.support_ticket
+CREATE POLICY rls_support_ticket_owner ON public.support_ticket
   FOR ALL TO authenticated
-  USING (company_id = public.get_my_company_id())
-  WITH CHECK (company_id = public.get_my_company_id());
+  USING (user_id::text = auth.uid()::text)
+  WITH CHECK (user_id::text = auth.uid()::text);
+
+CREATE POLICY rls_support_ticket_company_admin_read ON public.support_ticket
+  FOR SELECT TO authenticated
+  USING (
+    public.get_my_role() = 'COMPANY_ADMIN'
+    AND EXISTS (
+      SELECT 1 FROM public.users u
+      WHERE u.id::text = support_ticket.user_id::text
+      AND u.company_id = public.get_my_company_id()
+    )
+  );
 
 -- ──────────────────────────────────────────────────────────────
 -- DEMO_REQUESTS (anon insert + platform admin full access)
