@@ -273,7 +273,7 @@ CREATE POLICY rls_assigned_exams_company_admin ON public.assigned_exams
 
 CREATE POLICY rls_assigned_exams_self ON public.assigned_exams
   FOR SELECT TO authenticated
-  USING (employee_id::text = auth.uid()::text);
+  USING (assigned_to_employee::text = auth.uid()::text);
 
 -- ──────────────────────────────────────────────────────────────
 -- EXAM_ATTEMPTS
