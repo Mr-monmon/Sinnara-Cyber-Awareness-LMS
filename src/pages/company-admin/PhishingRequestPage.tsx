@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { PhishingTemplate, PhishingCampaignQuota } from "../../lib/types";
+import { PhishingTemplate, PhishingCampaignQuota, PhishingDomain } from "../../lib/types";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -252,9 +252,10 @@ const SectionHeader: React.FC<{
 ═══════════════════════════════════════════ */
 export const PhishingRequestPage: React.FC = () => {
   const { user } = useAuth();
-  const [templates, setTemplates] = useState<PhishingTemplate[]>([]);
+  const [templates, setTemplates]   = useState<PhishingTemplate[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
-  const [quota, setQuota] = useState<PhishingCampaignQuota | null>(null);
+  const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
+  const [domains, setDomains]       = useState<PhishingDomain[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [previewTemplate, setPreviewTemplate] =
@@ -275,6 +276,7 @@ export const PhishingRequestPage: React.FC = () => {
     email_text_body: "",
     landing_page_html: "",
     redirect_url: "",
+    domain_id: "",
     from_address: "",
     from_name: "",
     track_opens: true,
@@ -291,7 +293,7 @@ export const PhishingRequestPage: React.FC = () => {
     if (!user?.company_id) return;
     try {
       const year = new Date().getFullYear();
-      const [tRes, dRes, qRes] = await Promise.all([
+      const [tRes, dRes, qRes, domRes] = await Promise.all([
         supabase
           .from("phishing_templates")
           .select("*")
@@ -308,10 +310,17 @@ export const PhishingRequestPage: React.FC = () => {
           .eq("company_id", user.company_id)
           .eq("quota_year", year)
           .maybeSingle(),
+        supabase
+          .from("phishing_domains")
+          .select("*")
+          .eq("is_platform_domain", true)
+          .eq("is_verified", true)
+          .order("domain_name"),
       ]);
       if (tRes.data) setTemplates(tRes.data);
       if (dRes.data) setDepartments(dRes.data);
       if (qRes.data) setQuota(qRes.data);
+      if (domRes.data) setDomains(domRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -399,6 +408,7 @@ export const PhishingRequestPage: React.FC = () => {
             email_text_body: form.email_text_body || null,
             landing_page_html: form.landing_page_html || null,
             redirect_url: form.redirect_url || null,
+            domain_id: form.domain_id || null,
             from_address: form.from_address || null,
             from_name: form.from_name || null,
             track_opens: form.track_opens,
@@ -1120,6 +1130,30 @@ export const PhishingRequestPage: React.FC = () => {
                       </code>{" "}
                       to personalize emails.
                     </div>
+                    {domains.length > 0 && (
+                      <div>
+                        <label className="aw-pr-label">
+                          Sending Domain <span style={{ color: T.accent }}>*</span>
+                        </label>
+                        <select
+                          className="aw-pr-select"
+                          value={form.domain_id}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, domain_id: e.target.value }))
+                          }
+                        >
+                          <option value="">— Select a verified domain —</option>
+                          {domains.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.domain_name}
+                            </option>
+                          ))}
+                        </select>
+                        <p style={{ fontSize: 11, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
+                          Emails will be sent from this domain. Domains are managed by the platform team.
+                        </p>
+                      </div>
+                    )}
                     <div
                       style={{
                         display: "grid",
@@ -1149,7 +1183,11 @@ export const PhishingRequestPage: React.FC = () => {
                         <input
                           className="aw-pr-input"
                           type="email"
-                          placeholder="support@company.com"
+                          placeholder={
+                            form.domain_id
+                              ? `support@${domains.find(d => d.id === form.domain_id)?.domain_name || 'domain.com'}`
+                              : "support@company.com"
+                          }
                           value={form.from_address}
                           onChange={(e) =>
                             setForm((p) => ({

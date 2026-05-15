@@ -17,6 +17,7 @@ import { CertificateTemplatesPage }   from "./CertificateTemplatesPage";
 import { PhishingManagementPage }     from "./PhishingManagementPage";
 import { PhishingTemplatesPage }      from "./PhishingTemplatesPage";
 import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
+import { PhishingDomainsPage }        from "./PhishingDomainsPage";
 import { DemoRequestsPage }           from "./DemoRequestsPage";
 import { PartnersManagementPage }     from "./PartnersManagementPage";
 import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
@@ -111,6 +112,7 @@ const ACTIONS = [
   { page: 'courses',                 icon: BookOpen,  color: T.cyan,    label: 'Manage Courses',         sub: 'Training content'               },
   { page: 'exams',                   icon: FileText,  color: T.orange,  label: 'Manage Exams',           sub: 'Assessments & quizzes'          },
   { page: 'phishing-management',     icon: Shield,    color: T.red,     label: 'Phishing Management',    sub: 'Campaign oversight'             },
+  { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
   { page: 'fraud-alerts-management', icon: AlertTriangle, color: T.orange, label: 'Fraud Alerts',        sub: 'Manage public alerts'           },
   { page: 'demo-requests',           icon: Bell,      color: T.purple,  label: 'Demo Requests',          sub: 'Incoming demo inquiries'        },
   { page: 'public-submissions',      icon: Globe,     color: T.blue,    label: 'Public Submissions',     sub: 'Assessment submissions'         },
@@ -175,6 +177,7 @@ export const PlatformDashboard = () => {
       case "phishing-management":      return <PhishingManagementPage />;
       case "phishing-templates":       return <PhishingTemplatesPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
+      case "phishing-domains":         return <PhishingDomainsPage />;
       case "fraud-alerts-management":  return <FraudAlertsManagementPage />;
       case "partners-management":      return <PartnersManagementPage />;
       case "support-requests":         return <SupportRequestsPage />;
