@@ -171,7 +171,7 @@ CREATE POLICY rls_course_sections_read ON public.course_sections
   FOR SELECT TO authenticated USING (true);
 
 -- ──────────────────────────────────────────────────────────────
--- COURSE_SECTION_PROGRESS
+-- COURSE_SECTION_PROGRESS (uses employee_id)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_csp_platform_admin ON public.course_section_progress
   FOR ALL TO authenticated
@@ -184,18 +184,18 @@ CREATE POLICY rls_csp_company_admin ON public.course_section_progress
     public.get_my_role() = 'COMPANY_ADMIN'
     AND EXISTS (
       SELECT 1 FROM public.users u
-      WHERE u.id::text = course_section_progress.user_id::text
+      WHERE u.id::text = course_section_progress.employee_id::text
       AND u.company_id::text = public.get_my_company_id()
     )
   );
 
 CREATE POLICY rls_csp_self ON public.course_section_progress
   FOR ALL TO authenticated
-  USING (user_id::text = auth.uid()::text)
-  WITH CHECK (user_id::text = auth.uid()::text);
+  USING (employee_id::text = auth.uid()::text)
+  WITH CHECK (employee_id::text = auth.uid()::text);
 
 -- ──────────────────────────────────────────────────────────────
--- EMPLOYEE_SECTION_PROGRESS
+-- EMPLOYEE_SECTION_PROGRESS (uses user_id)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_esp_platform_admin ON public.employee_section_progress
   FOR ALL TO authenticated
@@ -208,15 +208,15 @@ CREATE POLICY rls_esp_company_admin ON public.employee_section_progress
     public.get_my_role() = 'COMPANY_ADMIN'
     AND EXISTS (
       SELECT 1 FROM public.users u
-      WHERE u.id::text = employee_section_progress.employee_id::text
+      WHERE u.id::text = employee_section_progress.user_id::text
       AND u.company_id::text = public.get_my_company_id()
     )
   );
 
 CREATE POLICY rls_esp_self ON public.employee_section_progress
   FOR ALL TO authenticated
-  USING (employee_id::text = auth.uid()::text)
-  WITH CHECK (employee_id::text = auth.uid()::text);
+  USING (user_id::text = auth.uid()::text)
+  WITH CHECK (user_id::text = auth.uid()::text);
 
 -- ──────────────────────────────────────────────────────────────
 -- EXAMS
@@ -498,44 +498,29 @@ CREATE POLICY rls_dvs_company ON public.department_vulnerability_stats
   WITH CHECK (company_id::text = public.get_my_company_id());
 
 -- ──────────────────────────────────────────────────────────────
--- FRAUD_ALERTS
+-- FRAUD_ALERTS (global content — all authenticated read published)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_fraud_alerts_platform_admin ON public.fraud_alerts
   FOR ALL TO authenticated
   USING (public.is_platform_admin())
   WITH CHECK (public.is_platform_admin());
 
-CREATE POLICY rls_fraud_alerts_company ON public.fraud_alerts
-  FOR ALL TO authenticated
-  USING (company_id::text = public.get_my_company_id())
-  WITH CHECK (company_id::text = public.get_my_company_id());
+CREATE POLICY rls_fraud_alerts_read ON public.fraud_alerts
+  FOR SELECT TO authenticated
+  USING (is_published = true);
 
 -- ──────────────────────────────────────────────────────────────
--- FRAUD_ALERT_ACKNOWLEDGMENTS
+-- FRAUD_ALERT_ACKNOWLEDGMENTS (per-user)
 -- ──────────────────────────────────────────────────────────────
 CREATE POLICY rls_fa_ack_platform_admin ON public.fraud_alert_acknowledgments
   FOR ALL TO authenticated
   USING (public.is_platform_admin())
   WITH CHECK (public.is_platform_admin());
 
-CREATE POLICY rls_fa_ack_company_admin ON public.fraud_alert_acknowledgments
+CREATE POLICY rls_fa_ack_self ON public.fraud_alert_acknowledgments
   FOR ALL TO authenticated
-  USING (
-    public.get_my_role() = 'COMPANY_ADMIN'
-    AND EXISTS (
-      SELECT 1 FROM public.fraud_alerts fa
-      WHERE fa.id::text = fraud_alert_acknowledgments.alert_id::text
-      AND fa.company_id::text = public.get_my_company_id()
-    )
-  )
-  WITH CHECK (
-    public.get_my_role() = 'COMPANY_ADMIN'
-    AND EXISTS (
-      SELECT 1 FROM public.fraud_alerts fa
-      WHERE fa.id::text = fraud_alert_acknowledgments.alert_id::text
-      AND fa.company_id::text = public.get_my_company_id()
-    )
-  );
+  USING (user_id::text = auth.uid()::text)
+  WITH CHECK (user_id::text = auth.uid()::text);
 
 -- ──────────────────────────────────────────────────────────────
 -- SUPPORT_TICKET (uses user_id)
