@@ -112,9 +112,12 @@ const STYLES = `
   .aw-ccf-editor-wrap .ql-container {
     background:#fff !important; border-color:rgba(255,255,255,.09) !important;
     border-radius:0 0 10px 10px !important; font-family:'Inter',sans-serif !important;
-    font-size:14px !important; min-height:200px;
+    font-size:14px !important; min-height:180px;
   }
-  .aw-ccf-editor-wrap .ql-editor { min-height:200px; color:#1a1a1a !important; }
+  .aw-ccf-editor-wrap .ql-editor {
+    min-height:180px; max-height:300px;
+    overflow-y:auto !important; color:#1a1a1a !important;
+  }
   .aw-ccf-editor-wrap .ql-editor.ql-blank::before { color:#9ca3af !important; font-style:normal !important; }
 
   /* Quiz lang tabs */
@@ -373,7 +376,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       <div
         className="aw-modal-in"
         dir="ltr"
-        style={{ width: '100%', maxWidth: 740, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, maxHeight: '94vh', boxShadow: '0 40px 100px rgba(0,0,0,0.60)', fontFamily: "'Inter',sans-serif", display: 'flex', flexDirection: 'column' }}
+        style={{ width: '100%', maxWidth: 860, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, height: '92vh', maxHeight: '92vh', boxShadow: '0 40px 100px rgba(0,0,0,0.60)', fontFamily: "'Inter',sans-serif", display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Accent bar */}
@@ -396,7 +399,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div className="aw-ccf-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* Type selector */}
@@ -500,7 +503,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
                   {/* Questions list — scrollable */}
                   {activeQList.length > 0 && (
-                    <div className="aw-ccf-qscroll" style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 3 }}>
+                    <div className="aw-ccf-qscroll" style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 3 }}>
                       {activeQList.map((q, idx) => (
                         <div key={idx} className="aw-ccf-q-card">
                           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 7 }}>
