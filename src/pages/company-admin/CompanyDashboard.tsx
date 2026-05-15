@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
-  ChevronRight, Shield, Send, Medal,
+  ChevronRight, Shield, Send, Medal, Activity,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { EmployeesPage } from "./EmployeesPage";
@@ -20,6 +20,7 @@ import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import AccountSettings from "./AccountSettings";
 import { SupportRequestsPage } from "./SupportRequestsPage";
+import { RiskScorePage } from "./RiskScorePage";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -49,6 +50,9 @@ const T = {
   gold:        '#fbbf24',
   goldBg:      'rgba(251,191,36,0.08)',
   goldBorder:  'rgba(251,191,36,0.22)',
+  red:         '#f87171',
+  redBg:       'rgba(248,113,113,0.08)',
+  redBorder:   'rgba(248,113,113,0.22)',
 } as const;
 
 /* ─────────────────────────────────────────
@@ -234,6 +238,7 @@ export const CompanyDashboard = () => {
       case "phishing-request": return <PhishingRequestPage />;
       case "account":          return <AccountSettings />;
       case "support-requests": return <SupportRequestsPage />;
+      case "risk-scores":      return <RiskScorePage />;
       default:                 return renderDashboard();
     }
   };
@@ -258,6 +263,7 @@ export const CompanyDashboard = () => {
       { icon: BarChart2,      color: T.purple,  page: 'analytics',        label: 'View Analytics',     sub: 'Detailed performance reports'    },
       { icon: Shield,         color: T.orange,  page: 'phishing-dashboard', label: 'Phishing Board',   sub: 'Campaign status overview'        },
       { icon: Send,           color: T.blue,    page: 'phishing-request', label: 'Request Campaign',   sub: 'Launch a phishing simulation'    },
+      { icon: Activity,       color: T.red,     page: 'risk-scores',      label: 'Risk Scores',         sub: 'Cyber risk per employee'         },
     ] as const;
 
     return (
