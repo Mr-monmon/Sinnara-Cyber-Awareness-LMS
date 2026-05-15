@@ -12,7 +12,6 @@ import {
   CreditCard,
   History,
   Award,
-  Layout,
   FolderTree,
   Send,
   ChevronDown,
@@ -22,6 +21,9 @@ import {
   AlertCircle,
   Settings,
   HelpCircle,
+  Globe,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -188,8 +190,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       "phishing-management": "phishing-campaigns",
       "phishing-templates": "phishing-campaigns",
       "phishing-results": "phishing-campaigns",
+      "phishing-domains": "phishing-campaigns",
       "phishing-dashboard": "phishing-campaigns",
       "phishing-request": "phishing-campaigns",
+      "analytics": "reports",
+      "advanced-analytics": "reports",
+      "risk-scores": "reports",
     };
     const parent = parentMap[activePage];
     if (parent)
@@ -272,6 +278,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               id: "phishing-results",
               label: "Campaign Results",
               icon: BarChart3,
+            },
+            {
+              id: "phishing-domains",
+              label: "Sending Domains",
+              icon: Globe,
             },
           ],
         },
@@ -359,10 +370,27 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           ],
         },
         {
-          id: "analytics",
-          label: "Analytics",
+          id: "reports",
+          label: "Reports",
           icon: BarChart3,
           section: "Reports",
+          children: [
+            {
+              id: "analytics",
+              label: "Analytics",
+              icon: BarChart3,
+            },
+            {
+              id: "advanced-analytics",
+              label: "Advanced Reports",
+              icon: TrendingUp,
+            },
+            {
+              id: "risk-scores",
+              label: "Risk Scores",
+              icon: Activity,
+            },
+          ],
         },
         {
           id: "support-requests",
