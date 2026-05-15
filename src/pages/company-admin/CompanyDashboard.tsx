@@ -21,6 +21,7 @@ import InactivatedSubscription from "../../components/InactivatedSubscription";
 import AccountSettings from "./AccountSettings";
 import { SupportRequestsPage } from "./SupportRequestsPage";
 import { RiskScorePage } from "./RiskScorePage";
+import { AdvancedAnalyticsPage } from "./AdvancedAnalyticsPage";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -239,6 +240,7 @@ export const CompanyDashboard = () => {
       case "account":          return <AccountSettings />;
       case "support-requests": return <SupportRequestsPage />;
       case "risk-scores":      return <RiskScorePage />;
+      case "advanced-analytics": return <AdvancedAnalyticsPage />;
       default:                 return renderDashboard();
     }
   };
@@ -263,7 +265,8 @@ export const CompanyDashboard = () => {
       { icon: BarChart2,      color: T.purple,  page: 'analytics',        label: 'View Analytics',     sub: 'Detailed performance reports'    },
       { icon: Shield,         color: T.orange,  page: 'phishing-dashboard', label: 'Phishing Board',   sub: 'Campaign status overview'        },
       { icon: Send,           color: T.blue,    page: 'phishing-request', label: 'Request Campaign',   sub: 'Launch a phishing simulation'    },
-      { icon: Activity,       color: T.red,     page: 'risk-scores',      label: 'Risk Scores',         sub: 'Cyber risk per employee'         },
+      { icon: Activity,       color: T.red,     page: 'risk-scores',        label: 'Risk Scores',       sub: 'Cyber risk per employee'         },
+      { icon: TrendingUp,     color: T.purple,  page: 'advanced-analytics', label: 'Advanced Reports',  sub: 'Departments, courses, phishing'  },
     ] as const;
 
     return (
