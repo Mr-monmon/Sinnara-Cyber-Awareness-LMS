@@ -73,6 +73,19 @@ export interface EmployeeCourse {
   completed_at: string | null;
 }
 
+export interface PhishingDomain {
+  id: string;
+  company_id: string | null;
+  domain_name: string;
+  is_verified: boolean;
+  is_platform_domain: boolean;
+  dns_record: string | null;
+  verification_token: string | null;
+  verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PhishingCampaignRequest {
   id: string;
   admin_notes: string;
@@ -97,6 +110,7 @@ export interface PhishingCampaignRequest {
   updated_at: Date;
   ticket_number: string;
   template_id: string;
+  domain_id: string | null;
   target_employee_count: number;
   target_departments: string[];
   approved_by: string | null;
