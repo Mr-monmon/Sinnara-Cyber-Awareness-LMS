@@ -51,7 +51,7 @@ phishing_stats AS (
   SELECT
     pct.employee_id,
     COUNT(*)                                                          AS total_targeted,
-    COUNT(*) FILTER (WHERE pct.clicked_link = true)                  AS clicked,
+    COUNT(*) FILTER (WHERE pct.clicked_at IS NOT NULL)               AS clicked,
     COUNT(*) FILTER (WHERE pct.credentials_entered = true)           AS creds_entered
   FROM phishing_campaign_targets pct
   WHERE pct.employee_id IS NOT NULL
