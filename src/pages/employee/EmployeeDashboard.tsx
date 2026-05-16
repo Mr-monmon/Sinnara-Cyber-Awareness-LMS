@@ -332,21 +332,29 @@ export const EmployeeDashboard: React.FC = () => {
       const { data: certs } = await supabase
         .from("issued_certificates").select("id").eq("employee_id", user.id);
 
-      // Step 6: last accessed in-progress course for "Continue Learning"
-      const { data: lastCourseRow } = await supabase
-        .from("employee_courses")
-        .select("progress_percentage, last_accessed_at, courses(title)")
-        .eq("employee_id", user.id)
-        .eq("status", "IN_PROGRESS")
-        .order("last_accessed_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-      if (lastCourseRow) {
-        setLastCourse({
-          title: (lastCourseRow.courses as any)?.title || "Course",
-          progress_percentage: parseFloat(lastCourseRow.progress_percentage as any) || 0,
-          last_accessed_at: lastCourseRow.last_accessed_at ?? null,
-        });
+      // Step 6: last accessed in-progress course for "Continue Learning".
+      // Must be scoped to the courses this employee can actually access — otherwise
+      // we surface stale enrolment rows for courses that were de-assigned from the
+      // company or department.
+      if (accessibleCourseIds.length > 0) {
+        const { data: lastCourseRow } = await supabase
+          .from("employee_courses")
+          .select("progress_percentage, last_accessed_at, courses(title)")
+          .eq("employee_id", user.id)
+          .eq("status", "IN_PROGRESS")
+          .in("course_id", accessibleCourseIds)
+          .order("last_accessed_at", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        if (lastCourseRow) {
+          setLastCourse({
+            title: (lastCourseRow.courses as any)?.title || "Course",
+            progress_percentage: parseFloat(lastCourseRow.progress_percentage as any) || 0,
+            last_accessed_at: lastCourseRow.last_accessed_at ?? null,
+          });
+        } else {
+          setLastCourse(null);
+        }
       } else {
         setLastCourse(null);
       }
@@ -398,6 +406,23 @@ export const EmployeeDashboard: React.FC = () => {
           <Stat Icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label={t("dashboard.stats.pendingAssessments")} value={formatLocalizedNumber(stats.pendingExams,     currentLanguage)} delay="0.10s" />
           <Stat Icon={Award}          color={T.purple} bg={T.purpleBg}           label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
         </div>
+
+        {/* All Done — employee has assigned courses and finished every one */}
+        {!lastCourse && stats.assignedCourses > 0 && stats.completedCourses >= stats.assignedCourses && (
+          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: '1px solid rgba(52,211,153,0.22)', borderRadius: 14, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <CheckCircle size={24} style={{ color: T.green }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: T.white, marginBottom: 4 }}>
+                {t('dashboard.allDone.title')} 🎉
+              </div>
+              <div style={{ fontSize: 12, color: T.textBody }}>
+                {t('dashboard.allDone.subtitle')}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Continue Learning — shown only when an in-progress course exists */}
         {lastCourse && (
