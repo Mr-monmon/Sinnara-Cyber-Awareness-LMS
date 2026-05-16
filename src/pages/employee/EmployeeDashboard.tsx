@@ -259,6 +259,7 @@ export const EmployeeDashboard: React.FC = () => {
   const [company, setCompany]             = useState<Company | null>(null);
   const [stats, setStats] = useState({ assignedCourses: 0, completedCourses: 0, inProgressCourses: 0, pendingExams: 0, certificates: 0 });
   const [userRank, setUserRank] = useState(0);
+  const [lastCourse, setLastCourse] = useState<{ title: string; progress_percentage: number; last_accessed_at: string | null } | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
 
@@ -331,6 +332,25 @@ export const EmployeeDashboard: React.FC = () => {
       const { data: certs } = await supabase
         .from("issued_certificates").select("id").eq("employee_id", user.id);
 
+      // Step 6: last accessed in-progress course for "Continue Learning"
+      const { data: lastCourseRow } = await supabase
+        .from("employee_courses")
+        .select("progress_percentage, last_accessed_at, courses(title)")
+        .eq("employee_id", user.id)
+        .eq("status", "IN_PROGRESS")
+        .order("last_accessed_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastCourseRow) {
+        setLastCourse({
+          title: (lastCourseRow.courses as any)?.title || "Course",
+          progress_percentage: parseFloat(lastCourseRow.progress_percentage as any) || 0,
+          last_accessed_at: lastCourseRow.last_accessed_at ?? null,
+        });
+      } else {
+        setLastCourse(null);
+      }
+
       const { data: rankData } = await supabase.functions.invoke("get_user_rank", {
         method: "POST", body: { company_id: user.company_id, employee_id: user.id }
       });
@@ -378,6 +398,35 @@ export const EmployeeDashboard: React.FC = () => {
           <Stat Icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label={t("dashboard.stats.pendingAssessments")} value={formatLocalizedNumber(stats.pendingExams,     currentLanguage)} delay="0.10s" />
           <Stat Icon={Award}          color={T.purple} bg={T.purpleBg}           label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
         </div>
+
+        {/* Continue Learning — shown only when an in-progress course exists */}
+        {lastCourse && (
+          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: '1px solid rgba(96,165,250,0.20)', borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 11, background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <BookOpen size={20} style={{ color: T.blue }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.blue, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 3 }}>
+                {t('dashboard.quickActions.continueLearning.title')}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
+                {lastCourse.title}
+              </div>
+              <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden', maxWidth: 220 }}>
+                <div style={{ height: '100%', width: `${lastCourse.progress_percentage}%`, background: T.blue, borderRadius: 9999, boxShadow: '0 0 8px rgba(96,165,250,0.4)', transition: 'width 0.6s ease' }} />
+              </div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>
+                {Math.round(lastCourse.progress_percentage)}% {t('dashboard.charts.completed').toLowerCase()}
+              </div>
+            </div>
+            <button
+              onClick={() => setActivePage('my-courses')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 9, border: '1px solid rgba(96,165,250,0.28)', background: 'rgba(96,165,250,0.10)', color: T.blue, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+            >
+              {t('actions.continue', { ns: 'common' })} <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Security tip — full width, prominent */}
         <TipCarousel />
