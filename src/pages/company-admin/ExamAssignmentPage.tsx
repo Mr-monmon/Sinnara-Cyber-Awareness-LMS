@@ -616,9 +616,9 @@ export const ExamAssignmentPage: React.FC = () => {
           ))}
           {period === "custom" && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px" }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px", fontVariantNumeric: "tabular-nums" }} lang="en" dir="ltr" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
               <span style={{ fontSize: 11, color: T.textMuted }}>→</span>
-              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px" }} value={customTo} onChange={e => setCustomTo(e.target.value)} />
+              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px", fontVariantNumeric: "tabular-nums" }} lang="en" dir="ltr" value={customTo} onChange={e => setCustomTo(e.target.value)} />
             </div>
           )}
           <span style={{ fontSize: 11, color: T.textMuted, marginLeft: 4 }}>{filtered.length} assignments</span>
@@ -913,11 +913,11 @@ export const ExamAssignmentPage: React.FC = () => {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label className="aw-ea-label">Max Attempts <span style={{ color: T.accent }}>*</span></label>
-                    <input className="aw-ea-input" type="number" min="1" max="10" required value={maxAttempts} onChange={e => setMaxAttempts(parseInt(e.target.value) || 1)} />
+                    <input className="aw-ea-input" type="number" min="1" max="10" required value={maxAttempts} onChange={e => setMaxAttempts(parseInt(e.target.value) || 1)} lang="en" dir="ltr" style={{ fontVariantNumeric: "tabular-nums" }} />
                   </div>
                   <div>
                     <label className="aw-ea-label">Due Date <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
-                    <input className="aw-ea-input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                    <input className="aw-ea-input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} lang="en" dir="ltr" style={{ fontVariantNumeric: "tabular-nums" }} />
                   </div>
                 </div>
 
