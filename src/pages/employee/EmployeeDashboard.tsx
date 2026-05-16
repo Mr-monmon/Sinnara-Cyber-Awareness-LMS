@@ -69,20 +69,13 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-d-styles')) 
 /* ─────────────────────────────────────────
    SECURITY TIPS
 ───────────────────────────────────────── */
-const TIPS = [
-  { Icon: Key,           color: '#c8ff00', title: 'Never Share Your OTP',             body: 'One-Time Passwords are confidential. No bank, government body, or colleague should ever ask for them.' },
-  { Icon: Globe,         color: '#60a5fa', title: 'Verify Links Before Clicking',     body: 'Attackers use lookalike domains. Always inspect URLs carefully before clicking any link.' },
-  { Icon: Shield,        color: '#34d399', title: 'Use Strong Unique Passwords',      body: 'Never reuse passwords across sites. Use a password manager to generate complex credentials.' },
-  { Icon: Wifi,          color: '#a78bfa', title: 'Avoid Public Wi-Fi for Work',      body: 'Public networks can be monitored. Use a VPN or mobile data when accessing work systems.' },
-  { Icon: Smartphone,    color: '#fb923c', title: 'Enable Two-Factor Authentication', body: 'Even if your password leaks, attackers cannot log in without your second factor.' },
-  { Icon: UserX,         color: '#f87171', title: 'Beware of Shoulder Surfing',       body: 'In public spaces, shield your screen. Sensitive data can be stolen just by looking over your shoulder.' },
-  { Icon: Bell,          color: '#60a5fa', title: 'Report Suspicious Activity',       body: 'If you receive an unusual login alert or suspect a breach, notify your security team immediately.' },
-  { Icon: AlertTriangle, color: '#fb923c', title: 'Lock Your Screen When Away',       body: 'Always lock your computer when stepping away, even for a few minutes. Win+L or Cmd+Ctrl+Q.' },
-  { Icon: CheckCircle,   color: '#34d399', title: 'Recognize Phishing Emails',        body: 'Suspicious urgency, unknown senders, and unusual requests are red flags. When in doubt, report to IT.' },
-];
+const TIP_ICONS = [Key, Globe, Shield, Wifi, Smartphone, UserX, Bell, AlertTriangle, CheckCircle];
+const TIP_COLORS = ['#c8ff00', '#60a5fa', '#34d399', '#a78bfa', '#fb923c', '#f87171', '#60a5fa', '#fb923c', '#34d399'];
 
 /* ── Tip carousel ── */
 const TipCarousel: React.FC = () => {
+  const { t } = useTranslation('employee');
+  const tips: { title: string; body: string }[] = t('dashboard.securityTip.tips', { returnObjects: true }) as any;
   const [idx, setIdx]     = useState(0);
   const [cls, setCls]     = useState('aw-d-tip-in');
   const timer             = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,7 +87,7 @@ const TipCarousel: React.FC = () => {
 
   const reset = (next: number) => {
     if (timer.current) clearInterval(timer.current);
-    timer.current = setInterval(() => go((next + 1) % TIPS.length), 5000);
+    timer.current = setInterval(() => go((next + 1) % tips.length), 5000);
   };
 
   useEffect(() => {
@@ -102,20 +95,21 @@ const TipCarousel: React.FC = () => {
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [idx]);
 
-  const tip = TIPS[idx];
-  const TipIcon = tip.Icon;
+  const tip = tips[idx];
+  const TipIcon = TIP_ICONS[idx];
+  const tipColor = TIP_COLORS[idx];
 
   return (
     <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <Shield size={13} style={{ color: T.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Security Tip</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{idx + 1} / {TIPS.length}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>{t('dashboard.securityTip.label')}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{idx + 1} / {tips.length}</span>
       </div>
 
       <div className={cls} style={{ display: 'flex', gap: 13, alignItems: 'flex-start', minHeight: 70 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: tip.color + '14', border: '1px solid ' + tip.color + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <TipIcon size={16} style={{ color: tip.color }} />
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: tipColor + '14', border: '1px solid ' + tipColor + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TipIcon size={16} style={{ color: tipColor }} />
         </div>
         <div>
           <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 4px' }}>{tip.title}</p>
@@ -124,7 +118,7 @@ const TipCarousel: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginTop: 14, flexWrap: 'wrap' }}>
-        {TIPS.map((_, i) => (
+        {tips.map((_, i) => (
           <button key={i} onClick={() => { reset(i); go(i); }} style={{
             width: i === idx ? 18 : 6, height: 6, borderRadius: 9999, border: 'none', cursor: 'pointer', padding: 0,
             background: i === idx ? T.accent : 'rgba(255,255,255,0.15)',
@@ -137,21 +131,21 @@ const TipCarousel: React.FC = () => {
 };
 
 /* ── Bar chart ── */
-const BarChart: React.FC<{ completed: number; total: number }> = ({ completed, total }) => {
+const BarChart: React.FC<{ completed: number; total: number; labels: { courseCompletion: string; completed: string; remaining: string } }> = ({ completed, total, labels }) => {
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
     <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <BarChart2 size={13} style={{ color: T.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Course Completion</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>{labels.courseCompletion}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 14 }}>
         <span style={{ fontSize: 34, fontWeight: 900, color: T.white, lineHeight: 1 }}>{pct}%</span>
-        <span style={{ fontSize: 12, color: T.textMuted, marginBottom: 4 }}>completed</span>
+        <span style={{ fontSize: 12, color: T.textMuted, marginBottom: 4 }}>{labels.completed}</span>
       </div>
       {[
-        { label: 'Completed', value: completed, color: T.green, p: total > 0 ? (completed / total) * 100 : 0 },
-        { label: 'Remaining', value: total - completed, color: 'rgba(255,255,255,0.08)', p: total > 0 ? ((total - completed) / total) * 100 : 0 },
+        { label: labels.completed, value: completed,         color: T.green,                  p: total > 0 ? (completed / total) * 100 : 0 },
+        { label: labels.remaining, value: total - completed, color: 'rgba(255,255,255,0.08)', p: total > 0 ? ((total - completed) / total) * 100 : 0 },
       ].map(b => (
         <div key={b.label} style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMuted, marginBottom: 5 }}>
@@ -171,12 +165,12 @@ const BarChart: React.FC<{ completed: number; total: number }> = ({ completed, t
 };
 
 /* ── Donut chart ── */
-const Donut: React.FC<{ completed: number; inProgress: number; notStarted: number }> = ({ completed, inProgress, notStarted }) => {
+const Donut: React.FC<{ completed: number; inProgress: number; notStarted: number; labels: { coursesBreakdown: string; completed: string; inProgress: string; notStarted: string; total: string } }> = ({ completed, inProgress, notStarted, labels }) => {
   const total = Math.max(completed + inProgress + notStarted, 1);
   const slices = [
-    { v: completed,   c: T.green,                  label: 'Completed'   },
-    { v: inProgress,  c: T.blue,                   label: 'In Progress' },
-    { v: notStarted,  c: 'rgba(255,255,255,0.10)', label: 'Not Started' },
+    { v: completed,   c: T.green,                  label: labels.completed   },
+    { v: inProgress,  c: T.blue,                   label: labels.inProgress  },
+    { v: notStarted,  c: 'rgba(255,255,255,0.10)', label: labels.notStarted  },
   ].filter(s => s.v > 0);
   const R = 42; const cx = 58; const cy = 58;
   const toXY = (deg: number) => ({ x: cx + R * Math.cos((deg * Math.PI) / 180), y: cy + R * Math.sin((deg * Math.PI) / 180) });
@@ -192,20 +186,20 @@ const Donut: React.FC<{ completed: number; inProgress: number; notStarted: numbe
     <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <TrendingUp size={13} style={{ color: T.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>Courses Breakdown</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>{labels.coursesBreakdown}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         <svg width={116} height={116} viewBox="0 0 116 116" style={{ flexShrink: 0 }}>
           {paths.map((s, i) => <path key={i} d={s.d} fill={s.c} />)}
           <circle cx={cx} cy={cy} r={26} fill={T.bgCard} />
           <text x={cx} y={cy - 5} textAnchor="middle" fill={T.white} fontSize="14" fontWeight="800" fontFamily="Inter,sans-serif">{total}</text>
-          <text x={cx} y={cy + 9} textAnchor="middle" fill={T.textMuted} fontSize="9" fontFamily="Inter,sans-serif">total</text>
+          <text x={cx} y={cy + 9} textAnchor="middle" fill={T.textMuted} fontSize="9" fontFamily="Inter,sans-serif">{labels.total}</text>
         </svg>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
           {[
-            { label: 'Completed',   value: completed,   color: T.green },
-            { label: 'In Progress', value: inProgress,  color: T.blue  },
-            { label: 'Not Started', value: notStarted,  color: 'rgba(255,255,255,0.20)' },
+            { label: labels.completed,   value: completed,   color: T.green },
+            { label: labels.inProgress,  value: inProgress,  color: T.blue  },
+            { label: labels.notStarted,  value: notStarted,  color: 'rgba(255,255,255,0.20)' },
           ].map(s => (
             <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.textMuted }}>
@@ -319,8 +313,27 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Charts + tip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
-          <BarChart completed={stats.completedCourses} total={stats.assignedCourses} />
-          <Donut completed={stats.completedCourses} inProgress={stats.inProgressCourses} notStarted={notStarted} />
+          <BarChart
+            completed={stats.completedCourses}
+            total={stats.assignedCourses}
+            labels={{
+              courseCompletion: t('dashboard.charts.courseCompletion'),
+              completed: t('dashboard.charts.completed'),
+              remaining: t('dashboard.charts.remaining'),
+            }}
+          />
+          <Donut
+            completed={stats.completedCourses}
+            inProgress={stats.inProgressCourses}
+            notStarted={notStarted}
+            labels={{
+              coursesBreakdown: t('dashboard.charts.coursesBreakdown'),
+              completed: t('dashboard.charts.completed'),
+              inProgress: t('dashboard.charts.inProgress'),
+              notStarted: t('dashboard.charts.notStarted'),
+              total: t('dashboard.charts.total'),
+            }}
+          />
           <TipCarousel />
         </div>
 
