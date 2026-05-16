@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
-  ChevronRight, Shield, Send, Medal, Activity, History, FileCheck,
+  ChevronRight, Shield, Send, Medal, Activity, FileCheck,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { EmployeesPage } from "./EmployeesPage";
@@ -13,7 +13,6 @@ import { EmployeeDetailPage } from "./EmployeeDetailPage";
 import { PhishingDashboardPage } from "./PhishingDashboardPage";
 import { PhishingRequestPage } from "./PhishingRequestPage";
 import { CourseAssignmentPage } from "./CourseAssignmentPage";
-import { CompanyAuditLogsPage } from "./CompanyAuditLogsPage";
 import { ComplianceReportPage } from "./ComplianceReportPage";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -248,7 +247,6 @@ export const CompanyDashboard = () => {
       case "support-requests": return <SupportRequestsPage />;
       case "risk-scores":      return <RiskScorePage />;
       case "advanced-analytics": return <AdvancedAnalyticsPage />;
-      case "audit-logs":       return <CompanyAuditLogsPage />;
       case "compliance":       return <ComplianceReportPage />;
       default:                 return renderDashboard();
     }
@@ -276,7 +274,6 @@ export const CompanyDashboard = () => {
       { icon: Send,           color: T.blue,    page: 'phishing-request', label: 'Request Campaign',   sub: 'Launch a phishing simulation'    },
       { icon: Activity,       color: T.red,     page: 'risk-scores',        label: 'Risk Scores',       sub: 'Cyber risk per employee'         },
       { icon: TrendingUp,     color: T.purple,  page: 'advanced-analytics', label: 'Advanced Reports',  sub: 'Departments, courses, phishing'  },
-      { icon: History,        color: '#a78bfa', page: 'audit-logs',         label: 'Activity Log',      sub: 'All actions and changes'         },
       { icon: FileCheck,      color: T.green,   page: 'compliance',         label: 'Compliance Report', sub: 'NCA ECC + SAMA CSF mapping'      },
     ] as const;
 

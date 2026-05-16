@@ -394,15 +394,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           ],
         },
         {
-          id: "audit-logs",
-          label: "Activity Log",
-          icon: History,
-          section: "System",
-        },
-        {
           id: "compliance",
           label: "Compliance Report",
           icon: FileCheck,
+          section: "System",
         },
         {
           id: "support-requests",

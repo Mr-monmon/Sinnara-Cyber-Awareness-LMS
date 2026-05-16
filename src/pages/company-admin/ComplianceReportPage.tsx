@@ -76,6 +76,46 @@ function StatusBadge({ status }: { status: Status }) {
   );
 }
 
+interface Slice { value: number; color: string; label: string }
+
+function DonutChart({ slices, size = 160, stroke = 22, centerLabel }: { slices: Slice[]; size?: number; stroke?: number; centerLabel?: { value: string; sub: string } }) {
+  const total = slices.reduce((a, s) => a + s.value, 0) || 1;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
+      {slices.map((s, i) => {
+        if (s.value === 0) return null;
+        const length = (s.value / total) * circumference;
+        const dasharray = `${length} ${circumference - length}`;
+        const dashoffset = -offset;
+        offset += length;
+        return (
+          <circle
+            key={i}
+            cx={size / 2} cy={size / 2} r={radius}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={stroke}
+            strokeDasharray={dasharray}
+            strokeDashoffset={dashoffset}
+            strokeLinecap="butt"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+      })}
+      {centerLabel && (
+        <>
+          <text x={size / 2} y={size / 2 - 4} textAnchor="middle" fontSize={size / 6} fontWeight={900} fill="#ffffff" fontFamily="Inter">{centerLabel.value}</text>
+          <text x={size / 2} y={size / 2 + 16} textAnchor="middle" fontSize={size / 14} fill="#64748b" fontFamily="Inter">{centerLabel.sub}</text>
+        </>
+      )}
+    </svg>
+  );
+}
+
 export const ComplianceReportPage: React.FC = () => {
   const { user } = useAuth();
   const [stats, setStats]     = useState<Stats | null>(null);
@@ -168,21 +208,6 @@ export const ComplianceReportPage: React.FC = () => {
       ],
     },
     {
-      code: "ECC 2-3-3",
-      title: "Event Logging and Monitoring",
-      description: "Security events shall be logged, retained, and monitored.",
-      status: s.auditEventsLast90 > 0 ? "compliant" : "partial",
-      evidence: [
-        `${s.auditEventsLast90} audit events recorded in the last 90 days`,
-        "All admin actions (create / update / delete / password / login) logged",
-        "Logs retained indefinitely with tamper-resistant tenant isolation",
-        "Production error tracking via Sentry",
-      ],
-      recommendation: s.auditEventsLast90 === 0
-        ? "Ensure all admin actions are being logged"
-        : undefined,
-    },
-    {
       code: "ECC 2-13-3",
       title: "Phishing Awareness and Protection",
       description: "Employees shall be trained to recognize and resist phishing attacks.",
@@ -248,6 +273,82 @@ export const ComplianceReportPage: React.FC = () => {
 
       y = 120;
 
+      // Compliance donut chart (rendered via canvas)
+      const compliantN = controls.filter(c => c.status === "compliant").length;
+      const partialN   = controls.filter(c => c.status === "partial").length;
+      const nonN       = controls.filter(c => c.status === "non-compliant").length;
+      const overall = Math.round((compliantN / controls.length) * 100);
+
+      const chartCanvas = document.createElement("canvas");
+      const dpi = 2;
+      chartCanvas.width = 220 * dpi;
+      chartCanvas.height = 220 * dpi;
+      const ctx = chartCanvas.getContext("2d")!;
+      ctx.scale(dpi, dpi);
+      const cx = 110, cy = 110, outerR = 90, innerR = 64;
+      const totalSlices = compliantN + partialN + nonN || 1;
+      const slices = [
+        { value: compliantN, color: "#22c55e" },
+        { value: partialN,   color: "#fb923c" },
+        { value: nonN,       color: "#f87171" },
+      ];
+      let startAngle = -Math.PI / 2;
+      slices.forEach(s => {
+        if (s.value === 0) return;
+        const angle = (s.value / totalSlices) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, outerR, startAngle, startAngle + angle);
+        ctx.closePath();
+        ctx.fillStyle = s.color;
+        ctx.fill();
+        startAngle += angle;
+      });
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "#1a1e0e";
+      ctx.font = "bold 28px Helvetica";
+      ctx.textAlign = "center";
+      ctx.fillText(`${overall}%`, cx, cy + 4);
+      ctx.font = "10px Helvetica";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText("compliant", cx, cy + 20);
+
+      const chartDataUrl = chartCanvas.toDataURL("image/png");
+      doc.addImage(chartDataUrl, "PNG", margin, y, 110, 110);
+
+      // Legend next to chart
+      const legendX = margin + 130;
+      let legendY = y + 18;
+      doc.setTextColor(40, 40, 40);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("Compliance Breakdown", legendX, legendY);
+      legendY += 18;
+      const legend = [
+        { label: "Compliant",      n: compliantN, color: [34, 197, 94] as [number, number, number] },
+        { label: "Partial",        n: partialN,   color: [251, 146, 60] as [number, number, number] },
+        { label: "Non-Compliant",  n: nonN,       color: [248, 113, 113] as [number, number, number] },
+      ];
+      legend.forEach(l => {
+        doc.setFillColor(l.color[0], l.color[1], l.color[2]);
+        doc.rect(legendX, legendY - 7, 9, 9, "F");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(60, 60, 60);
+        doc.text(l.label, legendX + 14, legendY);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(20, 20, 20);
+        const pct = controls.length ? Math.round((l.n / controls.length) * 100) : 0;
+        doc.text(`${l.n}  (${pct}%)`, legendX + 110, legendY);
+        legendY += 16;
+      });
+
+      y += 130;
+
       // Executive summary
       doc.setTextColor(20, 20, 20);
       doc.setFont("helvetica", "bold");
@@ -256,14 +357,12 @@ export const ComplianceReportPage: React.FC = () => {
       y += 18;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      const compliantCount = controls.filter(c => c.status === "compliant").length;
-      const overall = Math.round((compliantCount / controls.length) * 100);
+      const compliantCount = compliantN;
       const summary = [
         `Overall compliance: ${overall}% (${compliantCount} of ${controls.length} controls compliant)`,
         `Training completion: ${stats.completionRate}% (${stats.trainedEmployees}/${stats.totalEmployees} employees)`,
         `Average assessment score: ${stats.avgScore}%`,
         `Certificates issued: ${stats.certificatesIssued}`,
-        `Audit events (last 90 days): ${stats.auditEventsLast90}`,
       ];
       summary.forEach(line => { doc.text(`• ${line}`, margin + 6, y); y += 14; });
 
@@ -412,29 +511,37 @@ export const ComplianceReportPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Overall score */}
-      <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
-        <div style={{ flex: 1 }}>
+      {/* Overall score with donut chart */}
+      <div style={{ display: "flex", alignItems: "center", gap: 28, padding: "22px 28px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, flexWrap: "wrap" }}>
+        <DonutChart
+          size={180}
+          stroke={26}
+          slices={[
+            { value: controls.filter(c => c.status === "compliant").length,    color: T.green,  label: "Compliant" },
+            { value: controls.filter(c => c.status === "partial").length,      color: T.orange, label: "Partial" },
+            { value: controls.filter(c => c.status === "non-compliant").length, color: T.red,   label: "Non-Compliant" },
+          ]}
+          centerLabel={{ value: `${overall}%`, sub: "compliant" }}
+        />
+        <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 12, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.6px", fontWeight: 700 }}>Overall Compliance</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
-            <span style={{ fontSize: 40, fontWeight: 900, color: overall >= 80 ? T.green : overall >= 50 ? T.orange : T.red, letterSpacing: "-1px" }}>
-              {overall}%
-            </span>
-            <span style={{ fontSize: 13, color: T.textBody }}>
-              {compliantCount} of {controls.length} controls compliant
-            </span>
+          <div style={{ fontSize: 14, color: T.textBody, marginTop: 4, marginBottom: 16 }}>
+            {compliantCount} of {controls.length} controls fully compliant
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 16 }}>
-          {(["compliant", "partial", "non-compliant"] as Status[]).map(s => {
-            const n = controls.filter(c => c.status === s).length;
-            return (
-              <div key={s} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: STATUS_CFG[s].color }}>{n}</div>
-                <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.4px" }}>{STATUS_CFG[s].label}</div>
-              </div>
-            );
-          })}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(["compliant", "partial", "non-compliant"] as Status[]).map(s => {
+              const n = controls.filter(c => c.status === s).length;
+              const pct = controls.length ? Math.round((n / controls.length) * 100) : 0;
+              return (
+                <div key={s} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 3, background: STATUS_CFG[s].color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: T.textLabel, flex: 1 }}>{STATUS_CFG[s].label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>{n}</span>
+                  <span style={{ fontSize: 12, color: T.textMuted, width: 38, textAlign: "right" }}>{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -444,7 +551,6 @@ export const ComplianceReportPage: React.FC = () => {
         <StatCard label="Training Rate" value={`${stats.completionRate}%`} hint="Across mandatory courses" />
         <StatCard label="Avg. Score" value={`${stats.avgScore}%`} hint="All assessments" />
         <StatCard label="Certificates" value={stats.certificatesIssued} hint="Issued to date" />
-        <StatCard label="Audit Events" value={stats.auditEventsLast90} hint="Last 90 days" />
         <StatCard label="Logins" value={stats.recentLogins} hint="Last 30 days" />
       </div>
 
