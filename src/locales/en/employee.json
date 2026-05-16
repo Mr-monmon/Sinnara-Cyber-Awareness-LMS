@@ -53,6 +53,10 @@
       "completedCourses": "Completed Courses",
       "pendingAssessments": "Pending Assessments",
       "certificatesEarned": "Certificates Earned"
+    },
+    "allDone": {
+      "title": "You've completed every course",
+      "subtitle": "Great work! We'll notify you when a new course is assigned."
     }
   },
   "navigation": {

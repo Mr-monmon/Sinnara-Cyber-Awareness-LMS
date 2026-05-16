@@ -53,6 +53,10 @@
       "completedCourses": "الدورات المكتملة",
       "pendingAssessments": "التقييمات المعلقة",
       "certificatesEarned": "الشهادات المحصلة"
+    },
+    "allDone": {
+      "title": "لقد أنهيت جميع الدورات",
+      "subtitle": "عمل رائع! سنخبرك عند إسناد دورة جديدة."
     }
   },
   "navigation": {
