@@ -259,7 +259,7 @@ export const ExamAssignmentPage: React.FC = () => {
       .select("assigned_to_employee, assigned_to_department")
       .eq("exam_id", examId)
       .eq("company_id", user.company_id)
-      .eq("status", "active")
+      .in("status", ["active", "completed"])
       .then(({ data }) => {
         const empIds  = new Set<string>((data || []).flatMap(a => a.assigned_to_employee  ? [a.assigned_to_employee]  : []));
         const deptIds = new Set<string>((data || []).flatMap(a => a.assigned_to_department ? [a.assigned_to_department] : []));
@@ -500,7 +500,7 @@ export const ExamAssignmentPage: React.FC = () => {
         .select("assigned_to_employee, assigned_to_department")
         .eq("exam_id", examId)
         .eq("company_id", user!.company_id)
-        .eq("status", "active");
+        .in("status", ["active", "completed"]);
       const coveredEmpIds  = new Set<string>((existingAsgn || []).flatMap(a => a.assigned_to_employee  ? [a.assigned_to_employee]  : []));
       const coveredDeptIds = new Set<string>((existingAsgn || []).flatMap(a => a.assigned_to_department ? [a.assigned_to_department] : []));
 
