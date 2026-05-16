@@ -240,18 +240,11 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
       { onConflict: "employee_id,section_id" }
     );
     if (error) { alert(t("courseViewer.completionFailed", { ns: "employee", message: error.message })); return; }
+    // employee_courses summary (completed_sections, total_sections, progress_percentage,
+    // status, started_at, completed_at, last_accessed_at) is auto-maintained by the
+    // trg_sync_employee_course_progress trigger.
     await loadCourseData();
-    await updateCourseProgress();
     if (sections[currentSectionIndex + 1]?.section_type === "QUIZ") { setQuizSubmitted(false); setQuizAnswers({}); }
-  };
-
-  const updateCourseProgress = async () => {
-    if (!user) return;
-    const completedCount = Object.values(progress).filter(p => p.completed).length + 1;
-    const progressPercent = Math.round((completedCount / totalSections) * 100);
-    await supabase.from("employee_courses")
-      .update({ progress_percentage: progressPercent, completed_at: progressPercent === 100 ? new Date().toISOString() : null, last_accessed_at: new Date().toISOString() })
-      .eq("employee_id", user.id).eq("course_id", courseId);
   };
 
   const handleNextSection = () => {
@@ -265,14 +258,8 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     if (!user) return;
     const allCompleted = sections.every(s => progress[s.id]?.completed);
     if (!allCompleted) { alert(t("courseViewer.completeAllSections", { ns: "employee" })); return; }
-    const completedDate = new Date().toISOString();
-    const { data: existing, error: checkError } = await supabase.from("employee_courses").select("id, status").eq("employee_id", user.id).eq("course_id", courseId).maybeSingle();
-    if (checkError) { alert(t("courseViewer.checkEnrollmentError", { ns: "employee", message: checkError.message })); return; }
-    if (existing?.status === "COMPLETED") { alert(t("courseViewer.alreadyCompleted", { ns: "employee" })); onBack(); return; }
-    const { error: updateError } = await supabase.from("employee_courses")
-      .update({ status: "COMPLETED", progress_percentage: 100, completed_at: completedDate, last_accessed_at: completedDate, completed_sections: sections.length, total_sections: sections.length })
-      .eq("employee_id", user.id).eq("course_id", courseId);
-    if (updateError) { alert(t("courseViewer.completionFailed", { ns: "employee", message: updateError.message })); return; }
+    // employee_courses.status is auto-set to COMPLETED by the progress trigger
+    // once all sections are done. Wait briefly for the certificate trigger to fire.
     await new Promise(resolve => setTimeout(resolve, 2000));
     const { data: certificate } = await supabase.from("issued_certificates").select("*").eq("employee_id", user.id).eq("course_id", courseId).maybeSingle();
     if (!certificate) {
