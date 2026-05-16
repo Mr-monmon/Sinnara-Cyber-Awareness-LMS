@@ -3,6 +3,8 @@ import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck, CheckCircle } from "lucide
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
+import { checkPassword } from "../../lib/passwordPolicy";
+import { PasswordStrengthMeter } from "../../components/PasswordStrengthMeter";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -157,7 +159,8 @@ const AccountSettings = () => {
 
     if (!user?.id) { setError("Unable to identify the current user. Please sign in again."); return; }
     if (!formData.currentPassword || !formData.newPassword || !formData.confirmPassword) { setError("Please complete all password fields."); return; }
-    if (formData.newPassword.length < 6) { setError("New password must be at least 6 characters long."); return; }
+    const policy = checkPassword(formData.newPassword, user.email);
+    if (!policy.valid) { setError(`New password does not meet the policy: ${policy.errors.join(", ")}.`); return; }
     if (formData.newPassword !== formData.confirmPassword) { setError("New password and confirmation do not match."); return; }
     if (formData.currentPassword === formData.newPassword) { setError("New password must be different from the current password."); return; }
 
@@ -258,19 +261,22 @@ const AccountSettings = () => {
             <div style={{ padding: '14px 16px', background: 'rgba(200,255,0,0.04)', border: '1px solid rgba(200,255,0,0.12)', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <CheckCircle size={15} style={{ color: T.accent, flexShrink: 0, marginTop: 1 }} />
               <p style={{ fontSize: 13, color: T.textBody, lineHeight: '20px', margin: 0 }}>
-                Use at least 6 characters. Avoid reusing your current password.
+                Use at least 10 characters with upper, lower, number, and symbol.
               </p>
             </div>
 
-            <PasswordField
-              label="New Password"
-              value={formData.newPassword}
-              placeholder="Enter a new password"
-              autoComplete="new-password"
-              show={showPassword.newPassword}
-              onToggle={() => toggleShow('newPassword')}
-              onChange={val => setField('newPassword', val)}
-            />
+            <div>
+              <PasswordField
+                label="New Password"
+                value={formData.newPassword}
+                placeholder="Enter a new password"
+                autoComplete="new-password"
+                show={showPassword.newPassword}
+                onToggle={() => toggleShow('newPassword')}
+                onChange={val => setField('newPassword', val)}
+              />
+              <PasswordStrengthMeter password={formData.newPassword} email={user?.email} />
+            </div>
 
             <PasswordField
               label="Confirm New Password"

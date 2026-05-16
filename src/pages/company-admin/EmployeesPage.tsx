@@ -12,12 +12,14 @@ import {
   Loader2,
   Search,
   Users,
+  Unlock,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { User as UserType } from "../../lib/types";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
+import { generateStrongPassword } from "../../lib/passwordPolicy";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -202,6 +204,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [lockedEmails, setLockedEmails] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditing] = useState<UserType | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -216,13 +219,14 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     email: "",
     phone: "",
     employee_id: "",
-    password: "employee123",
+    password: generateStrongPassword(),
     department_id: "",
   });
 
   useEffect(() => {
     loadEmployees();
     loadDepartments();
+    loadLockouts();
   }, [currentUser]);
 
   const loadEmployees = async () => {
@@ -234,6 +238,25 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       .eq("role", "EMPLOYEE")
       .order("created_at", { ascending: false });
     if (data) setEmployees(data);
+  };
+
+  const loadLockouts = async () => {
+    const { data } = await supabase
+      .from("account_lockouts")
+      .select("email, locked_until")
+      .gt("locked_until", new Date().toISOString());
+    setLockedEmails(new Set((data ?? []).map((r) => r.email.toLowerCase())));
+  };
+
+  const handleUnlock = async (emp: UserType) => {
+    if (!confirm(`Unlock account for ${emp.full_name} (${emp.email})?`)) return;
+    const { error } = await supabase.rpc("admin_unlock_account", { p_email: emp.email });
+    if (error) {
+      alert(`Failed to unlock: ${error.message}`);
+      return;
+    }
+    alert(`Account unlocked for ${emp.email}`);
+    loadLockouts();
   };
 
   const loadDepartments = async () => {
@@ -252,7 +275,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       email: "",
       phone: "",
       employee_id: "",
-      password: "employee123",
+      password: generateStrongPassword(),
       department_id: "",
     });
 
@@ -330,7 +353,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       email: emp.email,
       phone: emp.phone || "",
       employee_id: emp.employee_id || "",
-      password: "employee123",
+      password: generateStrongPassword(),
       department_id: emp.department_id || "",
     });
     setShowModal(true);
@@ -364,17 +387,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   };
 
   const handleResetPassword = async (emp: UserType) => {
-    if (
-      !confirm(`Reset password for ${emp.full_name} to default (employee123)?`)
-    )
-      return;
+    if (!confirm(`Reset password for ${emp.full_name}? A new strong password will be generated.`)) return;
+    const newPassword = generateStrongPassword();
     try {
       const { data: resetResult, error: resetError } =
         await supabase.functions.invoke("user-admin", {
           body: {
             action: "resetPassword",
             userId: emp.id,
-            password: "employee123",
+            password: newPassword,
           },
         });
 
@@ -382,7 +403,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         throw new Error(resetResult?.error || "Failed to reset password");
 
       alert(
-        `Password reset successfully!\nEmail: ${emp.email}\nNew Password: employee123`
+        `Password reset successfully!\nEmail: ${emp.email}\nNew Password: ${newPassword}\n\nShare this securely with the employee.`
       );
 
       try {
@@ -517,13 +538,19 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         const deptId = row.department
           ? deptLookup.get(row.department.trim().toLowerCase()) || null
           : null;
+        // Use CSV password only if it meets policy; otherwise auto-generate
+        const csvPassword = row.password?.trim();
+        const password =
+          csvPassword && csvPassword.length >= 10 && /[A-Z]/.test(csvPassword) && /[a-z]/.test(csvPassword) && /[0-9]/.test(csvPassword) && /[^A-Za-z0-9]/.test(csvPassword)
+            ? csvPassword
+            : generateStrongPassword();
         validRows.push({
           full_name: row["full name"],
           email: row.email,
           employee_id: row["employee id"],
           phone: row.phone,
           department_id: deptId,
-          password: row.password,
+          password,
           role: "EMPLOYEE",
           company_id: currentUser.company_id,
         });
@@ -913,6 +940,16 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                         onClick={() => onViewEmployee(emp.id)}
                       >
                         <Eye size={13} />
+                      </button>
+                    )}
+                    {lockedEmails.has(emp.email.toLowerCase()) && (
+                      <button
+                        className="aw-emp-icon-btn reset"
+                        title="Account locked — click to unlock"
+                        onClick={() => handleUnlock(emp)}
+                        style={{ background: "rgba(248,113,113,0.12)", borderColor: "rgba(248,113,113,0.35)" }}
+                      >
+                        <Unlock size={13} style={{ color: "#f87171" }} />
                       </button>
                     )}
                     <button

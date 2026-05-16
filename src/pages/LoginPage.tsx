@@ -3,6 +3,7 @@ import { ArrowLeft, Shield, Lock, Mail } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { buildApexRedirectUrl } from "../lib/browserTenant";
+import { supabase } from "../lib/supabase";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -117,9 +118,25 @@ export const LoginPage = ({
     setError("");
     setLoading(true);
     try {
+      // 1. Pre-flight lockout check
+      const { data: lockData } = await supabase.rpc("check_account_lockout", { p_email: email });
+      const lockRow = Array.isArray(lockData) ? lockData[0] : lockData;
+      if (lockRow?.locked) {
+        setError(
+          `Account temporarily locked due to too many failed login attempts. Try again in ${lockRow.minutes_remaining} minute(s), or contact your administrator.`
+        );
+        return;
+      }
+
+      // 2. Attempt login
       const result = await login(email, password);
 
       if (result === "success") {
+        await supabase.rpc("record_login_attempt", {
+          p_email: email,
+          p_success: true,
+          p_user_agent: navigator.userAgent,
+        });
         navigate("/dashboard", { replace: true });
         return;
       }
@@ -129,7 +146,25 @@ export const LoginPage = ({
         return;
       }
 
-      setError("Invalid email or password. Please try again.");
+      // 3. Record failure and surface lockout if it triggered
+      const { data: attemptData } = await supabase.rpc("record_login_attempt", {
+        p_email: email,
+        p_success: false,
+        p_user_agent: navigator.userAgent,
+      });
+      const attemptRow = Array.isArray(attemptData) ? attemptData[0] : attemptData;
+      if (attemptRow?.locked) {
+        setError(
+          "Too many failed attempts. Your account has been locked for 15 minutes. Contact your administrator if you need immediate access."
+        );
+      } else {
+        const remaining = Math.max(0, 5 - (attemptRow?.failed_count ?? 0));
+        setError(
+          remaining > 0 && remaining <= 2
+            ? `Invalid email or password. ${remaining} attempt(s) remaining before account lock.`
+            : "Invalid email or password. Please try again."
+        );
+      }
     } catch {
       setError("Invalid email or password. Please try again.");
     } finally {

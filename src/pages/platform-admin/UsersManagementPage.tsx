@@ -23,6 +23,7 @@ import {
   buildTenantRedirectUrl,
 } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
+import { generateStrongPassword, checkPassword } from "../../lib/passwordPolicy";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -562,6 +563,12 @@ export const UsersManagementPage: React.FC = () => {
       return;
     }
 
+    const policy = checkPassword(newUserData.password, newUserData.email);
+    if (!policy.valid) {
+      alert(`Password does not meet policy:\n• ${policy.errors.join("\n• ")}`);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -637,12 +644,18 @@ export const UsersManagementPage: React.FC = () => {
     userFullName: string,
     companyId?: string
   ) => {
-    const newPassword = prompt("Enter new password for " + userEmail + ":");
+    const useGenerated = confirm(
+      `Reset password for ${userEmail}?\n\nClick OK to auto-generate a strong password, or Cancel to enter one manually.`
+    );
+    const newPassword = useGenerated
+      ? generateStrongPassword()
+      : prompt("Enter new password (10+ chars, upper, lower, number, symbol):");
 
     if (!newPassword) return;
 
-    if (newPassword.length < 6) {
-      alert("Password must be at least 6 characters long");
+    const policy = checkPassword(newPassword, userEmail);
+    if (!policy.valid) {
+      alert(`Password does not meet policy:\n• ${policy.errors.join("\n• ")}`);
       return;
     }
 
@@ -896,7 +909,7 @@ export const UsersManagementPage: React.FC = () => {
             full_name: fullName,
             phone: phoneIndex !== -1 ? values[phoneIndex] : null,
             department: deptIndex !== -1 ? values[deptIndex] : null,
-            password: "Password123!",
+            password: generateStrongPassword(),
             role: "EMPLOYEE",
             company_id: uploadCompanyId,
           });
@@ -949,7 +962,7 @@ export const UsersManagementPage: React.FC = () => {
                   loginUrl: getLoginUrlForCompany(uploadCompanyId),
                   credentials: {
                     email: emp.email,
-                    password: "Password123!",
+                    password: emp.password,
                     role: "Employee",
                   },
                   showSecurityNote: true,
