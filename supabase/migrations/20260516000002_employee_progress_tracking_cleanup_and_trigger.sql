@@ -99,18 +99,5 @@ FOR EACH ROW EXECUTE FUNCTION public.sync_employee_course_progress();
 -- ---------- Step 4: backfill existing data ----------
 -- Recompute summary for every existing employee+course pair that has any
 -- section progress so old rows align with the new source-of-truth.
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN
-    SELECT DISTINCT employee_id, course_id
-    FROM course_section_progress
-  LOOP
-    -- Fire the trigger logic by doing a no-op update
-    UPDATE course_section_progress
-       SET completed = completed
-     WHERE employee_id = r.employee_id
-       AND course_id   = r.course_id
-     LIMIT 1;
-  END LOOP;
-END $$;
+-- The trigger is idempotent so firing it multiple times per pair is fine.
+UPDATE course_section_progress SET completed = completed;
