@@ -100,28 +100,47 @@ const TipCarousel: React.FC = () => {
   const tipColor = TIP_COLORS[idx];
 
   return (
-    <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Shield size={13} style={{ color: T.accent }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '1px', textTransform: 'uppercase' }}>{t('dashboard.securityTip.label')}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{idx + 1} / {tips.length}</span>
+    <div style={{
+      background: `linear-gradient(135deg, ${T.bgCard} 0%, rgba(200,255,0,0.04) 100%)`,
+      border: `1px solid ${tipColor}33`,
+      borderRadius: 16, padding: '28px 32px', position: 'relative', overflow: 'hidden',
+    }}>
+      <div aria-hidden="true" style={{
+        position: 'absolute', top: -60, right: -60, width: 180, height: 180,
+        borderRadius: '50%', background: `radial-gradient(circle, ${tipColor}14, transparent 70%)`,
+        pointerEvents: 'none',
+      }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, position: 'relative' }}>
+        <Shield size={16} style={{ color: T.accent }} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: T.accent, letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+          {t('dashboard.securityTip.label')}
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: T.textMuted }}>
+          {idx + 1} / {tips.length}
+        </span>
       </div>
 
-      <div className={cls} style={{ display: 'flex', gap: 13, alignItems: 'flex-start', minHeight: 70 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: tipColor + '14', border: '1px solid ' + tipColor + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <TipIcon size={16} style={{ color: tipColor }} />
+      <div className={cls} style={{ display: 'flex', gap: 22, alignItems: 'center', minHeight: 110, position: 'relative' }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: 16,
+          background: tipColor + '1a', border: '1px solid ' + tipColor + '40',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          boxShadow: `0 0 24px ${tipColor}33`,
+        }}>
+          <TipIcon size={34} style={{ color: tipColor }} />
         </div>
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 4px' }}>{tip.title}</p>
-          <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: '19px', margin: 0 }}>{tip.body}</p>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 20, fontWeight: 800, color: T.white, margin: '0 0 8px', lineHeight: 1.25 }}>{tip.title}</p>
+          <p style={{ fontSize: 14, color: '#cbd5e1', lineHeight: '22px', margin: 0 }}>{tip.body}</p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginTop: 14, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 5, marginTop: 22, flexWrap: 'wrap', position: 'relative' }}>
         {tips.map((_, i) => (
           <button key={i} onClick={() => { reset(i); go(i); }} style={{
-            width: i === idx ? 18 : 6, height: 6, borderRadius: 9999, border: 'none', cursor: 'pointer', padding: 0,
-            background: i === idx ? T.accent : 'rgba(255,255,255,0.15)',
+            width: i === idx ? 28 : 8, height: 8, borderRadius: 9999, border: 'none', cursor: 'pointer', padding: 0,
+            background: i === idx ? T.accent : 'rgba(255,255,255,0.18)',
             transition: 'width 0.3s, background 0.3s',
           }} />
         ))}
@@ -262,16 +281,65 @@ export const EmployeeDashboard: React.FC = () => {
   };
 
   const loadStats = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !user?.company_id) return;
     try {
-      const { data: courses } = await supabase.from("employee_courses").select("*").eq("employee_id", user.id);
-      const { data: certs }   = await supabase.from("exam_attempts").select("id").eq("employee_id", user.id).eq("passed", true);
-      const { data: rankData } = await supabase.functions.invoke("get_user_rank", { method: "POST", body: { company_id: user.company_id, employee_id: user.id } });
+      // Step 1: company courses
+      const { data: ccData } = await supabase
+        .from("company_courses").select("course_id").eq("company_id", user.company_id);
+      const companyCourseIds: string[] = (ccData ?? []).map((r: any) => r.course_id);
+
+      // Step 2: department restrictions
+      const { data: deptRestrictions } = await supabase
+        .from("company_course_departments")
+        .select("course_id, department_id")
+        .eq("company_id", user.company_id)
+        .in("course_id", companyCourseIds.length ? companyCourseIds : ["00000000-0000-0000-0000-000000000000"]);
+      const courseDeptMap: Record<string, string[]> = {};
+      (deptRestrictions ?? []).forEach((r: any) => {
+        if (!courseDeptMap[r.course_id]) courseDeptMap[r.course_id] = [];
+        courseDeptMap[r.course_id].push(r.department_id);
+      });
+
+      // Step 3: accessible courses for this employee
+      const accessibleCourseIds = companyCourseIds.filter(courseId => {
+        const allowedDepts = courseDeptMap[courseId];
+        if (!allowedDepts || allowedDepts.length === 0) return true;
+        if (user.department_id) return allowedDepts.includes(user.department_id);
+        return false;
+      });
+
+      // Step 4: employee_courses scoped to accessible courses, deduped by course_id
+      let completedCount = 0, inProgressCount = 0, totalCount = 0;
+      if (accessibleCourseIds.length > 0) {
+        const { data: ecRows } = await supabase
+          .from("employee_courses")
+          .select("course_id, status")
+          .eq("employee_id", user.id)
+          .in("course_id", accessibleCourseIds);
+
+        const latestByCourse = new Map<string, string>();
+        (ecRows ?? []).forEach((r: any) => latestByCourse.set(r.course_id, r.status));
+
+        totalCount = accessibleCourseIds.length;
+        latestByCourse.forEach(status => {
+          if (status === "COMPLETED") completedCount++;
+          else if (status === "IN_PROGRESS") inProgressCount++;
+        });
+      }
+
+      // Step 5: real certificates from issued_certificates
+      const { data: certs } = await supabase
+        .from("issued_certificates").select("id").eq("employee_id", user.id);
+
+      const { data: rankData } = await supabase.functions.invoke("get_user_rank", {
+        method: "POST", body: { company_id: user.company_id, employee_id: user.id }
+      });
       setUserRank(rankData?.index || 0);
+
       setStats({
-        assignedCourses:   courses?.length || 0,
-        completedCourses:  courses?.filter((c: any) => c.status === "COMPLETED").length   || 0,
-        inProgressCourses: courses?.filter((c: any) => c.status === "IN_PROGRESS").length || 0,
+        assignedCourses:   totalCount,
+        completedCourses:  completedCount,
+        inProgressCourses: inProgressCount,
         pendingExams:      assignedExams.length,
         certificates:      certs?.length || 0,
       });
@@ -311,8 +379,11 @@ export const EmployeeDashboard: React.FC = () => {
           <Stat Icon={Award}          color={T.purple} bg={T.purpleBg}           label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
         </div>
 
-        {/* Charts + tip */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
+        {/* Security tip — full width, prominent */}
+        <TipCarousel />
+
+        {/* Charts */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14 }}>
           <BarChart
             completed={stats.completedCourses}
             total={stats.assignedCourses}
@@ -334,7 +405,6 @@ export const EmployeeDashboard: React.FC = () => {
               total: t('dashboard.charts.total'),
             }}
           />
-          <TipCarousel />
         </div>
 
         {/* Fraud alerts */}
