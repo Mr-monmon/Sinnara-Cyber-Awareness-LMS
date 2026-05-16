@@ -77,7 +77,9 @@ export const FraudAlertWidget: React.FC<FraudAlertWidgetProps> = ({ onNavigate }
     );
   }
 
-  if (unacknowledgedCount === 0 && alerts.length === 0) {
+  // Hide widget when there are no unacknowledged alerts — employees can
+  // still access the full Fraud Alerts page from the sidebar.
+  if (unacknowledgedCount === 0) {
     return null;
   }
 
