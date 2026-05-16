@@ -19,6 +19,7 @@ import { CompanyFormModal } from "../../components/platform-admin/CompanyFormMod
 import { useAuth } from "../../contexts/AuthContext";
 import { buildTenantRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
+import { generateStrongPassword } from "../../lib/passwordPolicy";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -339,12 +340,13 @@ export const CompaniesPage: React.FC = () => {
           .single();
         if (coErr) throw coErr;
 
+        const adminPassword = generateStrongPassword();
         const { data: adminResult, error: adminError } =
           await supabase.functions.invoke("user-admin", {
             body: {
               action: "createUser",
               email: formData.admin_email,
-              password: "Admin123!",
+              password: adminPassword,
               full_name: formData.admin_name,
               phone: formData.admin_phone || null,
               role: "COMPANY_ADMIN",
@@ -400,7 +402,7 @@ export const CompaniesPage: React.FC = () => {
               loginUrl,
               credentials: {
                 email: formData.admin_email,
-                password: "Admin123!",
+                password: adminPassword,
                 role: "Company Admin",
               },
               showSecurityNote: true,
