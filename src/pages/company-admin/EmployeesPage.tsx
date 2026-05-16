@@ -20,6 +20,7 @@ import { User as UserType } from "../../lib/types";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
+import { getActiveSubscription } from "../../lib/subscription";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -205,6 +206,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [lockedEmails, setLockedEmails] = useState<Set<string>>(new Set());
+  const [licenseLimit, setLicenseLimit] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditing] = useState<UserType | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -227,7 +229,14 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     loadEmployees();
     loadDepartments();
     loadLockouts();
+    loadLicenseLimit();
   }, [currentUser]);
+
+  const loadLicenseLimit = async () => {
+    if (!currentUser?.company_id) return;
+    const sub = await getActiveSubscription(currentUser.company_id);
+    setLicenseLimit(sub?.license_count ?? null);
+  };
 
   const loadEmployees = async () => {
     if (!currentUser?.company_id) return;
@@ -289,6 +298,12 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingEmployee && licenseLimit !== null && employees.length >= licenseLimit) {
+      alert(
+        `You have reached your subscription limit of ${licenseLimit} employees. Contact your account manager to upgrade.`
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       if (editingEmployee) {

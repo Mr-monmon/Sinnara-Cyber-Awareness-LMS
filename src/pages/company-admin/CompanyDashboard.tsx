@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
-  ChevronRight, Shield, Send, Medal, Activity, History,
+  ChevronRight, Shield, Send, Medal, Activity, History, FileCheck,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { EmployeesPage } from "./EmployeesPage";
@@ -14,6 +14,7 @@ import { PhishingDashboardPage } from "./PhishingDashboardPage";
 import { PhishingRequestPage } from "./PhishingRequestPage";
 import { CourseAssignmentPage } from "./CourseAssignmentPage";
 import { CompanyAuditLogsPage } from "./CompanyAuditLogsPage";
+import { ComplianceReportPage } from "./ComplianceReportPage";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { Company } from "../../lib/types";
@@ -23,6 +24,8 @@ import AccountSettings from "./AccountSettings";
 import { SupportRequestsPage } from "./SupportRequestsPage";
 import { RiskScorePage } from "./RiskScorePage";
 import { AdvancedAnalyticsPage } from "./AdvancedAnalyticsPage";
+import { SubscriptionBanner } from "../../components/SubscriptionBanner";
+import { getActiveSubscription, type SubscriptionInfo } from "../../lib/subscription";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -184,6 +187,7 @@ export const CompanyDashboard = () => {
   const { user }    = useAuth();
   const [activePage, setActivePage]             = useState("dashboard");
   const [company, setCompany]                   = useState<Company | null>(null);
+  const [subscription, setSubscription]         = useState<SubscriptionInfo | null>(null);
   const [isLoading, setIsLoading]               = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [stats, setStats] = useState({ totalEmployees: 0, completedTraining: 0, averageScore: 0, pendingAssessments: 0 });
@@ -222,6 +226,8 @@ export const CompanyDashboard = () => {
     try {
       const { data } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).single();
       setCompany(data);
+      const sub = await getActiveSubscription(user.company_id);
+      setSubscription(sub);
       setIsLoading(false);
     } catch { setIsLoading(false); }
   };
@@ -243,6 +249,7 @@ export const CompanyDashboard = () => {
       case "risk-scores":      return <RiskScorePage />;
       case "advanced-analytics": return <AdvancedAnalyticsPage />;
       case "audit-logs":       return <CompanyAuditLogsPage />;
+      case "compliance":       return <ComplianceReportPage />;
       default:                 return renderDashboard();
     }
   };
@@ -270,6 +277,7 @@ export const CompanyDashboard = () => {
       { icon: Activity,       color: T.red,     page: 'risk-scores',        label: 'Risk Scores',       sub: 'Cyber risk per employee'         },
       { icon: TrendingUp,     color: T.purple,  page: 'advanced-analytics', label: 'Advanced Reports',  sub: 'Departments, courses, phishing'  },
       { icon: History,        color: '#a78bfa', page: 'audit-logs',         label: 'Activity Log',      sub: 'All actions and changes'         },
+      { icon: FileCheck,      color: T.green,   page: 'compliance',         label: 'Compliance Report', sub: 'NCA ECC + SAMA CSF mapping'      },
     ] as const;
 
     return (
@@ -500,6 +508,11 @@ export const CompanyDashboard = () => {
       {isLoading ? <LoadingScreen /> :
        company?.is_active ? (
         <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
+          {(subscription?.expires_soon || subscription?.expired) && (
+            <div style={{ marginBottom: 16 }}>
+              <SubscriptionBanner sub={subscription} />
+            </div>
+          )}
           {renderContent()}
         </DashboardLayout>
       ) : <InactivatedSubscription />}

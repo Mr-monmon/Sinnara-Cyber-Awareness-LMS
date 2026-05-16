@@ -24,6 +24,7 @@ import {
   Globe,
   Activity,
   TrendingUp,
+  FileCheck,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -397,6 +398,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           label: "Activity Log",
           icon: History,
           section: "System",
+        },
+        {
+          id: "compliance",
+          label: "Compliance Report",
+          icon: FileCheck,
         },
         {
           id: "support-requests",
