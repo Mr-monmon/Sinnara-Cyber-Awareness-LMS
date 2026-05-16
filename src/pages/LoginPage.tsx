@@ -392,6 +392,22 @@ export const LoginPage = ({
             >
               {loading ? "Signing in…" : "Sign In"}
             </button>
+
+            {/* Forgot password notice */}
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: 13,
+                color: T.textMuted,
+                marginTop: 4,
+                lineHeight: 1.5,
+              }}
+            >
+              Forgot your password?{" "}
+              <span style={{ color: T.textBody }}>
+                Contact your IT department to reset it.
+              </span>
+            </p>
           </form>
         </div>
 
