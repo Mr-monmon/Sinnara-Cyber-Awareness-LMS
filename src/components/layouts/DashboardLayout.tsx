@@ -393,6 +393,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           ],
         },
         {
+          id: "audit-logs",
+          label: "Activity Log",
+          icon: History,
+          section: "System",
+        },
+        {
           id: "support-requests",
           label: "Support Requests",
           icon: HelpCircle,

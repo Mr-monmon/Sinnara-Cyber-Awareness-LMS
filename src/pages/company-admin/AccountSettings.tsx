@@ -176,6 +176,7 @@ const AccountSettings = () => {
         await supabase.from("audit_logs").insert([{
           user_id: user.id, action_type: "CHANGE_PASSWORD",
           entity_type: "USER", entity_id: user.id,
+          company_id: user.company_id ?? null,
           description: `Changed password for ${user.email}`,
         }]);
       } catch {}

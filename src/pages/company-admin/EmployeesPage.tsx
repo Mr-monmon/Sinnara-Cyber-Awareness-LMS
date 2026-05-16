@@ -255,6 +255,14 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       alert(`Failed to unlock: ${error.message}`);
       return;
     }
+    supabase.from("audit_logs").insert([{
+      user_id: currentUser?.id,
+      action_type: "UNLOCK_ACCOUNT",
+      entity_type: "EMPLOYEE",
+      entity_name: emp.full_name,
+      company_id: currentUser?.company_id,
+      description: `Unlocked account for: ${emp.email}`,
+    }]).then(() => {});
     alert(`Account unlocked for ${emp.email}`);
     loadLockouts();
   };
@@ -313,6 +321,16 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         if (createError || !createResult?.success)
           throw new Error(createResult?.error || "Failed to create employee");
 
+        supabase.from("audit_logs").insert([{
+          user_id: currentUser?.id,
+          action_type: "CREATE_USER",
+          entity_type: "EMPLOYEE",
+          entity_name: formData.full_name,
+          company_id: currentUser?.company_id,
+          description: `Created employee: ${formData.email}`,
+          new_value: { email: formData.email, full_name: formData.full_name },
+        }]).then(() => {});
+
         try {
           await sendNotificationEmail(
             formData.email,
@@ -369,6 +387,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       if (delError || !delResult?.success)
         throw new Error(delResult?.error || "Failed to delete employee");
 
+      supabase.from("audit_logs").insert([{
+        user_id: currentUser?.id,
+        action_type: "DELETE_USER",
+        entity_type: "EMPLOYEE",
+        entity_name: fullName,
+        company_id: currentUser?.company_id,
+        description: `Deleted employee: ${email}`,
+      }]).then(() => {});
+
       try {
         await sendNotificationEmail(
           email,
@@ -401,6 +428,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
       if (resetError || !resetResult?.success)
         throw new Error(resetResult?.error || "Failed to reset password");
+
+      supabase.from("audit_logs").insert([{
+        user_id: currentUser?.id,
+        action_type: "RESET_PASSWORD",
+        entity_type: "EMPLOYEE",
+        entity_name: emp.full_name,
+        company_id: currentUser?.company_id,
+        description: `Reset password for: ${emp.email}`,
+      }]).then(() => {});
 
       alert(
         `Password reset successfully!\nEmail: ${emp.email}\nNew Password: ${newPassword}\n\nShare this securely with the employee.`
