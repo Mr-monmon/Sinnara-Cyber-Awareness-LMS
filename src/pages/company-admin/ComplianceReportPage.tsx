@@ -48,7 +48,6 @@ interface Stats {
   recentLogins: number;
   auditEventsLast90: number;
   trainingsLast90: number;
-  lockedAccounts: number;
 }
 
 const STATUS_CFG: Record<Status, { color: string; bg: string; border: string; label: string }> = {
@@ -133,39 +132,52 @@ export const ComplianceReportPage: React.FC = () => {
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+      // Fetch employees first — their IDs/emails are needed for dependent queries
+      const { data: employees } = await supabase
+        .from("users")
+        .select("id, email")
+        .eq("company_id", cid)
+        .eq("role", "EMPLOYEE");
+
+      const employeeIds    = employees?.map(e => e.id)    ?? [];
+      const employeeEmails = employees?.map(e => e.email) ?? [];
+
+      const none = { data: null, count: 0, error: null };
+
       const [
         { data: company },
-        { count: totalEmployees },
         { data: ecs },
         { count: certificatesIssued },
         { count: auditEventsLast90 },
         { count: trainingsLast90 },
-        { count: lockedAccounts },
         { count: recentLogins },
       ] = await Promise.all([
         supabase.from("companies").select("name").eq("id", cid).single(),
-        supabase.from("users").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("role", "EMPLOYEE"),
-        supabase.from("employee_courses").select("status, employee_id, progress_percentage").in("employee_id",
-          (await supabase.from("users").select("id").eq("company_id", cid).eq("role", "EMPLOYEE")).data?.map(u => u.id) ?? []
-        ),
-        supabase.from("certificates").select("id", { count: "exact", head: true }).eq("company_id", cid),
+        employeeIds.length
+          ? supabase.from("employee_courses").select("status, employee_id, progress_percentage").in("employee_id", employeeIds)
+          : Promise.resolve({ data: [] as { status: string; employee_id: string; progress_percentage: number | null }[], error: null }),
+        employeeIds.length
+          ? supabase.from("certificates").select("id", { count: "exact", head: true }).in("user_id", employeeIds)
+          : Promise.resolve(none),
         supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).gte("created_at", ninetyDaysAgo),
         supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("action_type", "COMPLETE_COURSE").gte("created_at", ninetyDaysAgo),
-        supabase.from("account_lockouts").select("email", { count: "exact", head: true }).gt("locked_until", new Date().toISOString()),
-        supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("action_type", "LOGIN").gte("created_at", thirtyDaysAgo),
+        employeeEmails.length
+          ? supabase.from("auth_attempts").select("id", { count: "exact", head: true }).in("email", employeeEmails).eq("success", true).gte("attempted_at", thirtyDaysAgo)
+          : Promise.resolve(none),
       ]);
 
       const completedSet = new Set(
         (ecs ?? []).filter(c => c.status === "COMPLETED").map(c => c.employee_id)
       );
       const trainedEmployees = completedSet.size;
-      const completionRate = totalEmployees ? Math.round((trainedEmployees / totalEmployees) * 100) : 0;
-      const scores = (ecs ?? []).map(c => c.progress_percentage).filter(p => typeof p === "number");
+      const totalEmployees   = employeeIds.length;
+      const completionRate   = totalEmployees ? Math.round((trainedEmployees / totalEmployees) * 100) : 0;
+      const scores = (ecs ?? []).map(c => c.progress_percentage).filter((p): p is number => typeof p === "number");
       const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
       setCompanyName(company?.name ?? "Your Company");
       setStats({
-        totalEmployees: totalEmployees ?? 0,
+        totalEmployees,
         trainedEmployees,
         completionRate,
         avgScore,
@@ -173,7 +185,6 @@ export const ComplianceReportPage: React.FC = () => {
         recentLogins: recentLogins ?? 0,
         auditEventsLast90: auditEventsLast90 ?? 0,
         trainingsLast90: trainingsLast90 ?? 0,
-        lockedAccounts: lockedAccounts ?? 0,
       });
     } finally {
       setLoading(false);
@@ -194,18 +205,6 @@ export const ComplianceReportPage: React.FC = () => {
       recommendation: s.completionRate < 90
         ? `Assign remaining ${s.totalEmployees - s.trainedEmployees} employees to mandatory training`
         : undefined,
-    },
-    {
-      code: "ECC 2-2-3",
-      title: "Identity and Access Management",
-      description: "Strong authentication and access controls shall be enforced.",
-      status: "compliant",
-      evidence: [
-        "Strong password policy enforced (10+ chars, complexity required)",
-        "Account lockout after 5 failed attempts within 15 minutes",
-        `${s.lockedAccounts} account${s.lockedAccounts === 1 ? "" : "s"} currently locked`,
-        "Multi-tenant Row Level Security on all data access",
-      ],
     },
     {
       code: "ECC 2-13-3",
@@ -551,7 +550,7 @@ export const ComplianceReportPage: React.FC = () => {
         <StatCard label="Training Rate" value={`${stats.completionRate}%`} hint="Across mandatory courses" />
         <StatCard label="Avg. Score" value={`${stats.avgScore}%`} hint="All assessments" />
         <StatCard label="Certificates" value={stats.certificatesIssued} hint="Issued to date" />
-        <StatCard label="Logins" value={stats.recentLogins} hint="Last 30 days" />
+        <StatCard label="Active Logins" value={stats.recentLogins} hint="Last 30 days" />
       </div>
 
       {/* Controls */}
