@@ -109,6 +109,18 @@ const fmt = (dateStr?: string | null) => {
   });
 };
 
+const relativeTime = (dateStr: string) => {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins  < 1)  return 'just now';
+  if (hours < 1)  return `${mins}m ago`;
+  if (days  < 1)  return `${hours}h ago`;
+  if (days  < 30) return `${days}d ago`;
+  return fmt(dateStr);
+};
+
 /* ─────────────────────────────────────────
    CIRCULAR PROGRESS SVG
 ───────────────────────────────────────── */
@@ -270,7 +282,7 @@ const StatCard: React.FC<{ icon: React.ElementType; color: string; bg: string; l
 ───────────────────────────────────────── */
 interface EmployeeDetailPageProps { employeeId: string; onBack: () => void; }
 interface EmployeeData { id: string; full_name: string; email: string; phone: string | null; employee_id: string | null; pre_assessment_score: number | null; post_assessment_score: number | null; pre_assessment_date: string | null; post_assessment_date: string | null; department: { name: string }; }
-interface CourseProgress { course_id: string; course_name: string; progress_percentage: number; status: string; assigned_at: string; completed_at: string | null; completed_sections: number; total_sections: number; }
+interface CourseProgress { course_id: string; course_name: string; progress_percentage: number; status: string; assigned_at: string; completed_at: string | null; last_accessed_at: string | null; completed_sections: number; total_sections: number; }
 interface ExamAttempt { exam_name: string; attempt_number: number; score: number; passed: boolean; completed_at: string; }
 interface Certificate { id: string; course_name: string | null; certificate_number: string; issued_at: string; }
 
@@ -302,17 +314,25 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
   };
 
   const loadCourses = async () => {
-    const { data: ec } = await supabase.from("employee_courses").select("*, courses(title)").eq("employee_id", employeeId);
+    // completed_sections, total_sections, progress_percentage, status, last_accessed_at
+    // are maintained automatically by the sync_employee_course_progress DB trigger.
+    const { data: ec } = await supabase
+      .from("employee_courses")
+      .select("*, courses(title)")
+      .eq("employee_id", employeeId)
+      .order("last_accessed_at", { ascending: false, nullsFirst: false });
     if (!ec?.length) return;
-    const withProgress = await Promise.all(ec.map(async (e: any) => {
-      const pct = parseFloat(e.progress_percentage) || 0;
-      const [{ data: secs }, { data: done }] = await Promise.all([
-        supabase.from("course_sections").select("id").eq("course_id", e.course_id),
-        supabase.from("course_section_progress").select("section_id").eq("employee_id", employeeId).eq("course_id", e.course_id).eq("completed", true),
-      ]);
-      return { course_id: e.course_id, course_name: e.courses?.title || "Unknown", progress_percentage: pct, status: pct >= 100 ? "COMPLETED" : pct > 0 ? "IN_PROGRESS" : "NOT_STARTED", assigned_at: e.assigned_at, completed_at: e.completed_at, completed_sections: done?.length || 0, total_sections: secs?.length || 0 };
-    }));
-    setCourses(withProgress);
+    setCourses(ec.map((e: any) => ({
+      course_id:           e.course_id,
+      course_name:         e.courses?.title || "Unknown",
+      progress_percentage: parseFloat(e.progress_percentage) || 0,
+      status:              e.status === "COMPLETED" ? "COMPLETED" : e.status === "IN_PROGRESS" ? "IN_PROGRESS" : "NOT_STARTED",
+      assigned_at:         e.assigned_at,
+      completed_at:        e.completed_at,
+      last_accessed_at:    e.last_accessed_at ?? null,
+      completed_sections:  e.completed_sections || 0,
+      total_sections:      e.total_sections || 0,
+    })));
   };
 
   const loadExams = async () => {
@@ -522,7 +542,12 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
                           <CheckCircle size={10} style={{ color: T.green }} /> Completed {fmt(course.completed_at)}
                         </span>
                       )}
-                      {!course.completed_at && course.assigned_at && (
+                      {!course.completed_at && course.last_accessed_at && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={10} /> Last active {relativeTime(course.last_accessed_at)}
+                        </span>
+                      )}
+                      {!course.completed_at && !course.last_accessed_at && course.assigned_at && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <Calendar size={10} /> Assigned {fmt(course.assigned_at)}
                         </span>

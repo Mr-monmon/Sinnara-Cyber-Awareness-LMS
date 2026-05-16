@@ -104,6 +104,8 @@ interface CourseProgress {
   status:              string;
   completed_at:        string | null;
   assigned_at:         string;
+  completed_sections:  number;
+  total_sections:      number;
 }
 
 interface EmployeeCourseRow {
@@ -241,6 +243,8 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               status:              ec.status,
               completed_at:        ec.completed_at,
               assigned_at:         ec.assigned_at,
+              completed_sections:  (ec as any).completed_sections || 0,
+              total_sections:      (ec as any).total_sections     || 0,
             };
           }
         });
@@ -435,7 +439,11 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                   {!isCompleted && (
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 11, color: T.textMuted }}>{t("labels.progress", { ns: "common" })}</span>
+                        <span style={{ fontSize: 11, color: T.textMuted }}>
+                          {isInProgress && courseProgress[course.id]?.total_sections > 0
+                            ? `${courseProgress[course.id].completed_sections} / ${courseProgress[course.id].total_sections} sections`
+                            : t("labels.progress", { ns: "common" })}
+                        </span>
                         <span style={{ fontSize: 11, fontWeight: 700, color: isInProgress ? T.blue : T.textMuted }}>
                           {formatLocalizedNumber(Math.round(progress), currentLanguage)}%
                         </span>
