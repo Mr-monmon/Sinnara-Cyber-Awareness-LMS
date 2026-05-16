@@ -236,6 +236,8 @@ export const ExamAssignmentPage: React.FC = () => {
   const [dueDate, setDueDate]         = useState("");
   const [maxAttempts, setMaxAttempts] = useState(1);
   const [isMandatory, setIsMandatory] = useState(true);
+  const [assignedEmpIds, setAssignedEmpIds]   = useState<Set<string>>(new Set());
+  const [assignedDeptIds, setAssignedDeptIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadExams();
@@ -243,6 +245,31 @@ export const ExamAssignmentPage: React.FC = () => {
     loadDepartments();
     loadAssignments();
   }, [user]);
+
+  // When the admin picks an exam, load its existing active assignments so we
+  // can hide already-assigned employees/departments from the selection lists.
+  useEffect(() => {
+    if (!examId || !user?.company_id) {
+      setAssignedEmpIds(new Set());
+      setAssignedDeptIds(new Set());
+      return;
+    }
+    supabase
+      .from("assigned_exams")
+      .select("assigned_to_employee, assigned_to_department")
+      .eq("exam_id", examId)
+      .eq("company_id", user.company_id)
+      .eq("status", "active")
+      .then(({ data }) => {
+        const empIds  = new Set<string>((data || []).flatMap(a => a.assigned_to_employee  ? [a.assigned_to_employee]  : []));
+        const deptIds = new Set<string>((data || []).flatMap(a => a.assigned_to_department ? [a.assigned_to_department] : []));
+        setAssignedEmpIds(empIds);
+        setAssignedDeptIds(deptIds);
+        // Clear any previously selected targets that are now covered
+        setSelEmps(prev => prev.filter(id => !empIds.has(id)));
+        setSelDepts(prev => prev.filter(id => !deptIds.has(id)));
+      });
+  }, [examId]);
 
   /* ══════════════════════════════════════════
      ✅ THE FIX: فقط الاختبارات المخصصة للشركة
@@ -444,16 +471,16 @@ export const ExamAssignmentPage: React.FC = () => {
       due_date: dueDate || null, max_attempts: maxAttempts,
       is_mandatory: isMandatory, status: "active" as const,
     };
-    if (assignType === "all")      return employees.map(e => ({ ...base, assigned_to_employee: e.id }));
+    if (assignType === "all")      return availableEmps.map(e => ({ ...base, assigned_to_employee: e.id }));
     if (assignType === "employee") return selEmps.map(id => ({ ...base, assigned_to_employee: id }));
     return selDepts.map(id => ({ ...base, assigned_to_department: id }));
   };
 
   const isFormValid = () => {
     if (!examId) return false;
-    if (assignType === "employee"   && selEmps.length === 0)   return false;
-    if (assignType === "department" && selDepts.length === 0)  return false;
-    if (assignType === "all"        && employees.length === 0) return false;
+    if (assignType === "employee"   && selEmps.length === 0)    return false;
+    if (assignType === "department" && selDepts.length === 0)   return false;
+    if (assignType === "all"        && availableEmps.length === 0) return false;
     return true;
   };
 
@@ -493,7 +520,7 @@ export const ExamAssignmentPage: React.FC = () => {
         }
       }
       const recipients = assignType === "all"
-        ? employees.filter(e => e.email).map(e => ({ email: e.email, full_name: e.full_name }))
+        ? availableEmps.filter(e => e.email).map(e => ({ email: e.email, full_name: e.full_name }))
         : assignType === "employee"
           ? employees.filter(e => selEmps.includes(e.id) && e.email).map(e => ({ email: e.email, full_name: e.full_name }))
           : employees.filter(e => e.department_id && selDepts.includes(e.department_id) && e.email).map(e => ({ email: e.email, full_name: e.full_name }));
@@ -515,7 +542,14 @@ export const ExamAssignmentPage: React.FC = () => {
   const resetModal = () => {
     setExamId(""); setAssignType("employee"); setSelEmps([]); setSelDepts([]);
     setDueDate(""); setMaxAttempts(1); setIsMandatory(true); setShowModal(false);
+    setAssignedEmpIds(new Set()); setAssignedDeptIds(new Set());
   };
+
+  // Employees/depts available for assignment (not yet assigned this exam)
+  const availableEmps  = employees.filter(e =>
+    !assignedEmpIds.has(e.id) && !(e.department_id && assignedDeptIds.has(e.department_id))
+  );
+  const availableDepts = departments.filter(d => !assignedDeptIds.has(d.id));
   const toggleEmp  = (id: string) => setSelEmps(p  => p.includes(id)  ? p.filter(x => x !== id)  : [...p, id]);
   const toggleDept = (id: string) => setSelDepts(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
@@ -527,7 +561,7 @@ export const ExamAssignmentPage: React.FC = () => {
   };
 
   const assignBtnLabel = () => {
-    if (assignType === "all")                                return `Assign to All (${employees.length})`;
+    if (assignType === "all")                                return `Assign to All (${availableEmps.length})`;
     if (assignType === "employee"   && selEmps.length > 0)  return `Assign (${selEmps.length} emp)`;
     if (assignType === "department" && selDepts.length > 0) return `Assign (${selDepts.length} dept)`;
     return "Assign Exam";
@@ -840,11 +874,17 @@ export const ExamAssignmentPage: React.FC = () => {
 
                 {/* All company info */}
                 {assignType === "all" && (
-                  <div style={{ padding: "13px 15px", background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 10, display: "flex", alignItems: "center", gap: 12 }}>
-                    <CheckCircle size={18} style={{ color: T.green, flexShrink: 0 }} />
+                  <div style={{ padding: "13px 15px", background: availableEmps.length > 0 ? T.greenBg : T.orangeBg, border: `1px solid ${availableEmps.length > 0 ? T.greenBorder : T.orangeBorder}`, borderRadius: 10, display: "flex", alignItems: "center", gap: 12 }}>
+                    <CheckCircle size={18} style={{ color: availableEmps.length > 0 ? T.green : T.orange, flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.green }}>Assign to all {employees.length} employees</div>
-                      <div style={{ fontSize: 11, color: T.textMuted, marginTop: 2 }}>Creates {employees.length} individual records — one per employee.</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: availableEmps.length > 0 ? T.green : T.orange }}>
+                        Assign to {availableEmps.length} employee{availableEmps.length !== 1 ? "s" : ""}
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textMuted, marginTop: 2 }}>
+                        {assignedEmpIds.size + assignedDeptIds.size > 0
+                          ? `${employees.length - availableEmps.length} already assigned — they will be skipped.`
+                          : `Creates ${availableEmps.length} individual records — one per employee.`}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -857,13 +897,18 @@ export const ExamAssignmentPage: React.FC = () => {
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         {selEmps.length > 0 && <span className="aw-ea-sel-count">{selEmps.length}</span>}
                         <button type="button" style={{ fontSize: 11, color: T.textMuted, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}
-                          onClick={() => setSelEmps(selEmps.length === employees.length ? [] : employees.map(e => e.id))}>
-                          {selEmps.length === employees.length ? "Deselect all" : "Select all"}
+                          onClick={() => setSelEmps(selEmps.length === availableEmps.length ? [] : availableEmps.map(e => e.id))}>
+                          {selEmps.length === availableEmps.length && availableEmps.length > 0 ? "Deselect all" : "Select all"}
                         </button>
                       </div>
                     </div>
                     <div className="aw-ea-list">
-                      {employees.map(emp => (
+                      {availableEmps.length === 0 && (
+                        <div style={{ padding: "18px 14px", textAlign: "center", fontSize: 12, color: T.textMuted }}>
+                          All employees already have this exam assigned.
+                        </div>
+                      )}
+                      {availableEmps.map(emp => (
                         <div key={emp.id} className={`aw-ea-check-row${selEmps.includes(emp.id) ? " on" : ""}`} onClick={() => toggleEmp(emp.id)}>
                           <div className="aw-ea-checkbox">{selEmps.includes(emp.id) && <Checkmark />}</div>
                           <div style={{ flex: 1, minWidth: 0 }}>
@@ -884,13 +929,18 @@ export const ExamAssignmentPage: React.FC = () => {
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         {selDepts.length > 0 && <span className="aw-ea-sel-count">{selDepts.length}</span>}
                         <button type="button" style={{ fontSize: 11, color: T.textMuted, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}
-                          onClick={() => setSelDepts(selDepts.length === departments.length ? [] : departments.map(d => d.id))}>
-                          {selDepts.length === departments.length ? "Deselect all" : "Select all"}
+                          onClick={() => setSelDepts(selDepts.length === availableDepts.length ? [] : availableDepts.map(d => d.id))}>
+                          {selDepts.length === availableDepts.length && availableDepts.length > 0 ? "Deselect all" : "Select all"}
                         </button>
                       </div>
                     </div>
                     <div className="aw-ea-list">
-                      {departments.map(dept => {
+                      {availableDepts.length === 0 && (
+                        <div style={{ padding: "18px 14px", textAlign: "center", fontSize: 12, color: T.textMuted }}>
+                          All departments already have this exam assigned.
+                        </div>
+                      )}
+                      {availableDepts.map(dept => {
                         const ec = employees.filter(e => e.department_id === dept.id).length;
                         return (
                           <div key={dept.id} className={`aw-ea-check-row${selDepts.includes(dept.id) ? " on" : ""}`} onClick={() => toggleDept(dept.id)}>
