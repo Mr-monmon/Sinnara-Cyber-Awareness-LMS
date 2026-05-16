@@ -465,8 +465,27 @@ export const ExamAssignmentPage: React.FC = () => {
       const inserts     = resolveInserts();
       const examTitle   = exams.find(ex => ex.id === examId)?.title || "exam";
       const dueDateText = dueDate ? ` Complete it before ${new Date(dueDate).toLocaleDateString()}.` : "";
+
+      // Load existing active assignments for this exam to detect cross-type duplicates.
+      // This prevents an employee from receiving the same exam twice via dept + direct.
+      const { data: existingAsgn } = await supabase
+        .from("assigned_exams")
+        .select("assigned_to_employee, assigned_to_department")
+        .eq("exam_id", examId)
+        .eq("company_id", user!.company_id)
+        .eq("status", "active");
+      const coveredEmpIds  = new Set<string>((existingAsgn || []).flatMap(a => a.assigned_to_employee  ? [a.assigned_to_employee]  : []));
+      const coveredDeptIds = new Set<string>((existingAsgn || []).flatMap(a => a.assigned_to_department ? [a.assigned_to_department] : []));
+
       let skipped = 0;
       for (const row of inserts) {
+        // Skip: employee already has a direct assignment for this exam
+        if (row.assigned_to_employee && coveredEmpIds.has(row.assigned_to_employee)) { skipped++; continue; }
+        // Skip: employee already covered via a department assignment
+        if (row.assigned_to_employee) {
+          const emp = employees.find(em => em.id === row.assigned_to_employee);
+          if (emp?.department_id && coveredDeptIds.has(emp.department_id)) { skipped++; continue; }
+        }
         const { error: ie } = await supabase.from("assigned_exams").insert(row);
         if (ie) {
           if (ie.code === "23505") { skipped++; }
@@ -597,9 +616,9 @@ export const ExamAssignmentPage: React.FC = () => {
           ))}
           {period === "custom" && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px" }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px", fontVariantNumeric: "tabular-nums" }} lang="en" dir="ltr" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
               <span style={{ fontSize: 11, color: T.textMuted }}>→</span>
-              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px" }} value={customTo} onChange={e => setCustomTo(e.target.value)} />
+              <input type="date" className="aw-ea-fsel" style={{ padding: "6px 10px", fontVariantNumeric: "tabular-nums" }} lang="en" dir="ltr" value={customTo} onChange={e => setCustomTo(e.target.value)} />
             </div>
           )}
           <span style={{ fontSize: 11, color: T.textMuted, marginLeft: 4 }}>{filtered.length} assignments</span>
@@ -894,11 +913,11 @@ export const ExamAssignmentPage: React.FC = () => {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label className="aw-ea-label">Max Attempts <span style={{ color: T.accent }}>*</span></label>
-                    <input className="aw-ea-input" type="number" min="1" max="10" required value={maxAttempts} onChange={e => setMaxAttempts(parseInt(e.target.value) || 1)} />
+                    <input className="aw-ea-input" type="number" min="1" max="10" required value={maxAttempts} onChange={e => setMaxAttempts(parseInt(e.target.value) || 1)} lang="en" dir="ltr" style={{ fontVariantNumeric: "tabular-nums" }} />
                   </div>
                   <div>
                     <label className="aw-ea-label">Due Date <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
-                    <input className="aw-ea-input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                    <input className="aw-ea-input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} lang="en" dir="ltr" style={{ fontVariantNumeric: "tabular-nums" }} />
                   </div>
                 </div>
 
