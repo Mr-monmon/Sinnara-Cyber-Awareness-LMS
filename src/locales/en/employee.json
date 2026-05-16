@@ -4,6 +4,29 @@
     "subtitle": "Welcome back! Continue your cybersecurity training journey.",
     "rankLabel": "User Rank",
     "rankHint": "Keep leveling up",
+    "charts": {
+      "courseCompletion": "Course Completion",
+      "coursesBreakdown": "Courses Breakdown",
+      "completed": "Completed",
+      "inProgress": "In Progress",
+      "notStarted": "Not Started",
+      "remaining": "Remaining",
+      "total": "total"
+    },
+    "securityTip": {
+      "label": "Security Tip",
+      "tips": [
+        { "title": "Never Share Your OTP", "body": "One-Time Passwords are confidential. No bank, government body, or colleague should ever ask for them." },
+        { "title": "Verify Links Before Clicking", "body": "Attackers use lookalike domains. Always inspect URLs carefully before clicking any link." },
+        { "title": "Use Strong Unique Passwords", "body": "Never reuse passwords across sites. Use a password manager to generate complex credentials." },
+        { "title": "Avoid Public Wi-Fi for Work", "body": "Public networks can be monitored. Use a VPN or mobile data when accessing work systems." },
+        { "title": "Enable Two-Factor Authentication", "body": "Even if your password leaks, attackers cannot log in without your second factor." },
+        { "title": "Beware of Shoulder Surfing", "body": "In public spaces, shield your screen. Sensitive data can be stolen just by looking over your shoulder." },
+        { "title": "Report Suspicious Activity", "body": "If you receive an unusual login alert or suspect a breach, notify your security team immediately." },
+        { "title": "Lock Your Screen When Away", "body": "Always lock your computer when stepping away, even for a few minutes. Win+L or Cmd+Ctrl+Q." },
+        { "title": "Recognize Phishing Emails", "body": "Suspicious urgency, unknown senders, and unusual requests are red flags. When in doubt, report to IT." }
+      ]
+    },
     "quickActions": {
       "title": "Quick Actions",
       "continueLearning": {
