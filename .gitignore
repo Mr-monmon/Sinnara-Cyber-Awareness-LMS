@@ -21,4 +21,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
-.wrangler.claude/worktrees/
+.wrangler
+.claude/
