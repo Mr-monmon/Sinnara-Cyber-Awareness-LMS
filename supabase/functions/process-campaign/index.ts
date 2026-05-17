@@ -191,6 +191,23 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+
+    // ── Test-send path: send a single test email via a stored SMTP profile ──
+    if (body.test_smtp_profile_id && body.test_to) {
+      const result = await sendEmail({
+        to:              String(body.test_to),
+        subject:         "Awareone SMTP Test",
+        html:            "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
+        from_address:    "noreply@awareone.io",
+        from_name:       "Awareone Security",
+        smtp_profile_id: String(body.test_smtp_profile_id),
+      });
+      if (!result.success) {
+        return new Response(JSON.stringify({ error: result.error }), { status: 400, headers: corsHeaders });
+      }
+      return new Response(JSON.stringify({ sent: true }), { headers: corsHeaders });
+    }
+
     const campaign_id = body.campaign_id as string | undefined;
     const batch_size  = Math.min(body.batch_size ?? 50, 200); // max 200 per invocation
 

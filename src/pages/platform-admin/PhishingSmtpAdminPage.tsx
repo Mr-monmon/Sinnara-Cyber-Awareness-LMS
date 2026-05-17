@@ -77,7 +77,7 @@ interface SmtpProfile {
   host: string;
   port: number;
   username: string;
-  password: string;
+  // password is NEVER fetched — stored encrypted server-side only
   from_address: string;
   from_name: string;
   use_tls: boolean;
@@ -86,6 +86,7 @@ interface SmtpProfile {
   custom_headers: { key: string; value: string }[];
   is_platform_profile: boolean;
   is_active: boolean;
+  password_encrypted?: boolean;
   created_at: string;
   pushed_companies?: { company_id: string; pushed_at: string }[];
 }
@@ -135,8 +136,9 @@ export const PhishingSmtpAdminPage: React.FC = () => {
   const loadAll = async () => {
     setLoading(true);
     try {
+      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, created_at';
       const [profilesRes, companiesRes] = await Promise.all([
-        supabase.from('smtp_profiles').select('*').eq('is_platform_profile', true).order('created_at', { ascending: false }),
+        supabase.from('smtp_profiles').select(SAFE_COLS).eq('is_platform_profile', true).order('created_at', { ascending: false }),
         supabase.from('companies').select('id, name, is_active').order('name'),
       ]);
 
@@ -174,7 +176,8 @@ export const PhishingSmtpAdminPage: React.FC = () => {
     setEditProfile(p);
     setForm({
       name: p.name, host: p.host, port: p.port,
-      username: p.username, password: p.password,
+      username: p.username,
+      password: '',   // never pre-fill; leave blank to keep existing encrypted password
       from_address: p.from_address, from_name: p.from_name,
       use_tls: p.use_tls, use_starttls: p.use_starttls,
       ignore_cert_errors: p.ignore_cert_errors,
@@ -190,23 +193,39 @@ export const PhishingSmtpAdminPage: React.FC = () => {
       alert('Name, Host, and From Address are required.');
       return;
     }
+    if (!editProfile && !form.password.trim()) {
+      alert('Password is required when creating a new SMTP profile.');
+      return;
+    }
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        company_id: null,
-        is_platform_profile: true,
-        updated_at: new Date().toISOString(),
-      };
-      if (editProfile) {
-        await supabase.from('smtp_profiles').update(payload).eq('id', editProfile.id);
-      } else {
-        await supabase.from('smtp_profiles').insert(payload);
-      }
+      // Password is encrypted server-side by the Edge Function.
+      // We never write directly to smtp_profiles from the frontend.
+      const { data, error } = await supabase.functions.invoke('save-smtp-profile', {
+        body: {
+          profile_id:          editProfile?.id,
+          name:                form.name,
+          host:                form.host,
+          port:                form.port,
+          username:            form.username,
+          password:            form.password,   // plaintext — encrypted by Edge Function
+          from_address:        form.from_address,
+          from_name:           form.from_name,
+          use_tls:             form.use_tls,
+          use_starttls:        form.use_starttls,
+          ignore_cert_errors:  form.ignore_cert_errors,
+          custom_headers:      form.custom_headers,
+          is_active:           form.is_active,
+          is_platform_profile: true,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
       setShowModal(false);
       loadAll();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
-    finally { setSaving(false); }
+    } catch (err: unknown) {
+      alert((err instanceof Error ? err.message : null) || 'Failed to save');
+    } finally { setSaving(false); }
   };
 
   const confirmDelete = async () => {
@@ -448,7 +467,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 5 }}>Password</label>
                   <div style={{ position: 'relative' }}>
-                    <input className="aw-sadmin-input" type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="SMTP password" style={{ paddingRight: 44 }} />
+                    <input className="aw-sadmin-input" type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={editProfile ? 'Leave blank to keep existing' : 'SMTP password'} style={{ paddingRight: 44 }} />
                     <button type="button" onClick={() => setShowPassword(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 0 }}>
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>

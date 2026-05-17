@@ -71,7 +71,7 @@ interface SmtpProfile {
   host: string;
   port: number;
   username: string;
-  password: string;
+  // password is NEVER fetched from the DB — stored encrypted server-side only
   from_address: string;
   from_name: string;
   use_tls: boolean;
@@ -80,24 +80,25 @@ interface SmtpProfile {
   custom_headers: { key: string; value: string }[];
   is_platform_profile: boolean;
   is_active: boolean;
+  password_encrypted?: boolean;
   created_at: string;
   isPushed?: boolean;
   pushed_at?: string;
 }
 
-const EMPTY_FORM: Omit<SmtpProfile, 'id' | 'created_at' | 'is_platform_profile' | 'isPushed' | 'pushed_at'> = {
-  company_id: null,
+const EMPTY_FORM = {
+  company_id: null as string | null,
   name: '',
   host: '',
   port: 587,
   username: '',
-  password: '',
+  password: '',          // plaintext — only kept in memory, never sent to DB directly
   from_address: '',
   from_name: '',
   use_tls: true,
   use_starttls: false,
   ignore_cert_errors: false,
-  custom_headers: [],
+  custom_headers: [] as { key: string; value: string }[],
   is_active: true,
 };
 
@@ -151,10 +152,11 @@ export const PhishingSmtpPage: React.FC = () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
-      // Load company profiles
+      // Load company profiles — password column intentionally excluded
+      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, created_at';
       const { data: companyProfiles } = await supabase
         .from('smtp_profiles')
-        .select('*')
+        .select(SAFE_COLS)
         .eq('company_id', user.company_id)
         .eq('is_platform_profile', false)
         .order('created_at', { ascending: false });
@@ -170,7 +172,7 @@ export const PhishingSmtpPage: React.FC = () => {
         const ids = accessRows.map(r => r.smtp_profile_id);
         const { data: pp } = await supabase
           .from('smtp_profiles')
-          .select('*')
+          .select(SAFE_COLS)
           .in('id', ids)
           .eq('is_platform_profile', true);
         if (pp) {
@@ -204,7 +206,8 @@ export const PhishingSmtpPage: React.FC = () => {
     setForm({
       company_id: p.company_id,
       name: p.name, host: p.host, port: p.port,
-      username: p.username, password: p.password,
+      username: p.username,
+      password: '',   // never pre-fill; leave blank to keep existing encrypted password
       from_address: p.from_address, from_name: p.from_name,
       use_tls: p.use_tls, use_starttls: p.use_starttls,
       ignore_cert_errors: p.ignore_cert_errors,
@@ -220,25 +223,39 @@ export const PhishingSmtpPage: React.FC = () => {
       alert('Name, Host, and From Address are required.');
       return;
     }
+    if (!editProfile && !form.password.trim()) {
+      alert('Password is required when creating a new SMTP profile.');
+      return;
+    }
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        company_id: user?.company_id,
-        is_platform_profile: false,
-        updated_at: new Date().toISOString(),
-      };
-      if (editProfile) {
-        const { error } = await supabase.from('smtp_profiles').update(payload).eq('id', editProfile.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('smtp_profiles').insert(payload);
-        if (error) throw error;
-      }
+      // Password is encrypted server-side by the Edge Function.
+      // We never write directly to smtp_profiles from the frontend.
+      const { data, error } = await supabase.functions.invoke('save-smtp-profile', {
+        body: {
+          profile_id:         editProfile?.id,
+          name:               form.name,
+          host:               form.host,
+          port:               form.port,
+          username:           form.username,
+          password:           form.password,   // plaintext — encrypted by Edge Function
+          from_address:       form.from_address,
+          from_name:          form.from_name,
+          use_tls:            form.use_tls,
+          use_starttls:       form.use_starttls,
+          ignore_cert_errors: form.ignore_cert_errors,
+          custom_headers:     form.custom_headers,
+          is_active:          form.is_active,
+          is_platform_profile: false,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
       setShowModal(false);
       loadProfiles();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
-    finally { setSaving(false); }
+    } catch (err: unknown) {
+      alert((err instanceof Error ? err.message : null) || 'Failed to save');
+    } finally { setSaving(false); }
   };
 
   const confirmDelete = async () => {
@@ -257,10 +274,17 @@ export const PhishingSmtpPage: React.FC = () => {
     if (!testEmail.trim()) { alert('Please enter a test email address'); return; }
     setTestSending(true);
     setTestResult(null);
-    // Simulate sending (in production would call an edge function)
-    await new Promise(r => setTimeout(r, 1200));
-    setTestResult({ ok: true, msg: `Test email sent to ${testEmail} via selected SMTP profile.` });
-    setTestSending(false);
+    try {
+      // process-campaign worker handles send; invoke it with a one-off test payload
+      const { data, error } = await supabase.functions.invoke('process-campaign', {
+        body: { test_smtp_profile_id: testModal.profileId, test_to: testEmail.trim() },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
+    } catch (err: unknown) {
+      setTestResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+    } finally { setTestSending(false); }
   };
 
   const addHeader = () => setForm(f => ({ ...f, custom_headers: [...f.custom_headers, { key: '', value: '' }] }));
@@ -426,7 +450,7 @@ export const PhishingSmtpPage: React.FC = () => {
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder="SMTP password"
+                      placeholder={editProfile ? 'Leave blank to keep existing' : 'SMTP password'}
                       style={{ paddingRight: 44 }}
                     />
                     <button
