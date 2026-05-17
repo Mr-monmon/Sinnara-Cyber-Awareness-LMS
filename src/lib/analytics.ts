@@ -1,6 +1,8 @@
 import ReactGA from "react-ga4";
 
-const analyticsId = import.meta.env.VITE_GOOGLE_ANALYTICS_ID?.trim();
+import { getRuntimeEnv } from "./runtimeEnv";
+
+const analyticsId = getRuntimeEnv("VITE_GOOGLE_ANALYTICS_ID")?.trim();
 
 let isInitialized = false;
 let lastTrackedPath: string | null = null;
