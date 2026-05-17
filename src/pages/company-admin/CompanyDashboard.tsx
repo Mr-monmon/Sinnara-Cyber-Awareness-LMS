@@ -3,6 +3,7 @@ import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
   ChevronRight, Shield, Send, Medal, Activity, FileCheck,
+  Server, Globe, Mail, Target, Bell, Variable,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { EmployeesPage } from "./EmployeesPage";
@@ -12,6 +13,13 @@ import { ExamAssignmentPage } from "./ExamAssignmentPage";
 import { EmployeeDetailPage } from "./EmployeeDetailPage";
 import { PhishingDashboardPage } from "./PhishingDashboardPage";
 import { PhishingRequestPage } from "./PhishingRequestPage";
+import { PhishingSmtpPage } from "./PhishingSmtpPage";
+import { PhishingGroupsPage } from "./PhishingGroupsPage";
+import { PhishingLandingPagesPage } from "./PhishingLandingPagesPage";
+import { PhishingEmailTemplatesPage } from "./PhishingEmailTemplatesPage";
+import { PhishingCampaignsPage } from "./PhishingCampaignsPage";
+import { PhishingCustomVariablesPage } from "./PhishingCustomVariablesPage";
+import { PhishingAlertsPage } from "./PhishingAlertsPage";
 import { CourseAssignmentPage } from "./CourseAssignmentPage";
 import { ComplianceReportPage } from "./ComplianceReportPage";
 import { useAuth } from "../../contexts/AuthContext";
@@ -243,6 +251,13 @@ export const CompanyDashboard = () => {
       case "analytics":        return <AnalyticsPage />;
       case "phishing-dashboard": return <PhishingDashboardPage />;
       case "phishing-request": return <PhishingRequestPage />;
+      case "phishing-campaigns": return <PhishingCampaignsPage />;
+      case "phishing-smtp":    return <PhishingSmtpPage />;
+      case "phishing-groups":  return <PhishingGroupsPage />;
+      case "phishing-landing": return <PhishingLandingPagesPage />;
+      case "phishing-email-templates": return <PhishingEmailTemplatesPage />;
+      case "phishing-variables": return <PhishingCustomVariablesPage />;
+      case "phishing-alerts":  return <PhishingAlertsPage />;
       case "account":          return <AccountSettings />;
       case "support-requests": return <SupportRequestsPage />;
       case "risk-scores":      return <RiskScorePage />;
@@ -270,8 +285,14 @@ export const CompanyDashboard = () => {
       { icon: BookOpen,       color: T.green,   page: 'course-assignment', label: 'Assign Courses',     sub: 'Launch new training plans'       },
       { icon: ClipboardCheck, color: T.gold,    page: 'exam-assignment',  label: 'Assign Exams',       sub: 'Schedule assessments'            },
       { icon: BarChart2,      color: T.purple,  page: 'analytics',        label: 'View Analytics',     sub: 'Detailed performance reports'    },
-      { icon: Shield,         color: T.orange,  page: 'phishing-dashboard', label: 'Phishing Board',   sub: 'Campaign status overview'        },
-      { icon: Send,           color: T.blue,    page: 'phishing-request', label: 'Request Campaign',   sub: 'Launch a phishing simulation'    },
+      { icon: Shield,         color: T.orange,  page: 'phishing-dashboard',        label: 'Phishing Dashboard',   sub: 'Campaign overview & analytics'     },
+      { icon: Target,         color: T.red,     page: 'phishing-campaigns',        label: 'Campaigns',            sub: 'Create & manage campaigns'         },
+      { icon: Server,         color: T.blue,    page: 'phishing-smtp',             label: 'SMTP Profiles',        sub: 'Sending server configs'            },
+      { icon: Users,          color: T.green,   page: 'phishing-groups',           label: 'Target Groups',        sub: 'Manage phishing targets'           },
+      { icon: Globe,          color: T.orange,  page: 'phishing-landing',          label: 'Landing Pages',        sub: 'Phishing landing page builder'     },
+      { icon: Mail,           color: T.purple,  page: 'phishing-email-templates',  label: 'Email Templates',      sub: 'Phishing email builder'            },
+      { icon: Variable,       color: T.gold,    page: 'phishing-variables',        label: 'Custom Variables',     sub: 'Template variable definitions'     },
+      { icon: Bell,           color: T.orange,  page: 'phishing-alerts',           label: 'Phishing Alerts',      sub: 'Real-time threat notifications'    },
       { icon: Activity,       color: T.red,     page: 'risk-scores',        label: 'Risk Scores',       sub: 'Cyber risk per employee'         },
       { icon: TrendingUp,     color: T.purple,  page: 'advanced-analytics', label: 'Advanced Reports',  sub: 'Departments, courses, phishing'  },
       { icon: FileCheck,      color: T.green,   page: 'compliance',         label: 'Compliance Report', sub: 'NCA ECC + SAMA CSF mapping'      },
