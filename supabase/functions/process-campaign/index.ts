@@ -8,6 +8,7 @@ const supabase = createClient(
 );
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const ZEPTO_TOKEN  = Deno.env.get("ZEPTOMAIL_TOKEN") ?? "";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -16,36 +17,125 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/* ── Timezone helpers ── */
+function getHourInTimezone(tz: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour: "numeric", hour12: false,
+    });
+    return parseInt(formatter.format(new Date()));
+  } catch { return new Date().getUTCHours(); }
+}
+
 function isBusinessHour(hour: number, start: number, end: number): boolean {
   return hour >= start && hour < end;
 }
 
-function getHourInTimezone(tz: string): number {
+function nextBusinessHourStart(start: number, end: number, tz: string): Date {
+  const currentHour = getHourInTimezone(tz);
+  const next = new Date();
+  // If before business hours, set to start today
+  if (currentHour < start) {
+    next.setHours(start, 0, 0, 0);
+  } else {
+    // After business hours, set to start tomorrow
+    next.setDate(next.getDate() + 1);
+    next.setHours(start, 0, 0, 0);
+  }
+  return next;
+}
+
+/* ── SMTP Profile type ── */
+interface SmtpProfile {
+  id: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  from_address: string;
+  from_name: string;
+  use_tls: boolean;
+  use_starttls: boolean;
+  ignore_cert_errors: boolean;
+  custom_headers: { key: string; value: string }[];
+  password_encrypted: boolean;
+}
+
+/* ── Decrypt password if stored encrypted ── */
+async function decryptPassword(encrypted: string): Promise<string> {
+  const keyStr = Deno.env.get("SMTP_ENCRYPTION_KEY");
+  if (!keyStr) return encrypted; // no key = stored plaintext
+
   try {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false });
-    return parseInt(formatter.format(now));
+    // Key is base64url-encoded 32 bytes
+    const keyBytes = Uint8Array.from(atob(keyStr.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
+
+    // Encrypted format: base64url(iv[12] + ciphertext)
+    const combined = Uint8Array.from(atob(encrypted.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const data = combined.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, data);
+    return new TextDecoder().decode(decrypted);
   } catch {
-    return new Date().getUTCHours();
+    return encrypted; // decryption failed, return as-is
   }
 }
 
-async function sendEmail(params: {
-  to: string;
-  subject: string;
-  html: string;
-  from_address: string;
-  from_name: string;
-  smtp_profile_id?: string;
+/* ── Send via custom SMTP using nodemailer ── */
+async function sendViaSmtp(params: {
+  to: string; subject: string; html: string;
+  from_address: string; from_name: string;
+  profile: SmtpProfile;
 }): Promise<{ success: boolean; error?: string }> {
-  const zeptoToken = Deno.env.get("ZEPTOMAIL_TOKEN");
+  try {
+    // deno-lint-ignore no-explicit-any
+    const nodemailer = await import("npm:nodemailer@6") as any;
+    const password = params.profile.password_encrypted
+      ? await decryptPassword(params.profile.password)
+      : params.profile.password;
 
+    const transport = nodemailer.createTransport({
+      host: params.profile.host,
+      port: params.profile.port,
+      secure: params.profile.use_tls && params.profile.port === 465,
+      requireTLS: params.profile.use_starttls,
+      tls: { rejectUnauthorized: !params.profile.ignore_cert_errors },
+      auth: { user: params.profile.username, pass: password },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+    });
+
+    const extraHeaders: Record<string, string> = {};
+    for (const h of (params.profile.custom_headers || [])) {
+      if (h.key) extraHeaders[h.key] = h.value;
+    }
+
+    await transport.sendMail({
+      from: `"${params.from_name}" <${params.from_address}>`,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      headers: extraHeaders,
+    });
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "SMTP error" };
+  }
+}
+
+/* ── Send via ZeptoMail ── */
+async function sendViaZepto(params: {
+  to: string; subject: string; html: string;
+  from_address: string; from_name: string;
+}): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch("https://api.zeptomail.com/v1.1/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Zoho-enczapikey ${zeptoToken}`,
+        Authorization: `Zoho-enczapikey ${ZEPTO_TOKEN}`,
       },
       body: JSON.stringify({
         from: { address: params.from_address, name: params.from_name },
@@ -60,38 +150,82 @@ async function sendEmail(params: {
     }
     return { success: true };
   } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "Send failed" };
+    return { success: false, error: e instanceof Error ? e.message : "ZeptoMail error" };
   }
 }
 
+/* ── Master send function ── */
+async function sendEmail(params: {
+  to: string; subject: string; html: string;
+  from_address: string; from_name: string;
+  smtp_profile_id?: string | null;
+}): Promise<{ success: boolean; error?: string }> {
+  // Fetch SMTP profile if specified
+  if (params.smtp_profile_id) {
+    const { data: profile } = await supabase
+      .from("smtp_profiles")
+      .select("*")
+      .eq("id", params.smtp_profile_id)
+      .eq("is_active", true)
+      .single();
+
+    if (profile) {
+      return sendViaSmtp({
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        from_address: params.from_address || profile.from_address,
+        from_name: params.from_name || profile.from_name,
+        profile: profile as SmtpProfile,
+      });
+    }
+  }
+
+  // Fall back to ZeptoMail
+  return sendViaZepto(params);
+}
+
+/* ── Main handler ── */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
     const body = await req.json().catch(() => ({}));
     const campaign_id = body.campaign_id as string | undefined;
+    const batch_size  = Math.min(body.batch_size ?? 50, 200); // max 200 per invocation
 
+    // Fetch PENDING jobs due now
     let query = supabase
       .from("campaign_email_queue")
-      .select("*, phishing_campaigns(emails_per_minute, business_hours_only, business_hours_start, business_hours_end, timezone, status)")
+      .select(`
+        *,
+        phishing_campaigns(
+          emails_per_minute, business_hours_only, business_hours_start,
+          business_hours_end, timezone, status, company_id
+        )
+      `)
       .eq("status", "PENDING")
       .lte("scheduled_at", new Date().toISOString())
       .order("scheduled_at", { ascending: true })
-      .limit(50);
+      .limit(batch_size);
 
     if (campaign_id) query = query.eq("campaign_id", campaign_id);
 
-    const { data: jobs, error } = await query;
-    if (error) throw error;
+    const { data: jobs, error: qErr } = await query;
+    if (qErr) throw qErr;
     if (!jobs || jobs.length === 0) {
-      return new Response(JSON.stringify({ processed: 0, message: "No pending jobs" }), { headers: corsHeaders });
+      return new Response(
+        JSON.stringify({ processed: 0, message: "No pending jobs" }),
+        { headers: corsHeaders }
+      );
     }
 
     let sent = 0, failed = 0, skipped = 0;
 
     for (const job of jobs) {
-      const campaign = job.phishing_campaigns as Record<string, unknown>;
+      const campaign = job.phishing_campaigns as Record<string, unknown> | null;
 
+      // Skip if campaign is not running
       if (campaign?.status !== "RUNNING") {
         await supabase.from("campaign_email_queue")
           .update({ status: "SKIPPED" })
@@ -100,41 +234,49 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Enforce business hours
       if (campaign.business_hours_only) {
-        const tz = (campaign.timezone as string) || "UTC";
-        const currentHour = getHourInTimezone(tz);
+        const tz    = (campaign.timezone as string) || "UTC";
         const start = (campaign.business_hours_start as number) || 9;
-        const end = (campaign.business_hours_end as number) || 17;
-        if (!isBusinessHour(currentHour, start, end)) {
-          const tomorrow = new Date();
-          tomorrow.setHours(start, 0, 0, 0);
-          if (currentHour >= end) tomorrow.setDate(tomorrow.getDate() + 1);
+        const end   = (campaign.business_hours_end   as number) || 17;
+        const hour  = getHourInTimezone(tz);
+
+        if (!isBusinessHour(hour, start, end)) {
+          const reschedule = nextBusinessHourStart(start, end, tz);
           await supabase.from("campaign_email_queue")
-            .update({ scheduled_at: tomorrow.toISOString() })
+            .update({ scheduled_at: reschedule.toISOString() })
             .eq("id", job.id);
           skipped++;
           continue;
         }
       }
 
-      await supabase.from("campaign_email_queue")
+      // Claim the job
+      const { error: claimErr } = await supabase
+        .from("campaign_email_queue")
         .update({ status: "SENDING" })
-        .eq("id", job.id);
+        .eq("id", job.id)
+        .eq("status", "PENDING"); // optimistic lock
+      if (claimErr) { skipped++; continue; }
 
-      const trackBase = `${SUPABASE_URL}/functions/v1/phishing-track`;
-      const pixelUrl = `${trackBase}?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
-      const trackingPixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
-      const htmlWithTracking = job.email_html.includes("</body>")
-        ? job.email_html.replace("</body>", `${trackingPixel}</body>`)
-        : job.email_html + trackingPixel;
+      // Inject open-tracking pixel (idempotent: only if not already present)
+      const trackBase   = `${SUPABASE_URL}/functions/v1/phishing-track`;
+      const pixelUrl    = `${trackBase}?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const trackPixel  = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+      const finalHtml   = job.email_html.includes("phishing-track?t=open")
+        ? job.email_html // already has pixel
+        : job.email_html.includes("</body>")
+          ? job.email_html.replace("</body>", trackPixel + "</body>")
+          : job.email_html + trackPixel;
 
+      // Send
       const result = await sendEmail({
-        to: job.recipient_email,
-        subject: job.email_subject,
-        html: htmlWithTracking,
-        from_address: job.from_address,
-        from_name: job.from_name,
-        smtp_profile_id: job.smtp_profile_id,
+        to:               job.recipient_email,
+        subject:          job.email_subject,
+        html:             finalHtml,
+        from_address:     job.from_address,
+        from_name:        job.from_name,
+        smtp_profile_id:  job.smtp_profile_id,
       });
 
       if (result.success) {
@@ -142,15 +284,17 @@ Deno.serve(async (req) => {
           .update({ status: "SENT", sent_at: new Date().toISOString() })
           .eq("id", job.id);
 
+        // Log EMAIL_SENT event
         await supabase.from("phishing_events").insert({
-          campaign_id: job.campaign_id,
-          target_id: job.target_id,
-          company_id: job.company_id,
-          event_type: "EMAIL_SENT",
+          campaign_id:  job.campaign_id,
+          target_id:    job.target_id,
+          company_id:   job.company_id,
+          event_type:   "EMAIL_SENT",
           recipient_id: job.recipient_id,
-          email: job.recipient_email,
+          email:        job.recipient_email,
         });
 
+        // Update target to SENT
         await supabase.from("phishing_campaign_targets")
           .update({ status: "SENT", sent_at: new Date().toISOString() })
           .eq("id", job.target_id);
@@ -158,59 +302,80 @@ Deno.serve(async (req) => {
         sent++;
       } else {
         const retryCount = (job.retry_count || 0) + 1;
-        await supabase.from("campaign_email_queue")
-          .update({
-            status: retryCount >= 3 ? "FAILED" : "PENDING",
-            retry_count: retryCount,
-            failed_at: new Date().toISOString(),
-            failure_reason: result.error,
-            scheduled_at: retryCount < 3 ? new Date(Date.now() + retryCount * 60000).toISOString() : undefined,
-          })
-          .eq("id", job.id);
+        const maxRetries = 3;
 
-        if (retryCount >= 3) {
+        if (retryCount >= maxRetries) {
+          // Final failure
+          await supabase.from("campaign_email_queue")
+            .update({
+              status: "FAILED",
+              retry_count: retryCount,
+              failed_at: new Date().toISOString(),
+              failure_reason: result.error,
+            })
+            .eq("id", job.id);
+
           await supabase.from("phishing_events").insert({
-            campaign_id: job.campaign_id,
-            target_id: job.target_id,
-            company_id: job.company_id,
-            event_type: "EMAIL_FAILED",
+            campaign_id:  job.campaign_id,
+            target_id:    job.target_id,
+            company_id:   job.company_id,
+            event_type:   "EMAIL_FAILED",
             recipient_id: job.recipient_id,
-            email: job.recipient_email,
-            metadata: { error: result.error },
+            email:        job.recipient_email,
+            metadata:     { error: result.error, retries: retryCount },
           });
+        } else {
+          // Exponential backoff retry
+          const backoffMs = retryCount * 60 * 1000; // 1min, 2min, 3min
+          await supabase.from("campaign_email_queue")
+            .update({
+              status: "PENDING",
+              retry_count: retryCount,
+              scheduled_at: new Date(Date.now() + backoffMs).toISOString(),
+              failure_reason: result.error,
+            })
+            .eq("id", job.id);
         }
         failed++;
       }
 
-      const { count: pending } = await supabase
+      // Check if campaign is now fully processed
+      const { count: remaining } = await supabase
         .from("campaign_email_queue")
         .select("id", { count: "exact", head: true })
         .eq("campaign_id", job.campaign_id)
         .in("status", ["PENDING", "SENDING"]);
 
-      if (pending === 0) {
+      if (remaining === 0) {
+        const campId    = job.campaign_id;
+        const companyId = (campaign?.company_id as string) || job.company_id;
+
         await supabase.from("phishing_campaigns")
           .update({ status: "COMPLETED", completion_date: new Date().toISOString() })
-          .eq("id", job.campaign_id);
+          .eq("id", campId);
+
         await supabase.from("phishing_alerts").insert({
-          campaign_id: job.campaign_id,
-          company_id: job.company_id,
-          alert_type: "CAMPAIGN_COMPLETE",
-          priority: "LOW",
-          title: "Campaign Completed",
-          message: `All emails have been processed for campaign ${job.campaign_id}`,
+          campaign_id: campId,
+          company_id:  companyId,
+          alert_type:  "CAMPAIGN_COMPLETE",
+          priority:    "LOW",
+          title:       "Campaign Completed",
+          message:     `Campaign has finished sending. Check results in the dashboard.`,
         });
       }
 
-      await new Promise(r => setTimeout(r, 100));
+      // Micro-delay to avoid hammering the SMTP server
+      await new Promise(r => setTimeout(r, 50));
     }
 
-    return new Response(JSON.stringify({ processed: jobs.length, sent, failed, skipped }), { headers: corsHeaders });
+    return new Response(
+      JSON.stringify({ processed: jobs.length, sent, failed, skipped }),
+      { headers: corsHeaders }
+    );
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Worker error" }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    const msg = err instanceof Error ? err.message : "Worker error";
+    console.error("[process-campaign]", msg);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
   }
 });

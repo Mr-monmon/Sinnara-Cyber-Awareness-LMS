@@ -9,6 +9,66 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
 /* ─────────────────────────────────────────
+   VARIABLE RESOLUTION ENGINE
+   Replaces all {{.VarName}} tokens in HTML/text.
+   Called per-target at queue build time.
+───────────────────────────────────────── */
+function resolveVariables(
+  html: string,
+  target: {
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    department?: string;
+    position?: string;
+    recipient_id?: string;
+  },
+  meta: {
+    campaign_id: string;
+    company_name: string;
+    redirect_url: string;
+    tracking_base: string;
+  },
+  customVars: Record<string, string> = {}
+): string {
+  const domain     = target.email.split('@')[1] || '';
+  const clickUrl   = `${meta.tracking_base}?t=click&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}&url=${btoa(meta.redirect_url || 'https://www.google.com')}`;
+  const pixelUrl   = `${meta.tracking_base}?t=open&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}`;
+  const trackPixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+
+  const built_in: Record<string, string> = {
+    '{{.FirstName}}':    target.first_name || target.email.split('@')[0] || '',
+    '{{.LastName}}':     target.last_name  || '',
+    '{{.Email}}':        target.email,
+    '{{.Position}}':     target.position   || '',
+    '{{.Department}}':   target.department || '',
+    '{{.Company}}':      meta.company_name,
+    '{{.CompanyDomain}}': domain,
+    '{{.ManagerName}}':  '',   // available if provided via custom vars
+    '{{.LoginURL}}':     clickUrl,
+    '{{.URL}}':          clickUrl,
+    '{{.TrackingURL}}':  clickUrl,  // some templates use TrackingURL as the main link
+    '{{.TrackingPixel}}': trackPixel,
+    '{{.RId}}':          target.recipient_id || '',
+    '{{.RandomInt}}':    String(Math.floor(Math.random() * 9999) + 1),
+    '{{.Date}}':         new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+  };
+
+  // Custom company vars: {{.VarName}} → value
+  const custom: Record<string, string> = {};
+  for (const [k, v] of Object.entries(customVars)) {
+    custom[`{{.${k}}}`] = v;
+  }
+
+  const allVars = { ...built_in, ...custom };
+  let result = html;
+  for (const [token, value] of Object.entries(allVars)) {
+    result = result.replaceAll(token, value);
+  }
+  return result;
+}
+
+/* ─────────────────────────────────────────
    TOKENS
 ───────────────────────────────────────── */
 const T = {
@@ -293,9 +353,50 @@ export const PhishingCampaignsPage: React.FC = () => {
       const scheduledAt = form.launchType === 'scheduled' && form.scheduledAt ? form.scheduledAt : null;
       const status = asDraft ? 'DRAFT' : (scheduledAt ? 'SCHEDULED' : 'RUNNING');
 
-      // Create campaign
+      // ── 1. Load group members first to get target count ──
+      const { data: members } = await supabase
+        .from('phishing_group_members')
+        .select('email, first_name, last_name, position, department')
+        .in('group_id', form.selectedGroups);
+
+      const targetCount = members?.length ?? 0;
+
+      // ── 2. Server-side limit enforcement (backend RPC) ──
+      if (!asDraft && status !== 'DRAFT') {
+        const { data: limitCheck } = await supabase.rpc('check_phishing_limits', {
+          p_company_id:   companyId,
+          p_target_count: targetCount,
+        });
+        if (limitCheck && !limitCheck.allowed) {
+          alert(`Campaign blocked: ${limitCheck.reason}`);
+          setSaving(false);
+          return;
+        }
+      }
+
+      // ── 3. Fetch company info for variable resolution ──
+      const { data: companyData } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', companyId)
+        .single();
+      const companyName = companyData?.name || '';
+
+      // ── 4. Fetch custom variables for this company ──
+      const { data: customVarRows } = await supabase
+        .from('phishing_custom_variables')
+        .select('variable_name, variable_value')
+        .eq('company_id', companyId);
+      const customVars: Record<string, string> = {};
+      for (const row of (customVarRows || [])) {
+        customVars[row.variable_name] = row.variable_value;
+      }
+
+      // ── 5. Create campaign record ──
       const { data: camp, error: campErr } = await supabase.from('phishing_campaigns').insert({
-        company_id: companyId, name: form.name, status,
+        company_id: companyId,
+        name: form.name,
+        status,
         smtp_profile_id: form.smtpProfileId || null,
         group_ids: form.selectedGroups,
         scenario_id: form.selectedScenario?.id || null,
@@ -311,87 +412,128 @@ export const PhishingCampaignsPage: React.FC = () => {
       }).select().single();
       if (campErr || !camp) throw campErr || new Error('Campaign creation failed');
 
-      // Load members from selected groups
-      const { data: members } = await supabase
-        .from('phishing_group_members')
-        .select('email, first_name, last_name')
-        .in('group_id', form.selectedGroups);
-
+      // ── 6. Insert targets (no employee_id — group-based targeting) ──
       if (members && members.length > 0) {
         const targetsInsert = members.map(m => ({
-          campaign_id: camp.id, email: m.email,
-          first_name: m.first_name, last_name: m.last_name,
-          status: 'PENDING',
+          campaign_id: camp.id,
+          email:       m.email,
+          first_name:  m.first_name  || '',
+          last_name:   m.last_name   || '',
+          position:    m.position    || '',
+          department:  m.department  || '',
+          status:      'PENDING',
         }));
-        await supabase.from('phishing_campaign_targets').insert(targetsInsert);
+        // Insert in batches of 500
+        for (let i = 0; i < targetsInsert.length; i += 500) {
+          await supabase.from('phishing_campaign_targets').insert(targetsInsert.slice(i, i + 500));
+        }
       }
 
-      // If running, enqueue emails
+      // ── 7. Enqueue emails if launching now ──
       if (status === 'RUNNING') {
-        // Build email html with tracking
-        const emailHtml = form.emailHtml || form.selectedScenario?.email_html || '<p>Phishing simulation email</p>';
-        const subject = form.emailSubject || form.selectedScenario?.email_subject || 'Important Notice';
-        const fromAddr = form.fromAddress || 'noreply@awareone.io';
-        const fromName = form.fromName || 'AwareOne Security';
+        const emailHtml  = form.emailHtml  || form.selectedScenario?.email_html  || '<p>Security Awareness Test</p>';
+        const subject    = form.emailSubject || form.selectedScenario?.email_subject || 'Important Security Notice';
+        const fromAddr   = form.fromAddress || 'noreply@awareone.io';
+        const fromName   = form.fromName   || 'AwareOne Security';
+        const redirectUrl = form.redirectUrl || 'https://www.google.com';
 
-        // Fetch inserted targets
+        // Fetch inserted targets with their recipient_ids (generated by DB)
         const { data: insertedTargets } = await supabase
-          .from('phishing_campaign_targets').select('id, email, recipient_id').eq('campaign_id', camp.id);
+          .from('phishing_campaign_targets')
+          .select('id, email, first_name, last_name, position, department, recipient_id')
+          .eq('campaign_id', camp.id);
 
         if (insertedTargets && insertedTargets.length > 0) {
-          const supabaseUrl = (supabase as unknown as { supabaseUrl: string }).supabaseUrl || '';
+          // Get Supabase URL for tracking base
+          const supabaseUrl = (supabase as unknown as { supabaseUrl?: string }).supabaseUrl
+            || import.meta.env?.VITE_SUPABASE_URL
+            || '';
           const trackBase = `${supabaseUrl}/functions/v1/phishing-track`;
 
-          const queueEntries = insertedTargets.map((t, i) => {
-            const delay = form.randomDelay ? Math.floor(Math.random() * form.randomDelayMax) : 0;
-            const intervalMs = 60000 / Math.max(form.emailsPerMinute, 1);
-            const sendAt = new Date(Date.now() + i * intervalMs + delay * 1000);
+          const intervalMs = 60000 / Math.max(form.emailsPerMinute, 1);
+          const baseTime   = scheduledAt ? new Date(scheduledAt).getTime() : Date.now();
 
-            // Personalize email
-            let html = emailHtml
-              .replaceAll('{{.FirstName}}', t.email.split('@')[0])
-              .replaceAll('{{.Email}}', t.email)
-              .replaceAll('{{.TrackingURL}}',
-                `${trackBase}?t=click&c=${camp.id}&r=${t.recipient_id}&url=${btoa(form.redirectUrl || 'https://www.google.com')}`
-              );
-            const pixel = `<img src="${trackBase}?t=open&c=${camp.id}&r=${t.recipient_id}" width="1" height="1" style="display:none" alt="" />`;
-            html = html.includes('</body>') ? html.replace('</body>', pixel + '</body>') : html + pixel;
+          const queueEntries = insertedTargets.map((t, i) => {
+            const randomDelaySec = form.randomDelay
+              ? Math.floor(Math.random() * Math.max(form.randomDelayMax, 1))
+              : 0;
+            const sendAt = new Date(baseTime + i * intervalMs + randomDelaySec * 1000);
+
+            // Full variable resolution per target
+            const resolvedHtml = resolveVariables(emailHtml, {
+              email:       t.email,
+              first_name:  t.first_name,
+              last_name:   t.last_name,
+              department:  t.department,
+              position:    t.position,
+              recipient_id: t.recipient_id,
+            }, {
+              campaign_id:   camp.id,
+              company_name:  companyName,
+              redirect_url:  redirectUrl,
+              tracking_base: trackBase,
+            }, customVars);
+
+            // Ensure tracking pixel is in the HTML
+            const pixelUrl   = `${trackBase}?t=open&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`;
+            const trackPixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
+            const finalHtml  = resolvedHtml.includes('phishing-track?t=open')
+              ? resolvedHtml
+              : resolvedHtml.includes('</body>')
+                ? resolvedHtml.replace('</body>', trackPixel + '</body>')
+                : resolvedHtml + trackPixel;
 
             return {
-              campaign_id: camp.id, target_id: t.id, company_id: companyId,
+              campaign_id:    camp.id,
+              target_id:      t.id,
+              company_id:     companyId,
               smtp_profile_id: form.smtpProfileId || null,
-              recipient_email: t.email, recipient_id: t.recipient_id,
-              email_subject: subject, email_html: html,
-              from_address: fromAddr, from_name: fromName,
-              scheduled_at: sendAt.toISOString(),
+              recipient_email: t.email,
+              recipient_id:   t.recipient_id,
+              email_subject:  resolveVariables(subject, { email: t.email, first_name: t.first_name, last_name: t.last_name, department: t.department, position: t.position, recipient_id: t.recipient_id }, { campaign_id: camp.id, company_name: companyName, redirect_url: redirectUrl, tracking_base: trackBase }, customVars),
+              email_html:     finalHtml,
+              from_address:   fromAddr,
+              from_name:      fromName,
+              scheduled_at:   sendAt.toISOString(),
             };
           });
 
-          // Insert in batches of 100
+          // Insert queue in batches of 100 (handles 10k+ campaigns)
           for (let i = 0; i < queueEntries.length; i += 100) {
             await supabase.from('campaign_email_queue').insert(queueEntries.slice(i, i + 100));
           }
+          await supabase.from('phishing_campaigns')
+            .update({ total_queue_size: queueEntries.length })
+            .eq('id', camp.id);
 
-          await supabase.from('phishing_campaigns').update({ total_queue_size: queueEntries.length }).eq('id', camp.id);
+          // Update monthly email usage counter (backend enforcement)
+          await supabase.rpc('update_company_email_usage', {
+            p_company_id: companyId,
+            p_count: queueEntries.length,
+          });
 
-          // Trigger process-campaign
-          supabase.functions.invoke('process-campaign', { method: 'POST', body: { campaign_id: camp.id } }).catch(() => {});
+          // Trigger first batch immediately (fire-and-forget)
+          supabase.functions.invoke('process-campaign', {
+            body: { campaign_id: camp.id, batch_size: 50 },
+          }).catch(() => {});
         }
 
         // Alert: campaign started
         await supabase.from('phishing_alerts').insert({
-          campaign_id: camp.id, company_id: companyId,
-          alert_type: 'CAMPAIGN_STARTED', priority: 'LOW',
-          title: `Campaign Started: ${form.name}`,
-          message: `Phishing campaign "${form.name}" has been launched with ${members?.length || 0} targets.`,
+          campaign_id: camp.id,
+          company_id:  companyId,
+          alert_type:  'CAMPAIGN_STARTED',
+          priority:    'LOW',
+          title:       `Campaign Started: ${form.name}`,
+          message:     `Phishing campaign "${form.name}" launched with ${targetCount} targets.`,
         });
       }
 
       setView('list');
       loadCampaigns();
     } catch (err) {
-      console.error(err);
-      alert('Failed to launch campaign. Please try again.');
+      console.error('[launchCampaign]', err);
+      alert('Failed to launch campaign: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally { setSaving(false); }
   };
 

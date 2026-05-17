@@ -149,6 +149,8 @@ export const PhishingLandingPagesPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ form_detected: boolean; has_password_field: boolean } | null>(null);
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
 
@@ -212,26 +214,33 @@ export const PhishingLandingPagesPage: React.FC = () => {
     setTimeout(() => setCopiedVar(null), 1500);
   };
 
-  const handleImport = () => {
-    if (!importUrl.trim()) return;
-    const placeholder = `<!-- Cloned from: ${importUrl} -->
-<!-- Note: Full site cloning happens server-side. This is a placeholder. -->
-<!-- Replace this content with the actual cloned HTML after server processing. -->
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Cloned from ${importUrl}</title>
-</head>
-<body>
-  <p>Site content from <a href="${importUrl}">${importUrl}</a> will appear here after server-side cloning.</p>
-  <img src="{{.TrackingURL}}" style="display:none" />
-</body>
-</html>`;
-    setForm(f => ({ ...f, html_content: placeholder }));
-    setImportUrl('');
+  const handleImport = async () => {
+    if (!importUrl.trim() || importing) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('clone-landing-page', {
+        body: { url: importUrl.trim() },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      if (data?.html) {
+        setForm(f => ({ ...f, html_content: data.html }));
+        setImportResult({
+          form_detected: !!data.form_detected,
+          has_password_field: !!data.has_password_field,
+        });
+        if (data.form_detected) {
+          setForm(f => ({ ...f, capture_credentials: true }));
+        }
+      }
+    } catch (e) {
+      alert('Clone failed: ' + (e instanceof Error ? e.message : 'Unknown error'));
+    } finally {
+      setImporting(false);
+    }
   };
+
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -321,9 +330,15 @@ export const PhishingLandingPagesPage: React.FC = () => {
                 placeholder="https://site-to-clone.com"
                 style={{ padding: '6px 12px', fontSize: 12 }}
               />
-              <button onClick={handleImport} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, borderRadius: 8, color: T.orange, cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
-                <Link size={12} /> Clone
+              <button onClick={handleImport} disabled={importing} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, borderRadius: 8, color: T.orange, cursor: importing ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'inherit', opacity: importing ? 0.7 : 1 }}>
+                {importing ? <Loader2 size={12} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Link size={12} />}
+                {importing ? 'Cloning…' : 'Clone'}
               </button>
+              {importResult && (
+                <span style={{ fontSize: 11, color: importResult.form_detected ? T.green : T.textMuted, whiteSpace: 'nowrap' }}>
+                  {importResult.form_detected ? `✓ Form detected${importResult.has_password_field ? ' + password field' : ''}` : 'No form detected'}
+                </span>
+              )}
             </div>
 
             {/* Options */}
