@@ -565,9 +565,9 @@ export const LandingPage = () => {
             <nav aria-label="Company links">
               <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Company</h3>
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-                {[{label:"Free Assessment",page:"public-assessment"},{label:"Fraud Alerts",page:"fraud-alerts"},{label:"Resources",page:"resources"},{label:"Login",page:"login"}].map(({label,page}) => (
-                  <li key={page}>
-                    <button onClick={() => navigate(page)} style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
+                {[{label:"Free Assessment",path:"/assessment"},{label:"Fraud Alerts",path:"/fraud-alerts"},{label:"Resources",path:"/resources"},{label:"Login",path:"/login"}].map(({label,path}) => (
+                  <li key={path}>
+                    <button onClick={() => navigate(path)} style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
                       onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>{label}</button>
                   </li>
                 ))}
