@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle } from "lucide-react";
+import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle, BarChart2, Edit2, Check } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { RequestWithCompany } from "../../lib/types";
 import RequestPreview from "./RequestPreview";
@@ -150,6 +150,150 @@ const FILTER_TABS = ['ALL', 'SUBMITTED', 'APPROVED', 'RUNNING', 'COMPLETED', 'RE
 type FilterTab = typeof FILTER_TABS[number];
 
 /* ─────────────────────────────────────────
+   QUOTA TAB
+───────────────────────────────────────── */
+interface CompanyQuota {
+  id: string;
+  name: string;
+  annual_quota: number;
+  used_campaigns: number;
+}
+
+const QuotaTab: React.FC = () => {
+  const [quotas, setQuotas] = useState<CompanyQuota[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { loadQuotas(); }, []);
+
+  const loadQuotas = async () => {
+    setLoading(true);
+    try {
+      const { data: companies } = await supabase.from('companies').select('id, name').order('name');
+      const { data: quotaData } = await supabase.from('phishing_campaign_quotas').select('company_id, annual_quota, used_campaigns');
+
+      const quotaMap = new Map<string, { annual_quota: number; used_campaigns: number }>();
+      (quotaData || []).forEach((q: any) => quotaMap.set(q.company_id, { annual_quota: q.annual_quota, used_campaigns: q.used_campaigns }));
+
+      const result: CompanyQuota[] = (companies || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        annual_quota: quotaMap.get(c.id)?.annual_quota ?? 0,
+        used_campaigns: quotaMap.get(c.id)?.used_campaigns ?? 0,
+      }));
+      setQuotas(result);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const saveQuota = async (companyId: string) => {
+    const val = parseInt(editValue, 10);
+    if (isNaN(val) || val < 0) { alert('Please enter a valid number'); return; }
+    setSaving(true);
+    try {
+      await supabase.from('phishing_campaign_quotas').upsert(
+        { company_id: companyId, annual_quota: val, quota_year: new Date().getFullYear(), updated_at: new Date().toISOString() },
+        { onConflict: 'company_id,quota_year' }
+      );
+      setEditId(null);
+      loadQuotas();
+    } catch (err: any) { alert(err.message || 'Failed to save'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <BarChart2 size={14} style={{ color: T.accent }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Company Phishing Quotas</span>
+        <span style={{ fontSize: 11, color: T.textMuted, marginLeft: 4 }}>{new Date().getFullYear()} Annual Quota</span>
+      </div>
+
+      <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="aw-pmp-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th style={{ textAlign: 'center' }}>Annual Quota</th>
+                <th style={{ textAlign: 'center' }}>Used</th>
+                <th style={{ textAlign: 'center' }}>Remaining</th>
+                <th style={{ textAlign: 'center' }}>Usage</th>
+                <th style={{ textAlign: 'center' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotas.length > 0 ? quotas.map(q => {
+                const remaining = Math.max(0, q.annual_quota - q.used_campaigns);
+                const pct = q.annual_quota > 0 ? Math.min(100, Math.round((q.used_campaigns / q.annual_quota) * 100)) : 0;
+                const usageColor = pct >= 90 ? T.red : pct >= 70 ? T.orange : T.green;
+                return (
+                  <tr key={q.id}>
+                    <td style={{ fontWeight: 600, color: T.white }}>{q.name}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      {editId === q.id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                          <input
+                            type="number"
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            style={{ width: 70, padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${T.border}`, borderRadius: 7, color: T.white, fontSize: 13, textAlign: 'center', outline: 'none' }}
+                            min="0"
+                            autoFocus
+                          />
+                          <button onClick={() => saveQuota(q.id)} disabled={saving} style={{ width: 26, height: 26, borderRadius: 6, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {saving ? <Loader2 size={11} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Check size={11} />}
+                          </button>
+                          <button onClick={() => setEditId(null)} style={{ width: 26, height: 26, borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontWeight: 700, color: T.white }}>{q.annual_quota}</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 600, color: q.used_campaigns > 0 ? T.orange : T.textMuted }}>{q.used_campaigns}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: remaining === 0 ? T.red : T.green }}>{remaining}</td>
+                    <td style={{ textAlign: 'center', minWidth: 100 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+                        <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden', minWidth: 60 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: usageColor, borderRadius: 9999, transition: 'width 0.5s ease' }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: usageColor, fontWeight: 700, minWidth: 30 }}>{pct}%</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {editId !== q.id && (
+                        <button onClick={() => { setEditId(q.id); setEditValue(String(q.annual_quota)); }}
+                          style={{ width: 28, height: 28, borderRadius: 7, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                          <Edit2 size={12} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={6} style={{ padding: '40px 0', textAlign: 'center', color: T.textMuted }}>No companies found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────
    STAT CARD
 ───────────────────────────────────────── */
 const StatCard: React.FC<{ color: string; label: string; value: number; onClick?: () => void; active?: boolean }> = ({
@@ -165,7 +309,10 @@ const StatCard: React.FC<{ color: string; label: string; value: number; onClick?
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
+type MainTab = 'campaigns' | 'quota';
+
 export const PhishingManagementPage: React.FC = () => {
+  const [mainTab, setMainTab] = useState<MainTab>('campaigns');
   const [requests, setRequests]           = useState<RequestWithCompany[]>([]);
   const [loading, setLoading]             = useState(true);
   const [filter, setFilter]               = useState<FilterTab>('ALL');
@@ -269,6 +416,22 @@ export const PhishingManagementPage: React.FC = () => {
           <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Review and manage company phishing campaign requests.</p>
         </div>
       </div>
+
+      {/* ── Main tabs ── */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {([
+          { key: 'campaigns' as MainTab, icon: Shield, label: 'Campaigns' },
+          { key: 'quota' as MainTab, icon: BarChart2, label: 'Quota Management' },
+        ]).map(tab => (
+          <button key={tab.key} onClick={() => setMainTab(tab.key)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9, border: `1px solid ${mainTab === tab.key ? 'rgba(200,255,0,0.28)' : 'rgba(255,255,255,0.07)'}`, background: mainTab === tab.key ? 'rgba(200,255,0,0.10)' : 'rgba(255,255,255,0.03)', color: mainTab === tab.key ? T.accent : T.textMuted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, transition: 'all 0.18s' }}>
+            <tab.icon size={13} /> {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {mainTab === 'quota' && <QuotaTab />}
+      {mainTab === 'campaigns' && <>
 
       {/* ── Stat cards (clickable filters) ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
@@ -442,6 +605,7 @@ export const PhishingManagementPage: React.FC = () => {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 };

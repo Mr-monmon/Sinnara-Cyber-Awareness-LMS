@@ -3,7 +3,7 @@ import {
   Building2, Users, BookOpen, FileText, BarChart3,
   CreditCard, History, Shield, ChevronRight,
   Mail, Globe, Bell, Award, Zap, AlertTriangle,
-  TrendingUp, HelpCircle, Clock, CheckCircle, DollarSign,
+  TrendingUp, HelpCircle, Clock, CheckCircle, DollarSign, Server,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { CompaniesPage }              from "./CompaniesPage";
@@ -19,6 +19,7 @@ import { PhishingManagementPage }     from "./PhishingManagementPage";
 import { PhishingTemplatesPage }      from "./PhishingTemplatesPage";
 import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
 import { PhishingDomainsPage }        from "./PhishingDomainsPage";
+import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
 import { DemoRequestsPage }           from "./DemoRequestsPage";
 import { PartnersManagementPage }     from "./PartnersManagementPage";
 import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
@@ -115,6 +116,7 @@ const ACTIONS = [
   { page: 'exams',                   icon: FileText,  color: T.orange,  label: 'Manage Exams',           sub: 'Assessments & quizzes'          },
   { page: 'phishing-management',     icon: Shield,    color: T.red,     label: 'Phishing Management',    sub: 'Campaign oversight'             },
   { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
+  { page: 'phishing-smtp-admin',    icon: Server,    color: T.cyan,    label: 'Platform SMTP Profiles', sub: 'Push SMTP to companies'         },
   { page: 'fraud-alerts-management', icon: AlertTriangle, color: T.orange, label: 'Fraud Alerts',        sub: 'Manage public alerts'           },
   { page: 'demo-requests',           icon: Bell,      color: T.purple,  label: 'Demo Requests',          sub: 'Incoming demo inquiries'        },
   { page: 'public-submissions',      icon: Globe,     color: T.blue,    label: 'Public Submissions',     sub: 'Assessment submissions'         },
@@ -290,6 +292,7 @@ export const PlatformDashboard = () => {
       case "phishing-templates":       return <PhishingTemplatesPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
+      case "phishing-smtp-admin":      return <PhishingSmtpAdminPage />;
       case "fraud-alerts-management":  return <FraudAlertsManagementPage />;
       case "partners-management":      return <PartnersManagementPage />;
       case "support-requests":         return <SupportRequestsPage />;
