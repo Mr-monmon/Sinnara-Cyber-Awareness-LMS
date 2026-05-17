@@ -316,6 +316,12 @@ Deno.serve(async (req) => {
           .update({ status: "SENT", sent_at: new Date().toISOString() })
           .eq("id", job.target_id);
 
+        // Increment emails_sent counter on the campaign
+        await supabase.rpc("increment_campaign_stat", {
+          p_campaign_id: job.campaign_id,
+          p_field: "emails_sent",
+        });
+
         sent++;
       } else {
         const retryCount = (job.retry_count || 0) + 1;
