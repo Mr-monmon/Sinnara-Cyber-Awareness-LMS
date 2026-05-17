@@ -183,10 +183,8 @@ const eventIcon: Record<string, { icon: React.ElementType; color: string }> = {
   EMAIL_QUEUED: { icon: Clock, color: T.textMuted }, EMAIL_SENT: { icon: Send, color: T.blue },
   EMAIL_FAILED: { icon: X, color: T.red }, EMAIL_OPENED: { icon: Eye, color: T.green },
   LINK_CLICKED: { icon: MousePointerClick, color: T.orange }, FORM_SUBMITTED: { icon: Key, color: T.red },
-  EMAIL_REPORTED: { icon: Flag, color: T.purple },
+  EMAIL_REPORTED: { icon: AlertTriangle, color: T.purple },
 };
-// @ts-ignore
-const Flag = AlertTriangle;
 
 const TIMEZONES = ['Asia/Riyadh', 'Asia/Dubai', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
 const VARIABLE_CHIPS = ['{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Department}}', '{{.Position}}', '{{.Company}}', '{{.TrackingURL}}'];
