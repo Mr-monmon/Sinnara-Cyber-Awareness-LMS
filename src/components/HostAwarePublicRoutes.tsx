@@ -9,7 +9,11 @@ import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 
 export const HomeRoute = () => {
-  const { hostMode } = useTenantAccess();
+  const { hostMode, loading } = useTenantAccess();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   if (hostMode === "admin") {
     return <Navigate to="/login" replace />;
