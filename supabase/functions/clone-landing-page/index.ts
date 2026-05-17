@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
@@ -55,7 +57,7 @@ Deno.serve(async (req) => {
       var c = params.get('c') || '';
       var r = params.get('r') || '';
       if (c && r) {
-        fetch('/functions/v1/phishing-track?t=submit&c='+c+'&r='+r, {
+        fetch('${SUPABASE_URL}/functions/v1/phishing-track?t=submit&c='+c+'&r='+r, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(data)

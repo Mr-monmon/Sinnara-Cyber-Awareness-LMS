@@ -251,13 +251,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Claim the job
-      const { error: claimErr } = await supabase
+      // Claim the job (optimistic lock — skip if another worker already claimed it)
+      const { error: claimErr, count: claimed } = await supabase
         .from("campaign_email_queue")
-        .update({ status: "SENDING" })
+        .update({ status: "SENDING" }, { count: "exact" })
         .eq("id", job.id)
-        .eq("status", "PENDING"); // optimistic lock
-      if (claimErr) { skipped++; continue; }
+        .eq("status", "PENDING");
+      if (claimErr || claimed === 0) { skipped++; continue; }
 
       // Inject open-tracking pixel (idempotent: only if not already present)
       const trackBase   = `${SUPABASE_URL}/functions/v1/phishing-track`;

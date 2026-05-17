@@ -31,8 +31,12 @@ function resolveVariables(
   },
   customVars: Record<string, string> = {}
 ): string {
+  // btoa only handles latin-1; encode non-ASCII URLs safely
+  const toB64 = (s: string) => {
+    try { return btoa(s); } catch { return btoa(unescape(encodeURIComponent(s))); }
+  };
   const domain     = target.email.split('@')[1] || '';
-  const clickUrl   = `${meta.tracking_base}?t=click&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}&url=${btoa(meta.redirect_url || 'https://www.google.com')}`;
+  const clickUrl   = `${meta.tracking_base}?t=click&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}&url=${toB64(meta.redirect_url || 'https://www.google.com')}`;
   const pixelUrl   = `${meta.tracking_base}?t=open&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}`;
   const trackPixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
 
@@ -133,7 +137,7 @@ interface Campaign {
 }
 interface Target { id: string; email: string; first_name?: string; last_name?: string; status?: string; sent_at?: string; opened_at?: string; clicked_at?: string; submitted_at?: string; recipient_id?: string; }
 interface Group { id: string; name: string; member_count?: number; }
-interface SmtpProfile { id: string; name: string; from_email: string; from_name: string; }
+interface SmtpProfile { id: string; name: string; from_address: string; from_name: string; }
 interface EmailTemplate { id: string; name: string; subject: string; html_content: string; }
 interface LandingPage { id: string; name: string; html_content?: string; }
 interface Scenario { id: string; name: string; description?: string; category: string; difficulty: string; email_subject: string; email_html: string; landing_page_html?: string; tags?: string[]; }
@@ -258,7 +262,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     const [scRes, grRes, smRes, etRes, lpRes, limRes] = await Promise.all([
       supabase.from('phishing_scenarios').select('*').eq('is_active', true).order('sort_order'),
       supabase.from('phishing_groups').select('id, name').eq('company_id', companyId),
-      supabase.from('smtp_profiles').select('id, name, from_email, from_name'),
+      supabase.from('smtp_profiles').select('id, name, from_address, from_name'),
       supabase.from('phishing_company_email_templates').select('id, name, subject, html_content').eq('company_id', companyId),
       supabase.from('phishing_company_landing_pages').select('id, name, html_content').eq('company_id', companyId),
       supabase.from('company_phishing_limits').select('*').eq('company_id', companyId).maybeSingle(),
@@ -337,7 +341,7 @@ export const PhishingCampaignsPage: React.FC = () => {
   // Wizard: apply smtp profile
   const applySmtp = (id: string) => {
     const p = smtpProfiles.find(s => s.id === id);
-    if (p) setForm(f => ({ ...f, smtpProfileId: id, fromName: p.from_name, fromAddress: p.from_email }));
+    if (p) setForm(f => ({ ...f, smtpProfileId: id, fromName: p.from_name, fromAddress: p.from_address }));
     else setForm(f => ({ ...f, smtpProfileId: id }));
   };
 
@@ -444,10 +448,7 @@ export const PhishingCampaignsPage: React.FC = () => {
           .eq('campaign_id', camp.id);
 
         if (insertedTargets && insertedTargets.length > 0) {
-          // Get Supabase URL for tracking base
-          const supabaseUrl = (supabase as unknown as { supabaseUrl?: string }).supabaseUrl
-            || import.meta.env?.VITE_SUPABASE_URL
-            || '';
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
           const trackBase = `${supabaseUrl}/functions/v1/phishing-track`;
 
           const intervalMs = 60000 / Math.max(form.emailsPerMinute, 1);
