@@ -4,9 +4,12 @@ name = "awareone"
 main = "src/worker.ts"
 compatibility_date = "2026-04-09"
 
-# Build is performed by GitHub Actions before `wrangler deploy` runs.
-# Do NOT add a [build] command here — Wrangler would rebuild without the
-# VITE_* secrets and ship an unconfigured bundle.
+# Cloudflare Workers Builds runs this command on every push to main.
+# VITE_* env vars are taken from "Variables and Secrets" in the Worker
+# dashboard and are in scope during the build, so the Vite bundle is
+# produced with the correct Supabase config baked in.
+[build]
+command = "npm install && npm run build"
 
 [assets]
 directory = "./dist"
