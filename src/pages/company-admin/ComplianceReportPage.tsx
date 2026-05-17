@@ -147,6 +147,7 @@ export const ComplianceReportPage: React.FC = () => {
       const [
         { data: company },
         { data: ecs },
+        { data: examResults },
         { count: certificatesIssued },
         { count: auditEventsLast90 },
         { count: trainingsLast90 },
@@ -154,25 +155,32 @@ export const ComplianceReportPage: React.FC = () => {
       ] = await Promise.all([
         supabase.from("companies").select("name").eq("id", cid).single(),
         employeeIds.length
-          ? supabase.from("employee_courses").select("status, employee_id, progress_percentage").in("employee_id", employeeIds)
-          : Promise.resolve({ data: [] as { status: string; employee_id: string; progress_percentage: number | null }[], error: null }),
+          ? supabase.from("employee_courses").select("employee_id, completed_at").in("employee_id", employeeIds).not("completed_at", "is", null)
+          : Promise.resolve({ data: [] as { employee_id: string; completed_at: string | null }[], error: null }),
+        employeeIds.length
+          ? supabase.from("exam_results").select("employee_id, percentage, passed").in("employee_id", employeeIds)
+          : Promise.resolve({ data: [] as { employee_id: string; percentage: number | null; passed: boolean }[], error: null }),
         employeeIds.length
           ? supabase.from("certificates").select("id", { count: "exact", head: true }).in("user_id", employeeIds)
           : Promise.resolve(none),
         supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).gte("created_at", ninetyDaysAgo),
-        supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("action_type", "COMPLETE_COURSE").gte("created_at", ninetyDaysAgo),
+        employeeIds.length
+          ? supabase.from("employee_courses").select("id", { count: "exact", head: true }).in("employee_id", employeeIds).not("completed_at", "is", null).gte("completed_at", ninetyDaysAgo)
+          : Promise.resolve(none),
         employeeEmails.length
           ? supabase.from("auth_attempts").select("id", { count: "exact", head: true }).in("email", employeeEmails).eq("success", true).gte("attempted_at", thirtyDaysAgo)
           : Promise.resolve(none),
       ]);
 
-      const completedSet = new Set(
-        (ecs ?? []).filter(c => c.status === "COMPLETED").map(c => c.employee_id)
-      );
+      // An employee is "trained" if they completed a course OR passed an exam (matches dashboard logic)
+      const completedSet = new Set<string>([
+        ...((ecs ?? []).map(c => c.employee_id)),
+        ...((examResults ?? []).filter(r => r.passed).map(r => r.employee_id)),
+      ]);
       const trainedEmployees = completedSet.size;
       const totalEmployees   = employeeIds.length;
       const completionRate   = totalEmployees ? Math.round((trainedEmployees / totalEmployees) * 100) : 0;
-      const scores = (ecs ?? []).map(c => c.progress_percentage).filter((p): p is number => typeof p === "number");
+      const scores = (examResults ?? []).map(r => r.percentage).filter((p): p is number => typeof p === "number");
       const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
       setCompanyName(company?.name ?? "Your Company");
