@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { getRuntimeEnv } from '../../lib/runtimeEnv';
 
 /* ─────────────────────────────────────────
    VARIABLE RESOLUTION ENGINE
@@ -450,7 +451,7 @@ export const PhishingCampaignsPage: React.FC = () => {
           .eq('campaign_id', camp.id);
 
         if (insertedTargets && insertedTargets.length > 0) {
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+          const supabaseUrl = getRuntimeEnv('VITE_SUPABASE_URL') || '';
           const trackBase = `${supabaseUrl}/functions/v1/phishing-track`;
 
           const intervalMs = 60000 / Math.max(form.emailsPerMinute, 1);
