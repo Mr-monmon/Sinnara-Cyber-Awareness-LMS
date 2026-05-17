@@ -4,8 +4,9 @@ name = "awareone"
 main = "src/worker.ts"
 compatibility_date = "2026-04-09"
 
-[build]
-command = "npm run build"
+# Build is performed by GitHub Actions before `wrangler deploy` runs.
+# Do NOT add a [build] command here — Wrangler would rebuild without the
+# VITE_* secrets and ship an unconfigured bundle.
 
 [assets]
 directory = "./dist"
