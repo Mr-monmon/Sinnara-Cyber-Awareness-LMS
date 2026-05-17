@@ -36,7 +36,9 @@ function resolveVariables(
     try { return btoa(s); } catch { return btoa(unescape(encodeURIComponent(s))); }
   };
   const domain     = target.email.split('@')[1] || '';
-  const clickUrl   = `${meta.tracking_base}?t=click&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}&url=${toB64(meta.redirect_url || 'https://www.google.com')}`;
+  // toB64 produces standard base64 which may contain +/= — must percent-encode so
+  // URLSearchParams.get() on the server returns the correct base64 string (not spaces)
+  const clickUrl   = `${meta.tracking_base}?t=click&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}&url=${encodeURIComponent(toB64(meta.redirect_url || 'https://www.google.com'))}`;
   const pixelUrl   = `${meta.tracking_base}?t=open&c=${meta.campaign_id}&r=${encodeURIComponent(target.recipient_id ?? '')}`;
   const trackPixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
 
