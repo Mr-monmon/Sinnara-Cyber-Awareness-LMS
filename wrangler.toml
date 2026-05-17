@@ -4,8 +4,6 @@ name = "awareone"
 main = "src/worker.ts"
 compatibility_date = "2026-04-09"
 
-[build]
-command = "npm run build"
 
 [assets]
 directory = "./dist"
