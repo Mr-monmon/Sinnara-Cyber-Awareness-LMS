@@ -19,6 +19,7 @@ import {
   Shield,
   Mail,
   AlertCircle,
+  AlertTriangle,
   Settings,
   HelpCircle,
   Globe,
@@ -308,6 +309,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           label: "Activity Log",
           icon: History,
           section: "System",
+        },
+        {
+          id: "error-logs",
+          label: "Error Logs",
+          icon: AlertTriangle,
         },
         { id: "demo-requests", label: "Demo Requests", icon: Users },
         {

@@ -25,6 +25,7 @@ import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
 import { supabase }                   from "../../lib/supabase";
 import SupportRequestsPage            from "./SupportRequestsPage";
 import EmailPage                      from "./EmailPage";
+import { ErrorLogsPage }              from "./ErrorLogsPage";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -283,6 +284,7 @@ export const PlatformDashboard = () => {
       case "subscriptions":            return <SubscriptionsPage />;
       case "analytics":                return <AnalyticsPage />;
       case "audit-logs":               return <AuditLogsPage />;
+      case "error-logs":               return <ErrorLogsPage />;
       case "certificates":             return <CertificateTemplatesPage />;
       case "phishing-management":      return <PhishingManagementPage />;
       case "phishing-templates":       return <PhishingTemplatesPage />;
