@@ -125,6 +125,47 @@ async function logEvent(params: {
   return event;
 }
 
+function errorHtml(code: string, title: string, detail: string): Response {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Error — Awareone</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0e1012;color:#e2e8f0;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+  .card{background:#1a1e26;border:1px solid rgba(255,255,255,0.09);border-radius:16px;
+        padding:36px;max-width:440px;width:100%;text-align:center}
+  .icon{width:52px;height:52px;border-radius:50%;background:rgba(248,113,113,0.12);
+        border:1px solid rgba(248,113,113,0.28);display:flex;align-items:center;
+        justify-content:center;margin:0 auto 20px;font-size:22px}
+  h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:10px}
+  p{font-size:14px;color:#94a3b8;line-height:1.6;margin-bottom:20px}
+  .code{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+        border-radius:8px;padding:10px 16px;font-family:monospace;font-size:12px;
+        color:#64748b;word-break:break-all}
+  .label{font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:0.8px;
+         margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">⚠</div>
+  <h1>${title}</h1>
+  <p>${detail}</p>
+  <div class="label">Error Reference Code</div>
+  <div class="code">${code}</div>
+</div>
+</body>
+</html>`;
+  return new Response(html, {
+    status: 400,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const t = url.searchParams.get("t");
@@ -141,6 +182,16 @@ Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
+  if (!t) {
+    const errId = `PT-${Date.now().toString(36).toUpperCase()}-NOTYPE`;
+    return errorHtml(errId, "Invalid Request", "This tracking link is missing required parameters. Please contact your administrator.");
+  }
+
+  if (!campaign_id || !recipient_id) {
+    const errId = `PT-${Date.now().toString(36).toUpperCase()}-NOREF`;
+    return errorHtml(errId, "Invalid Link", "This link is missing campaign or recipient information. It may have been copied incorrectly.");
+  }
+
   if (t === "open") {
     logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
     return new Response(TRANSPARENT_GIF, {
@@ -152,7 +203,10 @@ Deno.serve(async (req) => {
   if (t === "click") {
     const encodedUrl = url.searchParams.get("url") ?? "";
     let redirectUrl = "https://www.google.com";
-    try { redirectUrl = atob(encodedUrl); } catch { /* use default */ }
+    try { redirectUrl = atob(encodedUrl); } catch {
+      const errId = `PT-${Date.now().toString(36).toUpperCase()}-BADURL`;
+      return errorHtml(errId, "Invalid Link", "This link could not be decoded. Please report this to your administrator.");
+    }
     logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});
     return Response.redirect(redirectUrl, 302);
   }
@@ -167,10 +221,15 @@ Deno.serve(async (req) => {
         fd.forEach((v, k) => { body[k] = v; });
       } catch { /* ignore */ }
     }
-    logEvent({ campaign_id, recipient_id, event_type: "FORM_SUBMITTED", ip, ua, metadata: { submitted_data: body } }).catch(() => {});
+    try {
+      await logEvent({ campaign_id, recipient_id, event_type: "FORM_SUBMITTED", ip, ua, metadata: { submitted_data: body } });
+    } catch {
+      // Non-fatal: log failure silently, still redirect
+    }
     const redirectUrl = url.searchParams.get("redirect") ?? "https://www.google.com";
     return Response.redirect(redirectUrl, 302);
   }
 
-  return new Response("Not found", { status: 404 });
+  const errId = `PT-${Date.now().toString(36).toUpperCase()}-UNKNOWN`;
+  return errorHtml(errId, "Unknown Request", "This request type is not recognized. If you believe this is an error, please contact your administrator.");
 });

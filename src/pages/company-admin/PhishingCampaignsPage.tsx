@@ -232,6 +232,10 @@ export const PhishingCampaignsPage: React.FC = () => {
   const [landingPages, setLandingPages] = useState<LandingPage[]>([]);
   const [limits, setLimits] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [testEmailModal, setTestEmailModal] = useState(false);
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Wizard form
   const [form, setForm] = useState({
@@ -537,6 +541,31 @@ export const PhishingCampaignsPage: React.FC = () => {
       console.error('[launchCampaign]', err);
       alert('Failed to launch campaign: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally { setSaving(false); }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmailTo.trim()) return;
+    setTestEmailSending(true);
+    setTestEmailResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('process-campaign', {
+        body: {
+          test_smtp_profile_id: form.smtpProfileId || 'platform_default',
+          test_to:              testEmailTo.trim(),
+          test_subject:         form.emailSubject || 'Security Awareness Test',
+          test_html:            form.emailHtml || '<p>This is a test email.</p>',
+          test_from_name:       form.fromName || 'Security Team',
+          test_from_address:    form.fromAddress || 'security@awareone.io',
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      setTestEmailResult({ ok: true, msg: `Test email sent to ${testEmailTo.trim()}.` });
+    } catch (err: unknown) {
+      setTestEmailResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+    } finally {
+      setTestEmailSending(false);
+    }
   };
 
   /* ── Render: Campaign List ── */
@@ -980,9 +1009,14 @@ export const PhishingCampaignsPage: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Label>Email HTML *</Label>
-                  <button onClick={() => setShowPreview(p => !p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Eye size={13} /> {showPreview ? 'Edit' : 'Preview'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setTestEmailTo(''); setTestEmailResult(null); setTestEmailModal(true); }} style={{ background: 'none', border: `1px solid ${T.purpleBorder}`, borderRadius: 6, cursor: 'pointer', color: T.purple, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px' }}>
+                      <Send size={12} /> Send Test
+                    </button>
+                    <button onClick={() => setShowPreview(p => !p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Eye size={13} /> {showPreview ? 'Edit' : 'Preview'}
+                    </button>
+                  </div>
                 </div>
                 {showPreview ? (
                   <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, height: 360, overflow: 'auto', background: '#fff' }}>
@@ -1085,6 +1119,63 @@ export const PhishingCampaignsPage: React.FC = () => {
       {view === 'list' && renderList()}
       {view === 'wizard' && renderWizard()}
       {view === 'detail' && renderDetail()}
+
+      {/* Send Test Email Modal */}
+      {testEmailModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => { setTestEmailModal(false); setTestEmailResult(null); }}>
+          <div style={{ width: '100%', maxWidth: 420, background: T.bgCard, border: `1px solid ${T.purpleBorder}`, borderRadius: 16, overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ height: 3, background: `linear-gradient(90deg, ${T.purple}, ${T.purple}40)` }} />
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Send size={14} style={{ color: T.purple }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: T.white }}>Send Test Email</div>
+                    <div style={{ fontSize: 11, color: T.textMuted }}>Sends the current email template to a test recipient</div>
+                  </div>
+                </div>
+                <button onClick={() => { setTestEmailModal(false); setTestEmailResult(null); }} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Recipient Email *</div>
+                <input
+                  style={{ width: '100%', padding: '10px 14px', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: `1px solid rgba(255,255,255,0.09)`, borderRadius: 10, fontSize: 13, color: '#fff', fontFamily: 'inherit', outline: 'none' }}
+                  type="email"
+                  value={testEmailTo}
+                  onChange={e => setTestEmailTo(e.target.value)}
+                  placeholder="test@example.com"
+                  onFocus={e => (e.target.style.borderColor = 'rgba(167,139,250,0.45)')}
+                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.09)')}
+                />
+                <div style={{ fontSize: 11, color: T.textMuted, marginTop: 5 }}>
+                  Subject: <span style={{ color: T.textBody }}>{form.emailSubject || '(not set)'}</span>
+                </div>
+              </div>
+
+              {testEmailResult && (
+                <div style={{ padding: '10px 14px', background: testEmailResult.ok ? T.greenBg : T.redBg, border: `1px solid ${testEmailResult.ok ? T.greenBorder : T.redBorder}`, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {testEmailResult.ok
+                    ? <CheckCircle size={13} style={{ color: T.green }} />
+                    : <AlertTriangle size={13} style={{ color: T.red }} />}
+                  <span style={{ fontSize: 12, color: testEmailResult.ok ? T.green : T.red }}>{testEmailResult.msg}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setTestEmailModal(false); setTestEmailResult(null); }} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid rgba(255,255,255,0.08)`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Close</button>
+                <button onClick={handleSendTestEmail} disabled={testEmailSending || !testEmailTo.trim()} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px', borderRadius: 10, background: T.purple, color: T.white, border: 'none', cursor: (testEmailSending || !testEmailTo.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, opacity: (testEmailSending || !testEmailTo.trim()) ? 0.6 : 1 }}>
+                  {testEmailSending ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

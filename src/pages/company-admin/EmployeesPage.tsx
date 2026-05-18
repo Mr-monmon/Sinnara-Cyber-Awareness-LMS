@@ -221,6 +221,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     email: "",
     phone: "",
     employee_id: "",
+    job_title: "",
     password: generateStrongPassword(),
     department_id: "",
   });
@@ -292,6 +293,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       email: "",
       phone: "",
       employee_id: "",
+      job_title: "",
       password: generateStrongPassword(),
       department_id: "",
     });
@@ -311,6 +313,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           full_name: formData.full_name,
           phone: formData.phone,
           employee_id: formData.employee_id,
+          job_title: formData.job_title,
           department_id: formData.department_id,
         };
         await supabase
@@ -386,6 +389,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       email: emp.email,
       phone: emp.phone || "",
       employee_id: emp.employee_id || "",
+      job_title: emp.job_title || "",
       password: generateStrongPassword(),
       department_id: emp.department_id || "",
     });
@@ -926,6 +930,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
               <th>Employee</th>
               <th>Email</th>
               <th>Department</th>
+              <th>Position</th>
               <th>Employee ID</th>
               <th>Phone</th>
               <th style={{ textAlign: "right" }}>Actions</th>
@@ -965,6 +970,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                     <span style={{ color: T.textMuted }}>—</span>
                   )}
                 </td>
+                <td style={{ color: T.textMuted }}>{emp.job_title || "—"}</td>
                 <td
                   style={{
                     fontFamily: "monospace",
@@ -1252,6 +1258,20 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                       }
                     />
                   </div>
+                </div>
+
+                {/* Job Title */}
+                <div>
+                  <label className="aw-emp-label">Position / Job Title</label>
+                  <input
+                    className="aw-emp-input"
+                    type="text"
+                    placeholder="e.g. Senior Engineer"
+                    value={formData.job_title}
+                    onChange={(e) =>
+                      setFormData({ ...formData, job_title: e.target.value })
+                    }
+                  />
                 </div>
 
                 {/* Department */}
