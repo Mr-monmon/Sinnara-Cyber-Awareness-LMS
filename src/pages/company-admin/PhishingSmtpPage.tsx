@@ -335,7 +335,9 @@ export const PhishingSmtpPage: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: T.white }}>{p.name}</span>
                     {p.isPushed && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue }}>PLATFORM</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 9999, background: T.blueBg, border: `1px solid ${T.blue}`, color: T.blue, letterSpacing: '0.3px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Lock size={9} style={{ flexShrink: 0 }} /> Platform Profile — Read Only
+                      </span>
                     )}
                     <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: p.is_active ? T.greenBg : 'rgba(255,255,255,0.04)', border: `1px solid ${p.is_active ? T.greenBorder : T.borderFaint}`, color: p.is_active ? T.green : T.textMuted }}>
                       {p.is_active ? 'Active' : 'Inactive'}
