@@ -211,8 +211,12 @@ SELECT
   COUNT(t.id) FILTER (WHERE t.reported_at IS NOT NULL)     AS emails_reported,
   COUNT(t.id) FILTER (WHERE t.credentials_entered = true)  AS credentials_entered,
 
-  -- Last phishing result
-  MAX(t.campaign_id) FILTER (WHERE t.clicked_at IS NOT NULL) AS last_click_campaign_id,
+  -- Last phishing result (campaign_id is UUID — no MAX; use subquery instead)
+  (
+    SELECT t2.campaign_id FROM phishing_campaign_targets t2
+    WHERE t2.employee_id = u.id AND t2.clicked_at IS NOT NULL
+    ORDER BY t2.clicked_at DESC LIMIT 1
+  )                                   AS last_click_campaign_id,
   MAX(t.clicked_at)                   AS last_clicked_at,
 
   -- Click-through rate
