@@ -10,6 +10,7 @@ export type LoginResult =
   | "invalid_credentials"
   | "wrong_tenant"
   | "mfa_required"
+  | "mfa_setup_required"
   | "force_password_change";
 
 interface AuthContextType {
@@ -121,6 +122,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setForcePasswordChange(true);
       setUser(profile);
       return "force_password_change";
+    }
+
+    // If MFA is enforced but user has no enrolled TOTP factor yet, require setup
+    if (profile?.mfa_enforced) {
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const hasTotp = (factorsData?.totp?.length ?? 0) > 0;
+      if (!hasTotp) {
+        setUser(profile);
+        return "mfa_setup_required";
+      }
     }
 
     setUser(profile);

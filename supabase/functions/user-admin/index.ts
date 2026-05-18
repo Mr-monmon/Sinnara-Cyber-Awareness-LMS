@@ -135,6 +135,12 @@ async function handleResetPassword(userId: string, password: string) {
     await supabaseAdmin.auth.admin.updateUserById(userId, { password });
   if (authError) return { success: false, error: authError.message };
 
+  // Force the user to change this temporary password on next login
+  const { error: profileError } = await supabaseAdmin.from("users")
+    .update({ requires_password_change: true })
+    .eq("id", userId);
+  if (profileError) return { success: false, error: profileError.message };
+
   return { success: true };
 }
 
@@ -278,10 +284,8 @@ Deno.serve(async (req) => {
           if (!delErr) deleted++;
         }
 
-        const { error: updErr } = await supabaseAdmin.from("users")
-          .update({ mfa_enforced: false })
-          .eq("id", targetId);
-        if (updErr) return json({ success: false, error: updErr.message });
+        // Do NOT change mfa_enforced — if it was true, the user will be
+        // prompted to re-enroll on next login.
         return json({ success: true, factors_removed: deleted });
       }
 
