@@ -69,6 +69,102 @@ async function fetchResource(url: string, timeout = 8000): Promise<Response | nu
   } catch { return null; }
 }
 
+// ─── Smart page fetch: follows cookie chains, detects bot challenges ──────────
+// Many sites (Cloudflare, Rails CSRF, etc.) set cookies on first hit then
+// expect them on the second request. This two-pass approach handles that.
+async function smartFetchPage(url: string): Promise<{
+  html: string;
+  finalUrl: string;
+  botProtected: boolean;
+  statusCode: number;
+}> {
+  // Derive Accept-Language from URL params (e.g. locale=ar → prefer Arabic)
+  let acceptLang = "en-US,en;q=0.9,ar;q=0.8";
+  try {
+    const params = new URL(url).searchParams;
+    const locale = params.get("locale") || params.get("lang") || params.get("language") || "";
+    if (locale.startsWith("ar")) acceptLang = "ar,en-US;q=0.8,en;q=0.6";
+    else if (locale.startsWith("fr")) acceptLang = "fr,en-US;q=0.8,en;q=0.6";
+    else if (locale.startsWith("de")) acceptLang = "de,en-US;q=0.8,en;q=0.6";
+    else if (locale.startsWith("es")) acceptLang = "es,en-US;q=0.8,en;q=0.6";
+  } catch { /* ignore */ }
+
+  const baseHeaders: Record<string, string> = {
+    "User-Agent": BROWSER_UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": acceptLang,
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+  };
+
+  let cookies = "";
+
+  // Pass 1 — initial GET
+  let res: Response | null = null;
+  try {
+    res = await fetch(url, {
+      headers: { ...baseHeaders, ...(cookies ? { "Cookie": cookies } : {}) },
+      signal: AbortSignal.timeout(22000),
+      redirect: "follow",
+    });
+  } catch { /* network error */ }
+
+  if (!res) {
+    return { html: "", finalUrl: url, botProtected: false, statusCode: 0 };
+  }
+
+  // Harvest Set-Cookie from first response
+  const setCookie = res.headers.get("set-cookie") || "";
+  if (setCookie) {
+    cookies = setCookie
+      .split(/,(?=[^;]+=[^;]+)/)          // split multiple cookies
+      .map(c => c.split(";")[0].trim())   // keep name=value only
+      .filter(Boolean)
+      .join("; ");
+  }
+
+  const html1 = await res.text();
+  const status1 = res.status;
+  const finalUrl = res.url || url;
+
+  // Detect Cloudflare or other JS challenges
+  const isChallenge =
+    html1.includes("cf-browser-verification") ||
+    html1.includes("__cf_chl_") ||
+    html1.includes("jschl_vc") ||
+    html1.includes("challenge-platform") ||
+    (status1 === 403 && html1.length < 5000) ||
+    (html1.includes("Ray ID") && html1.length < 8000);
+
+  // If we got cookies on the first pass and the page looks incomplete,
+  // make a second request with those cookies
+  const seemsIncomplete = html1.length < 2000 || !/<html/i.test(html1);
+
+  if (cookies && (seemsIncomplete || isChallenge)) {
+    try {
+      const res2 = await fetch(url, {
+        headers: { ...baseHeaders, "Cookie": cookies, "Referer": new URL(url).origin + "/" },
+        signal: AbortSignal.timeout(22000),
+        redirect: "follow",
+      });
+      if (res2.ok) {
+        const html2 = await res2.text();
+        if (html2.length > html1.length) {
+          return { html: html2, finalUrl: res2.url || url, botProtected: isChallenge, statusCode: res2.status };
+        }
+      }
+    } catch { /* non-fatal, use first result */ }
+  }
+
+  return { html: html1, finalUrl, botProtected: isChallenge, statusCode: status1 };
+}
+
 // ─── Headless render via Browserless.io ──────────────────────────────────────
 // Requires BROWSERLESS_URL + BROWSERLESS_TOKEN env vars
 async function renderBrowserless(url: string): Promise<string | null> {
@@ -508,18 +604,39 @@ Deno.serve(async (req) => {
     const { url } = body;
     if (!url) throw new Error("URL is required");
 
-    const targetUrl  = new URL(url);
-    const pageOrigin = `${targetUrl.protocol}//${targetUrl.host}`;
-    const pageBase   = `${pageOrigin}${targetUrl.pathname}`;
+    // Validate URL format early
+    new URL(url);
 
-    // ── Step 1: Static fetch ──────────────────────────────────────────────────
-    const staticRes = await fetchResource(url, 20000);
-    if (!staticRes) throw new Error("Failed to reach the URL — the server may be blocking automated requests or the URL is unreachable.");
-    let html = await staticRes.text();
+    // ── Step 1: Smart fetch with cookie-chain + locale headers ───────────────
+    const fetchResult = await smartFetchPage(url);
+    if (!fetchResult.html && fetchResult.statusCode === 0) {
+      throw new Error("Failed to reach the URL — the server may be unreachable or blocking automated requests.");
+    }
+    let html = fetchResult.html;
+    const finalPageUrl = fetchResult.finalUrl || url;
+
+    // ── Step 1b: Bot protection detected → try render service first ──────────
+    if (fetchResult.botProtected) {
+      const rendered1 = await renderBrowserless(url) || await renderScrapingBee(url) || await renderGeneric(url);
+      if (rendered1 && rendered1.length > 500) html = rendered1;
+    }
+
+    if (!html || html.length < 100) {
+      throw new Error(
+        fetchResult.botProtected
+          ? "This site uses bot protection (Cloudflare or similar) that blocks server-side fetching. Configure a headless render service (BROWSERLESS_URL / SCRAPINGBEE_KEY) to clone protected sites."
+          : "The server returned an empty response. The URL may require authentication or be geo-restricted."
+      );
+    }
+
+    // Use the final URL after redirects as the base for resolving assets
+    const finalTargetUrl = new URL(finalPageUrl);
+    const pageOrigin = `${finalTargetUrl.protocol}//${finalTargetUrl.host}`;
+    const pageBase   = `${pageOrigin}${finalTargetUrl.pathname}`;
 
     // ── Step 2: SPA detection ─────────────────────────────────────────────────
     const { isSpa, reason: spaReason } = detectSpa(html);
-    const hasStaticForm = /<form\b/i.test(html);
+    const hasStaticForm = /<form\b/i.test(html) || /<input\b[^>]*type=["']?(?:email|password|text)["']?/i.test(html);
 
     // ── Step 3: Headless rendering (only if needed) ───────────────────────────
     let renderService = "none";

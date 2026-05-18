@@ -31,6 +31,8 @@ import {
   Bell,
   Zap,
   Variable,
+  UserCog,
+  Eye,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -333,13 +335,19 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         }
       ];
 
-    if (user?.role === "COMPANY_ADMIN")
+    if (user?.role === "COMPANY_SUPER_ADMIN" || user?.role === "COMPANY_ADMIN")
       return [
         {
           id: "dashboard",
           label: "Dashboard",
           icon: BarChart3,
           section: "Overview",
+        },
+        {
+          id: "platform-users",
+          label: "Platform Users",
+          icon: UserCog,
+          section: "Administration",
         },
         {
           id: "employees",
@@ -409,6 +417,53 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           label: "Support Requests",
           icon: HelpCircle,
           section: "Support",
+        },
+        {
+          id: "account",
+          label: "Account Settings",
+          icon: Settings,
+          section: "Account",
+        },
+      ];
+
+    if (user?.role === "PHISHING_OPERATOR")
+      return [
+        {
+          id: "phishing-campaigns",
+          label: "Phishing Simulation",
+          icon: Shield,
+          section: "Phishing",
+          children: [
+            { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
+            { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
+            { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
+            { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
+            { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
+            { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
+            { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
+            { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
+          ],
+        },
+        {
+          id: "account",
+          label: "Account Settings",
+          icon: Settings,
+          section: "Account",
+        },
+      ];
+
+    if (user?.role === "REVIEWER")
+      return [
+        {
+          id: "phishing-dashboard",
+          label: "Phishing Results",
+          icon: Eye,
+          section: "Phishing",
+        },
+        {
+          id: "analytics",
+          label: "Analytics",
+          icon: BarChart3,
         },
         {
           id: "account",
@@ -575,8 +630,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const roleLabel =
     user?.role === "EMPLOYEE"
       ? "Employee Portal"
+      : user?.role === "COMPANY_SUPER_ADMIN"
+      ? "Super Admin"
       : user?.role === "COMPANY_ADMIN"
       ? "Company Admin"
+      : user?.role === "PHISHING_OPERATOR"
+      ? "Phishing Operator"
+      : user?.role === "REVIEWER"
+      ? "Reviewer"
       : "Platform Admin";
 
   return (

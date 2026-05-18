@@ -25,7 +25,10 @@ const MainDashboard = () => {
     case "PLATFORM_ADMIN":
       dashboard = <PlatformDashboard />;
       break;
+    case "COMPANY_SUPER_ADMIN":
     case "COMPANY_ADMIN":
+    case "PHISHING_OPERATOR":
+    case "REVIEWER":
       dashboard = <CompanyDashboard />;
       break;
     case "EMPLOYEE":

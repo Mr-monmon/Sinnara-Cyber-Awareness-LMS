@@ -23,13 +23,16 @@ export interface User {
   full_name: string;
   phone?: string;
   employee_id?: string;
-  role: "PLATFORM_ADMIN" | "COMPANY_ADMIN" | "EMPLOYEE";
+  role: "PLATFORM_ADMIN" | "COMPANY_ADMIN" | "COMPANY_SUPER_ADMIN" | "PHISHING_OPERATOR" | "REVIEWER" | "EMPLOYEE";
   company_id?: string;
   department?: string;
   policy_accepted?: boolean;
   policy_accepted_at?: string;
   created_at: string;
   department_id?: string;
+  requires_password_change?: boolean;
+  mfa_enforced?: boolean;
+  platform_role?: "COMPANY_SUPER_ADMIN" | "COMPANY_ADMIN" | "PHISHING_OPERATOR" | "REVIEWER" | null;
 }
 
 export interface Course {

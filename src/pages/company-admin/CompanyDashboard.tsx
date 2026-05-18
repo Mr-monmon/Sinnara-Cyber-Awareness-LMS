@@ -31,6 +31,7 @@ import AccountSettings from "./AccountSettings";
 import { SupportRequestsPage } from "./SupportRequestsPage";
 import { RiskScorePage } from "./RiskScorePage";
 import { AdvancedAnalyticsPage } from "./AdvancedAnalyticsPage";
+import { CompanyPlatformUsersPage } from "./CompanyPlatformUsersPage";
 import { SubscriptionBanner } from "../../components/SubscriptionBanner";
 import { getActiveSubscription, type SubscriptionInfo } from "../../lib/subscription";
 
@@ -263,6 +264,7 @@ export const CompanyDashboard = () => {
       case "risk-scores":      return <RiskScorePage />;
       case "advanced-analytics": return <AdvancedAnalyticsPage />;
       case "compliance":       return <ComplianceReportPage />;
+      case "platform-users":   return <CompanyPlatformUsersPage />;
       default:                 return renderDashboard();
     }
   };
