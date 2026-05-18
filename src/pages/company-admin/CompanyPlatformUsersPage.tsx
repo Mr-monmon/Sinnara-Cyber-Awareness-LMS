@@ -303,7 +303,7 @@ export const CompanyPlatformUsersPage: React.FC = () => {
     setCreating(true);
     setCreateError(null);
     try {
-      const { error: invokeError } = await supabase.functions.invoke("user-admin", {
+      const { data: invokeData, error: invokeError } = await supabase.functions.invoke("user-admin", {
         body: {
           action: "createUser",
           company_id: currentUser.company_id,
@@ -315,7 +315,13 @@ export const CompanyPlatformUsersPage: React.FC = () => {
           requires_password_change: true,
         },
       });
-      if (invokeError) throw new Error(invokeError.message);
+      const invokeBodyError =
+        invokeData && typeof invokeData === "object" && "error" in invokeData
+          ? String((invokeData as { error: unknown }).error)
+          : null;
+      if (invokeError || invokeBodyError) {
+        throw new Error(invokeBodyError ?? invokeError?.message ?? "Failed to create user");
+      }
 
       try {
         const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
