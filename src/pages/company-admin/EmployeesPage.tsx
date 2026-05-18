@@ -13,6 +13,8 @@ import {
   Search,
   Users,
   Unlock,
+  ShieldCheck,
+  ShieldOff,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -429,6 +431,61 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       loadEmployees();
     } catch {
       alert("Failed to delete employee");
+    }
+  };
+
+  const handleToggleMfaEnforced = async (emp: UserType) => {
+    const newVal = !emp.mfa_enforced;
+    if (!confirm(newVal
+      ? `Require ${emp.full_name} to set up MFA on next login?`
+      : `Remove MFA enforcement for ${emp.full_name}?`)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("user-admin", {
+        body: { action: "setMfaEnforced", userId: emp.id, enforced: newVal },
+      });
+      if (error || (data && data.error)) throw new Error(data?.error || error?.message || "Failed");
+      try {
+        await sendNotificationEmail(
+          emp.email,
+          emp.full_name,
+          newVal ? "Two-factor authentication is now required" : "Two-factor authentication is no longer required",
+          newVal ? "MFA Required" : "MFA Disabled",
+          newVal
+            ? "Your administrator has enabled two-factor authentication on your account. On your next sign-in you will be guided through setting up an authenticator app."
+            : "Your administrator has disabled the two-factor authentication requirement on your account.",
+          { loginUrl }
+        );
+      } catch (emailErr) {
+        console.warn("MFA enforcement email could not be sent:", emailErr);
+      }
+      void loadEmployees();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed to update MFA setting");
+    }
+  };
+
+  const handleResetMfa = async (emp: UserType) => {
+    if (!confirm(`Reset MFA for ${emp.full_name}? All authenticator factors will be removed and they will need to re-enroll.`)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("user-admin", {
+        body: { action: "resetMfa", userId: emp.id },
+      });
+      if (error || (data && data.error)) throw new Error(data?.error || error?.message || "Failed");
+      try {
+        await sendNotificationEmail(
+          emp.email,
+          emp.full_name,
+          "Your two-factor authentication has been reset",
+          "MFA Reset",
+          "An administrator has reset the two-factor authentication on your account. You will need to set up a new authenticator app the next time you sign in.",
+          { loginUrl }
+        );
+      } catch (emailErr) {
+        console.warn("MFA reset email could not be sent:", emailErr);
+      }
+      void loadEmployees();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed to reset MFA");
     }
   };
 
@@ -1015,6 +1072,23 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                       onClick={() => handleResetPassword(emp)}
                     >
                       <Key size={13} />
+                    </button>
+                    <button
+                      className="aw-emp-icon-btn reset"
+                      title={emp.mfa_enforced ? "Disable required MFA" : "Require MFA"}
+                      onClick={() => handleToggleMfaEnforced(emp)}
+                      style={emp.mfa_enforced
+                        ? { background: "rgba(52,211,153,0.10)", borderColor: "rgba(52,211,153,0.35)", color: "#34d399" }
+                        : undefined}
+                    >
+                      {emp.mfa_enforced ? <ShieldCheck size={13} /> : <ShieldOff size={13} />}
+                    </button>
+                    <button
+                      className="aw-emp-icon-btn reset"
+                      title="Reset MFA"
+                      onClick={() => handleResetMfa(emp)}
+                    >
+                      <Key size={13} style={{ color: "#a78bfa" }} />
                     </button>
                     <button
                       className="aw-emp-icon-btn edit"

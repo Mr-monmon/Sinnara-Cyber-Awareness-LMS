@@ -130,6 +130,46 @@ export const PhishingSmtpAdminPage: React.FC = () => {
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
   const [pushing, setPushing] = useState(false);
   const [pushStatus, setPushStatus] = useState<Record<string, string>>({}); // company_id -> pushed_at
+  const [testModal, setTestModal] = useState<{ open: boolean; profileId: string }>({ open: false, profileId: '' });
+  const [testEmail, setTestEmail] = useState('');
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleSendTest = async () => {
+    if (!testEmail.trim()) { alert('Please enter a test email address'); return; }
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('process-campaign', {
+        body: { test_smtp_profile_id: testModal.profileId, test_to: testEmail.trim() },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
+    } catch (err: unknown) {
+      setTestResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+    } finally { setTestSending(false); }
+  };
+
+  const revokeCompany = async (companyId: string) => {
+    if (!pushModal.profile) return;
+    if (!confirm('Revoke this profile from the company? They will lose access to it.')) return;
+    try {
+      const { error } = await supabase.from('smtp_profile_company_access')
+        .delete()
+        .eq('smtp_profile_id', pushModal.profile.id)
+        .eq('company_id', companyId);
+      if (error) throw error;
+      setPushStatus(prev => {
+        const next = { ...prev };
+        delete next[companyId];
+        return next;
+      });
+      loadAll();
+    } catch (err: unknown) {
+      alert((err instanceof Error ? err.message : null) || 'Revoke failed');
+    }
+  };
 
   useEffect(() => { loadAll(); }, []);
 
@@ -363,6 +403,12 @@ export const PhishingSmtpAdminPage: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <button
+                    onClick={e => { e.stopPropagation(); setTestEmail(''); setTestResult(null); setTestModal({ open: true, profileId: p.id }); }}
+                    title="Send test email"
+                    style={{ width: 30, height: 30, borderRadius: 7, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Send size={13} />
+                  </button>
+                  <button
                     onClick={e => { e.stopPropagation(); openPushModal(p); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, borderRadius: 8, color: T.purple, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>
                     <Users size={12} /> Push to Companies
@@ -562,9 +608,17 @@ export const PhishingSmtpAdminPage: React.FC = () => {
                       <div style={{ fontSize: 13, fontWeight: 600, color: T.white }}>{c.name}</div>
                       {pushed && <div style={{ fontSize: 11, color: T.green }}>Pushed {new Date(pushed).toLocaleDateString('en-SA', { month: 'short', day: 'numeric', year: 'numeric' })}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {pushed && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 9999, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green }}>Pushed</span>}
                       {!c.is_active && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 9999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textMuted }}>Inactive</span>}
+                      {pushed && (
+                        <button
+                          onClick={e => { e.preventDefault(); e.stopPropagation(); void revokeCompany(c.id); }}
+                          title="Revoke access"
+                          style={{ padding: '3px 8px', borderRadius: 8, background: T.redBg, border: `1px solid ${T.redBorder}`, color: T.red, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Revoke
+                        </button>
+                      )}
                     </div>
                   </label>
                 );
@@ -599,6 +653,43 @@ export const PhishingSmtpAdminPage: React.FC = () => {
                 <button onClick={() => setDeleteId(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Cancel</button>
                 <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px', borderRadius: 10, background: T.red, color: T.white, border: 'none', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
                   {deleting ? <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Trash2 size={13} />} Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Test Send Modal */}
+      {testModal.open && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setTestModal({ open: false, profileId: '' })}>
+          <div className="aw-modal-in" style={{ width: '100%', maxWidth: 420, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ height: 3, background: `linear-gradient(90deg, ${T.green}, ${T.green}40)` }} />
+            <div style={{ padding: '20px 22px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 800, color: T.white, margin: 0 }}>Send Test Email</h2>
+                <button onClick={() => setTestModal({ open: false, profileId: '' })} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <p style={{ fontSize: 12, color: T.textMuted, marginBottom: 12 }}>Verify the SMTP settings by sending a test email to a real inbox.</p>
+              <label style={{ fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Send To</label>
+              <input
+                type="email"
+                value={testEmail}
+                onChange={e => setTestEmail(e.target.value)}
+                placeholder="test@example.com"
+                style={{ width: '100%', marginTop: 6, marginBottom: 12, padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, borderRadius: 8, color: T.white, fontSize: 13, fontFamily: 'inherit' }}
+              />
+              {testResult && (
+                <div style={{ padding: '10px 14px', marginBottom: 12, background: testResult.ok ? T.greenBg : T.redBg, border: `1px solid ${testResult.ok ? T.greenBorder : T.redBorder}`, borderRadius: 8, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  {testResult.ok ? <Check size={13} style={{ color: T.green, flexShrink: 0, marginTop: 2 }} /> : <AlertCircle size={13} style={{ color: T.red, flexShrink: 0, marginTop: 2 }} />}
+                  <span style={{ fontSize: 12, color: testResult.ok ? T.green : T.red, wordBreak: 'break-word' }}>{testResult.msg}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setTestModal({ open: false, profileId: '' })} disabled={testSending} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Close</button>
+                <button onClick={handleSendTest} disabled={testSending} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px', borderRadius: 10, background: T.green, color: T.accentDark, border: 'none', cursor: testSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, opacity: testSending ? 0.7 : 1 }}>
+                  {testSending ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
                 </button>
               </div>
             </div>
