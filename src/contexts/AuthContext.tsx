@@ -200,7 +200,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const enrollTotp = async (): Promise<{ qrCode: string; secret: string; factorId: string } | null> => {
     try {
-      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        issuer: "Awareone",
+        friendlyName: `Awareone-${Date.now()}`,
+      });
       if (error || !data) return null;
       return {
         qrCode: data.totp.qr_code,
