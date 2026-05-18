@@ -598,6 +598,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         "email",
         "employee id",
         "phone",
+        "position",
         "department",
         "password",
       ];
@@ -607,7 +608,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         !requiredHeaders.every((h, i) => headers[i] === h)
       ) {
         setUploadError(
-          "Invalid CSV headers. Required: full name, email, employee id, phone, department, password."
+          "Invalid CSV headers. Required: full name, email, employee id, phone, position, department, password."
         );
         return;
       }
@@ -647,9 +648,6 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           rejected.existingEmail++;
           continue;
         }
-        const deptId = row.department
-          ? deptLookup.get(row.department.trim().toLowerCase()) || null
-          : null;
         // Use CSV password only if it meets policy; otherwise auto-generate
         const csvPassword = row.password?.trim();
         const password =
@@ -661,11 +659,44 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           email: row.email,
           employee_id: row["employee id"],
           phone: row.phone,
-          department_id: deptId,
+          job_title: row.position || null,
+          department_name: row.department || null, // resolved to ID below
           password,
           role: "EMPLOYEE",
           company_id: currentUser.company_id,
         });
+      }
+
+      // Auto-create any departments referenced in the CSV that don't exist yet
+      const newDeptNames = [
+        ...new Set(
+          validRows
+            .map((r) => r.department_name?.trim().toLowerCase())
+            .filter((n) => n && !deptLookup.has(n))
+        ),
+      ];
+      for (const deptName of newDeptNames) {
+        const originalName = validRows.find(
+          (r) => r.department_name?.trim().toLowerCase() === deptName
+        )?.department_name?.trim();
+        if (!originalName) continue;
+        const { data: newDept } = await supabase
+          .from("departments")
+          .insert({ name: originalName, company_id: currentUser.company_id })
+          .select("id, name")
+          .single();
+        if (newDept) {
+          deptLookup.set(deptName, newDept.id);
+        }
+      }
+
+      // Resolve department names → IDs now that all depts exist
+      for (const row of validRows) {
+        const deptId = row.department_name
+          ? deptLookup.get(row.department_name.trim().toLowerCase()) || null
+          : null;
+        row.department_id = deptId;
+        delete row.department_name;
       }
       const totalRejected = Object.values(rejected).reduce((a, b) => a + b, 0);
       if (validRows.length === 0) {
@@ -857,6 +888,24 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                 <Upload size={14} /> Upload CSV
               </>
             )}
+          </button>
+
+          <button
+            className="aw-emp-btn-green"
+            style={{ background: "rgba(96,165,250,0.08)", borderColor: "rgba(96,165,250,0.28)", color: "#60a5fa" }}
+            onClick={() => {
+              const header = "full name,email,employee id,phone,position,department,password";
+              const sample = "Ahmed Al-Rashid,ahmed@company.com,EMP001,+966501234567,Software Engineer,Engineering,";
+              const blob = new Blob([header + "\n" + sample + "\n"], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "employees_template.csv";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download Template
           </button>
 
           <button
