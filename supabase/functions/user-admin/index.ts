@@ -264,18 +264,25 @@ Deno.serve(async (req) => {
       case "resetMfa": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const targetId: string = body.userId;
-        const { data: factorsData, error: listErr } =
-          await supabaseAdmin.auth.admin.mfa.listFactors({ userId: targetId });
-        if (listErr) return json({ success: false, error: listErr.message });
-        const factors = (factorsData as { factors?: { id: string }[] })?.factors ?? [];
+
+        // Use getUserById to fetch factors — available in all supabase-js v2 versions
+        const { data: userData, error: getUserErr } =
+          await supabaseAdmin.auth.admin.getUserById(targetId);
+        if (getUserErr) return json({ success: false, error: getUserErr.message });
+
+        const factors: { id: string }[] = userData?.user?.factors ?? [];
+        let deleted = 0;
         for (const f of factors) {
-          await supabaseAdmin.auth.admin.mfa.deleteFactor({ userId: targetId, id: f.id });
+          const { error: delErr } =
+            await supabaseAdmin.auth.admin.mfa.deleteFactor({ userId: targetId, id: f.id });
+          if (!delErr) deleted++;
         }
+
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ mfa_enforced: false })
           .eq("id", targetId);
         if (updErr) return json({ success: false, error: updErr.message });
-        return json({ success: true, factors_removed: factors.length });
+        return json({ success: true, factors_removed: deleted });
       }
 
       // Set/unset forced MFA for a user
@@ -333,8 +340,7 @@ Deno.serve(async (req) => {
     }
   } catch (err) {
     return json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
-      500,
+      { success: false, error: err instanceof Error ? err.message : "Internal server error" },
     );
   }
 });

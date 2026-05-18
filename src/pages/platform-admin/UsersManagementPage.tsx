@@ -818,8 +818,8 @@ export const UsersManagementPage: React.FC = () => {
     const { data, error } = await supabase.functions.invoke("user-admin", {
       body: { action: "setMfaEnforced", userId: u.id, enforced: newVal },
     });
-    const bodyErr = data?.error ? String(data.error) : null;
-    if (error || bodyErr) { alert(bodyErr ?? error?.message ?? "Failed"); return; }
+    const bodyErr = !data?.success ? (data?.error ?? error?.message ?? "Failed") : null;
+    if (bodyErr) { alert(bodyErr); return; }
     await loadData();
   };
 
@@ -828,8 +828,8 @@ export const UsersManagementPage: React.FC = () => {
     const { data, error } = await supabase.functions.invoke("user-admin", {
       body: { action: "resetMfa", userId: u.id },
     });
-    const bodyErr = data?.error ? String(data.error) : null;
-    if (error || bodyErr) { alert(bodyErr ?? error?.message ?? "Failed"); return; }
+    const bodyErr = !data?.success ? (data?.error ?? error?.message ?? "Failed") : null;
+    if (bodyErr) { alert(bodyErr); return; }
     await loadData();
   };
 
