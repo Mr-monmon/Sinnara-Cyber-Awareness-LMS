@@ -726,8 +726,15 @@ export const UsersManagementPage: React.FC = () => {
           userFullName,
           "Your password has been reset",
           "Password Reset",
-          "Your password has been reset by an administrator. Please sign in with your new password.",
-          { loginUrl: getLoginUrlForCompany(companyId) }
+          "Your password has been reset by an administrator. Use the credentials below to sign in, then change your password immediately.",
+          {
+            loginUrl: getLoginUrlForCompany(companyId),
+            credentials: {
+              email: userEmail,
+              password: newPassword,
+            },
+            showSecurityNote: true,
+          }
         );
       } catch (emailErr) {
         console.warn("Password reset email could not be sent:", emailErr);
