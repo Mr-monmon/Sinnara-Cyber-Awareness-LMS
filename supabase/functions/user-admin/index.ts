@@ -297,6 +297,37 @@ Deno.serve(async (req) => {
         return json({ success: true });
       }
 
+      // Change a user's role. Only PLATFORM_ADMIN or COMPANY_SUPER_ADMIN can do this.
+      // Service-role bypasses RLS so direct table updates from the client are unnecessary.
+      case "updateUserRole": {
+        const allowedRoles = [
+          "PLATFORM_ADMIN",
+          "COMPANY_SUPER_ADMIN",
+          "COMPANY_ADMIN",
+          "PHISHING_OPERATOR",
+          "REVIEWER",
+          "EMPLOYEE",
+        ];
+        if (caller.role !== "PLATFORM_ADMIN" && caller.role !== "COMPANY_SUPER_ADMIN") {
+          return json({ error: "Forbidden" }, 403);
+        }
+        const newRole: string = body.newRole;
+        if (!allowedRoles.includes(newRole)) {
+          return json({ success: false, error: `Invalid role: ${newRole}` }, 400);
+        }
+        // COMPANY_SUPER_ADMIN row cannot be re-roled by anyone other than themselves
+        const { data: targetProfile } = await supabaseAdmin
+          .from("users").select("role").eq("id", body.userId).single();
+        if (targetProfile?.role === "COMPANY_SUPER_ADMIN" && body.userId !== caller.id) {
+          return json({ error: "Cannot change role of a company super admin" }, 403);
+        }
+        const { error: updErr } = await supabaseAdmin.from("users")
+          .update({ role: newRole })
+          .eq("id", body.userId);
+        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        return json({ success: true });
+      }
+
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }

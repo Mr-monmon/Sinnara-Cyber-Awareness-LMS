@@ -769,12 +769,14 @@ export const UsersManagementPage: React.FC = () => {
     companyId?: string
   ) => {
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ role: newRole })
-        .eq("id", userId);
-
-      if (error) throw error;
+      const { data: invokeData, error: invokeError } = await supabase.functions.invoke("user-admin", {
+        body: { action: "updateUserRole", userId, newRole },
+      });
+      const bodyErr =
+        invokeData && typeof invokeData === "object" && "error" in invokeData
+          ? String((invokeData as { error: unknown }).error)
+          : null;
+      if (invokeError || bodyErr) throw new Error(bodyErr ?? invokeError?.message ?? "Failed to change role");
 
       await supabase.from("audit_logs").insert([
         {
@@ -804,7 +806,7 @@ export const UsersManagementPage: React.FC = () => {
       alert("Role changed successfully");
     } catch (error) {
       console.error("Error changing role:", error);
-      alert("Failed to change role");
+      alert(error instanceof Error ? `Failed to change role: ${error.message}` : "Failed to change role");
     }
   };
 
