@@ -5,13 +5,25 @@ import { supabase } from "../lib/supabase";
 import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
 import { extractTenantSubdomain, getHostAccessMode } from "../lib/tenant";
 
-export type LoginResult = "success" | "invalid_credentials" | "wrong_tenant";
+export type LoginResult =
+  | "success"
+  | "invalid_credentials"
+  | "wrong_tenant"
+  | "mfa_required"
+  | "force_password_change";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  forcePasswordChange: boolean;
+  mfaRequired: boolean;
+  mfaFactorId: string | null;
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
+  verifyMfa: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  changePassword: (newPassword: string) => Promise<{ ok: boolean; error?: string }>;
+  enrollTotp: () => Promise<{ qrCode: string; secret: string; factorId: string } | null>;
+  verifyTotpEnrollment: (factorId: string, code: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +46,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
 
   useEffect(() => {
     const syncUserFromSession = async (session: Session | null) => {
@@ -75,6 +90,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return "invalid_credentials";
     }
 
+    // Check MFA assurance level
+    const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalData && aalData.nextLevel === "aal2" && aalData.currentLevel === "aal1") {
+      // Get the factor ID
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const totp = factorsData?.totp?.[0] ?? null;
+      setMfaFactorId(totp?.id ?? null);
+      setMfaRequired(true);
+      return "mfa_required";
+    }
+
     const profile = data.user ? await fetchProfile(data.user.id) : null;
 
     const currentUrl = new URL(window.location.href);
@@ -91,6 +117,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
+    if (profile?.requires_password_change) {
+      setForcePasswordChange(true);
+      setUser(profile);
+      return "force_password_change";
+    }
+
     setUser(profile);
     return "success";
   };
@@ -98,10 +130,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setForcePasswordChange(false);
+    setMfaRequired(false);
+    setMfaFactorId(null);
+  };
+
+  const verifyMfa = async (code: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+      if (factorsError) return { ok: false, error: factorsError.message };
+
+      const totp = factorsData?.totp?.[0] ?? null;
+      const factorId = totp?.id ?? mfaFactorId;
+      if (!factorId) return { ok: false, error: "No MFA factor found" };
+
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+      if (challengeError || !challengeData) return { ok: false, error: challengeError?.message ?? "Challenge failed" };
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challengeData.id,
+        code,
+      });
+      if (verifyError) return { ok: false, error: verifyError.message };
+
+      // MFA succeeded — load profile
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const profile = await fetchProfile(authUser.id);
+        setUser(profile);
+      }
+      setMfaRequired(false);
+      setMfaFactorId(null);
+      return { ok: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return { ok: false, error: msg };
+    }
+  };
+
+  const changePassword = async (newPassword: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) return { ok: false, error: updateError.message };
+
+      if (user?.id) {
+        await supabase.from("users").update({ requires_password_change: false }).eq("id", user.id);
+        setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
+      }
+
+      setForcePasswordChange(false);
+      return { ok: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return { ok: false, error: msg };
+    }
+  };
+
+  const enrollTotp = async (): Promise<{ qrCode: string; secret: string; factorId: string } | null> => {
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+      if (error || !data) return null;
+      return {
+        qrCode: data.totp.qr_code,
+        secret: data.totp.secret,
+        factorId: data.id,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const verifyTotpEnrollment = async (factorId: string, code: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+      if (challengeError || !challengeData) return { ok: false, error: challengeError?.message ?? "Challenge failed" };
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challengeData.id,
+        code,
+      });
+      if (verifyError) return { ok: false, error: verifyError.message };
+      return { ok: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return { ok: false, error: msg };
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        forcePasswordChange,
+        mfaRequired,
+        mfaFactorId,
+        login,
+        logout,
+        verifyMfa,
+        changePassword,
+        enrollTotp,
+        verifyTotpEnrollment,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

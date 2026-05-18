@@ -4,6 +4,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { buildApexRedirectUrl } from "../lib/browserTenant";
 import { supabase } from "../lib/supabase";
+import { ForcePasswordChangeModal } from "../components/auth/ForcePasswordChangeModal";
+import { TwoFactorChallengeModal } from "../components/auth/TwoFactorChallengeModal";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -97,11 +99,13 @@ export const LoginPage = ({
   backLabel = "Back to Home",
   backTo = "/",
 }: LoginPageProps) => {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showForcePasswordChange, setShowForcePasswordChange] = useState(false);
+  const [showMfaChallenge, setShowMfaChallenge] = useState(false);
   const navigate = useNavigate();
 
   const handleBack = () => {
@@ -141,6 +145,26 @@ export const LoginPage = ({
         return;
       }
 
+      if (result === "force_password_change") {
+        await supabase.rpc("record_login_attempt", {
+          p_email: email,
+          p_success: true,
+          p_user_agent: navigator.userAgent,
+        });
+        setShowForcePasswordChange(true);
+        return;
+      }
+
+      if (result === "mfa_required") {
+        await supabase.rpc("record_login_attempt", {
+          p_email: email,
+          p_success: true,
+          p_user_agent: navigator.userAgent,
+        });
+        setShowMfaChallenge(true);
+        return;
+      }
+
       if (result === "wrong_tenant") {
         window.location.replace(buildApexRedirectUrl(window.location.href, "/"));
         return;
@@ -173,6 +197,7 @@ export const LoginPage = ({
   };
 
   return (
+    <>
     <div
       style={{
         minHeight: "100vh",
@@ -459,5 +484,25 @@ export const LoginPage = ({
         </p>
       </div>
     </div>
+
+    {showForcePasswordChange && (
+      <ForcePasswordChangeModal
+        mfaEnforced={user?.mfa_enforced ?? false}
+        onComplete={() => {
+          setShowForcePasswordChange(false);
+          navigate("/dashboard", { replace: true });
+        }}
+      />
+    )}
+
+    {showMfaChallenge && (
+      <TwoFactorChallengeModal
+        onSuccess={() => {
+          setShowMfaChallenge(false);
+          navigate("/dashboard", { replace: true });
+        }}
+      />
+    )}
+    </>
   );
 };

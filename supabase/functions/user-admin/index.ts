@@ -40,7 +40,7 @@ async function getCallerProfile(req: Request) {
 }
 
 function isAdmin(role: string) {
-  return role === "PLATFORM_ADMIN" || role === "COMPANY_ADMIN";
+  return role === "PLATFORM_ADMIN" || role === "COMPANY_ADMIN" || role === "COMPANY_SUPER_ADMIN";
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +57,8 @@ interface CreateUserPayload {
   company_id?: string;
   department?: string;
   department_id?: string;
+  mfa_enforced?: boolean;
+  requires_password_change?: boolean;
 }
 
 async function handleCreateUser(payload: CreateUserPayload) {
@@ -93,6 +95,8 @@ async function handleCreateUser(payload: CreateUserPayload) {
     company_id: company_id ?? null,
     department: department ?? null,
     department_id: department_id ?? null,
+    requires_password_change: payload.requires_password_change !== false, // default true for new users
+    mfa_enforced: payload.mfa_enforced ?? false,
   });
 
   if (profileError) {
@@ -242,8 +246,55 @@ Deno.serve(async (req) => {
 
       case "deleteUser": {
         if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        // COMPANY_SUPER_ADMIN rows can only be deleted by themselves (not by other admins)
+        if (body.userId !== caller.id) {
+          const { data: targetProfile } = await supabaseAdmin
+            .from("users").select("role").eq("id", body.userId).single();
+          if (targetProfile?.role === "COMPANY_SUPER_ADMIN") {
+            return json({ error: "Cannot delete the company super admin" }, 403);
+          }
+        }
         const r = await handleDeleteUser(body.userId);
         return json(r, r.success ? 200 : 400);
+      }
+
+      // Reset MFA: unenroll all TOTP factors for the target user
+      case "resetMfa": {
+        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        const targetId: string = body.userId;
+        // List factors via admin API
+        const { data: factorsData, error: listErr } =
+          await supabaseAdmin.auth.admin.mfa.listFactors({ userId: targetId });
+        if (listErr) return json({ success: false, error: listErr.message }, 400);
+        const factors = (factorsData as { factors?: { id: string }[] })?.factors ?? [];
+        for (const f of factors) {
+          await supabaseAdmin.auth.admin.mfa.deleteFactor({ userId: targetId, id: f.id });
+        }
+        await supabaseAdmin.from("users")
+          .update({ mfa_enforced: false })
+          .eq("id", targetId);
+        return json({ success: true, factors_removed: factors.length });
+      }
+
+      // Set/unset forced MFA for a user
+      case "setMfaEnforced": {
+        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        const { userId: targetId, enforced } = body;
+        const { error: updErr } = await supabaseAdmin.from("users")
+          .update({ mfa_enforced: !!enforced })
+          .eq("id", targetId);
+        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        return json({ success: true });
+      }
+
+      // Force a specific user to change password on next login
+      case "forcePasswordChange": {
+        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        const { error: updErr } = await supabaseAdmin.from("users")
+          .update({ requires_password_change: true })
+          .eq("id", body.userId);
+        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        return json({ success: true });
       }
 
       default:
