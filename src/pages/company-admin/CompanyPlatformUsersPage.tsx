@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { sendNotificationEmail } from "../../lib/email";
+import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import type { User } from "../../lib/types";
 
 const T = {
@@ -147,6 +149,33 @@ const ROLE_LABELS: Record<PlatformRole, string> = {
   REVIEWER: "Reviewer",
 };
 
+const ROLE_EMAIL_COPY: Record<PlatformRole, { subject: string; title: string; description: string }> = {
+  COMPANY_SUPER_ADMIN: {
+    subject: "Your Awareone Super Admin account is ready",
+    title: "Welcome, Super Admin",
+    description:
+      "You've been granted Super Admin access to your company workspace on Awareone. You can manage platform users, billing, and every aspect of your company's account. Use the credentials below to sign in — you'll be asked to set a new password on first login.",
+  },
+  COMPANY_ADMIN: {
+    subject: "Your Awareone Company Admin account is ready",
+    title: "Welcome, Company Admin",
+    description:
+      "You've been added as a Company Admin on Awareone. You can manage employees, training, phishing simulations and reports. Use the credentials below to sign in — you'll be asked to set a new password on first login.",
+  },
+  PHISHING_OPERATOR: {
+    subject: "Your Awareone Phishing Operator account is ready",
+    title: "Welcome, Phishing Operator",
+    description:
+      "You've been added to Awareone as a Phishing Operator. You can create and launch phishing simulations for your company. Use the credentials below to sign in — you'll be asked to set a new password on first login.",
+  },
+  REVIEWER: {
+    subject: "Your Awareone Reviewer account is ready",
+    title: "Welcome, Reviewer",
+    description:
+      "You've been added to Awareone as a Reviewer. You have read-only access to phishing simulation results and analytics. Use the credentials below to sign in — you'll be asked to set a new password on first login.",
+  },
+};
+
 const ROLE_COLORS: Record<PlatformRole, { color: string; bg: string; border: string }> = {
   COMPANY_SUPER_ADMIN: { color: T.yellow, bg: T.yellowBg, border: T.yellowBorder },
   COMPANY_ADMIN: { color: T.accent, bg: "rgba(200,255,0,0.08)", border: "rgba(200,255,0,0.22)" },
@@ -281,11 +310,36 @@ export const CompanyPlatformUsersPage: React.FC = () => {
           full_name: form.full_name,
           email: form.email,
           role: form.role,
-          temp_password: form.temp_password,
+          password: form.temp_password,
           mfa_enforced: form.force_mfa,
+          requires_password_change: true,
         },
       });
       if (invokeError) throw new Error(invokeError.message);
+
+      try {
+        const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
+        const copy = ROLE_EMAIL_COPY[form.role];
+        await sendNotificationEmail(
+          form.email,
+          form.full_name,
+          copy.subject,
+          copy.title,
+          copy.description,
+          {
+            loginUrl,
+            credentials: {
+              email: form.email,
+              password: form.temp_password,
+              role: ROLE_LABELS[form.role],
+            },
+            showSecurityNote: true,
+          }
+        );
+      } catch (emailErr) {
+        console.warn("Welcome email could not be sent:", emailErr);
+      }
+
       setCreateSuccess(true);
       void loadUsers();
     } catch (e: unknown) {
