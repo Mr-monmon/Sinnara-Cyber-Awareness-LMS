@@ -443,7 +443,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       const { data, error } = await supabase.functions.invoke("user-admin", {
         body: { action: "setMfaEnforced", userId: emp.id, enforced: newVal },
       });
-      if (error || (data && data.error)) throw new Error(data?.error || error?.message || "Failed");
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
       try {
         await sendNotificationEmail(
           emp.email,
@@ -470,7 +470,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       const { data, error } = await supabase.functions.invoke("user-admin", {
         body: { action: "resetMfa", userId: emp.id },
       });
-      if (error || (data && data.error)) throw new Error(data?.error || error?.message || "Failed");
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
       try {
         await sendNotificationEmail(
           emp.email,
