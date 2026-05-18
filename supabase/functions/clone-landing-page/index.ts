@@ -209,6 +209,34 @@ Deno.serve(async (req) => {
       html += trackingScript;
     }
 
+    // ── 6. Smart variable injection ──
+    // Inject GoPhish-compatible variables into matching input fields
+    html = html.replace(/<input\b([^>]*)>/gi, (match, attrs) => {
+      const typeMatch = /\btype=["']?([^"'\s>]+)["']?/i.exec(attrs);
+      const nameMatch = /\bname=["']?([^"'\s>]+)["']?/i.exec(attrs);
+      const type = typeMatch?.[1]?.toLowerCase() || 'text';
+      const name = nameMatch?.[1]?.toLowerCase() || '';
+
+      // Skip if already has a value set (other than empty)
+      const existingValue = /\bvalue=["'][^"']+["']/i.test(attrs);
+      if (existingValue) return match;
+
+      let injection = '';
+      if (type === 'email' || name.includes('email') || name.includes('mail') || name === 'login' || name === 'username' || name === 'user') {
+        injection = ' value="{{.Email}}"';
+      } else if (type === 'text' && (name.includes('first') || name === 'fname')) {
+        injection = ' value="{{.FirstName}}"';
+      } else if (type === 'text' && (name.includes('last') || name === 'lname')) {
+        injection = ' value="{{.LastName}}"';
+      } else if (type === 'text' && (name.includes('name') && !name.includes('user'))) {
+        injection = ' value="{{.FirstName}} {{.LastName}}"';
+      }
+      // Note: password fields intentionally left blank so they appear as real login forms
+
+      if (!injection) return match;
+      return `<input${attrs}${injection}>`;
+    });
+
     const formDetected = /<form/i.test(html);
     const hasPasswordField = /type=["']?password["']?/i.test(html);
     const hasEmailField = /type=["']?email["']?/i.test(html) || /name=["']?email["']?/i.test(html);

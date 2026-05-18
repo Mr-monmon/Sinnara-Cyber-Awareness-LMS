@@ -285,6 +285,9 @@ export const PhishingLandingPagesPage: React.FC = () => {
                     <div title={p.name} style={{ fontSize: 15, fontWeight: 700, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => { const blob = new Blob([p.html_content], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${p.name.replace(/[^a-z0-9]/gi, '_')}.html`; a.click(); URL.revokeObjectURL(a.href); }} title="Download HTML" style={{ width: 28, height: 28, borderRadius: 7, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Download size={12} />
+                    </button>
                     <button onClick={() => openEdit(p)} title="Edit" style={{ width: 28, height: 28, borderRadius: 7, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Edit2 size={12} />
                     </button>

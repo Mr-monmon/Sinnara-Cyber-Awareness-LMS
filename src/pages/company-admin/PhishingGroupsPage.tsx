@@ -284,7 +284,7 @@ export const PhishingGroupsPage: React.FC = () => {
       const [{ data: emps }, { data: depts }, { data: existing }] = await Promise.all([
         supabase
           .from('users')
-          .select('id, full_name, email, job_title, department_id, departments(name)')
+          .select('id, full_name, email, job_title, department_id, departments!users_department_id_fkey(name)')
           .eq('company_id', user.company_id)
           .eq('role', 'EMPLOYEE')
           .order('full_name'),
