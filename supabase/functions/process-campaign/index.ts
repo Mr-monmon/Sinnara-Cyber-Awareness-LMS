@@ -281,36 +281,53 @@ Deno.serve(async (req) => {
       if (claimErr || claimed === 0) { skipped++; continue; }
 
       // ── Resolve per-recipient template variables ─────────────────────────────
-      // Priority: linked employee record > target persona columns > email-derived fallback
+      // Data-source priority:
+      //   1. Linked employee record (users table) — SOLE source when employee_id exists
+      //   2. Target persona columns (fallback only when employee_id is NULL)
+      //   3. Email-derived first_name as last resort
       const target = (job.phishing_campaign_targets as Record<string, any> | null);
       const linkedUser = (target?.users as Record<string, any> | null);
 
-      let firstName = target?.first_name || "";
-      let lastName  = target?.last_name  || "";
-      let position  = target?.position   || "";
-      let department = target?.department || "";
-      let managerName = "";
+      let firstName      = "";
+      let lastName       = "";
+      let position       = "";
+      let department     = "";
+      let managerName    = "";
       let officeLocation = "";
-      let phone = "";
+      let phone          = "";
 
       if (linkedUser) {
-        // Employee record takes precedence for richer data
+        // Employee record is authoritative; ignore persona fields entirely
         const nameParts = (linkedUser.full_name || "").trim().split(/\s+/);
-        firstName     = nameParts[0] || firstName;
-        lastName      = nameParts.slice(1).join(" ") || lastName;
-        position      = linkedUser.job_title      || position;
-        department    = linkedUser.departments?.name || department;
-        managerName   = linkedUser.manager_name   || "";
-        officeLocation = linkedUser.office_location || "";
-        phone         = linkedUser.phone           || "";
+        firstName      = nameParts[0] || "";
+        lastName       = nameParts.slice(1).join(" ") || "";
+        position       = linkedUser.job_title         || "";
+        department     = linkedUser.departments?.name || "";
+        managerName    = linkedUser.manager_name      || "";
+        officeLocation = linkedUser.office_location   || "";
+        phone          = linkedUser.phone             || "";
+      } else if (target) {
+        // Fallback to target persona columns
+        firstName  = target.first_name || "";
+        lastName   = target.last_name  || "";
+        position   = target.position   || "";
+        department = target.department || "";
       }
 
       if (!firstName) firstName = job.recipient_email.split("@")[0];
 
+      const trackingUrl    = `${SUPABASE_URL}/functions/v1/phishing-track?t=click&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const unsubscribeUrl = `${SUPABASE_URL}/functions/v1/phishing-track?t=report&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const pixelUrlEarly  = `${SUPABASE_URL}/functions/v1/phishing-track?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const fullName       = `${firstName} ${lastName}`.trim();
+
+      // Variables support both snake_case ({{first_name}}) and GoPhish dotted
+      // PascalCase ({{.FirstName}}) for backward compatibility.
       const vars: Record<string, string> = {
+        // snake_case (native)
         first_name:      firstName,
         last_name:       lastName,
-        full_name:       `${firstName} ${lastName}`.trim(),
+        full_name:       fullName,
         email:           job.recipient_email,
         position,
         job_title:       position,
@@ -318,12 +335,29 @@ Deno.serve(async (req) => {
         manager_name:    managerName,
         office_location: officeLocation,
         phone,
-        tracking_url:    `${SUPABASE_URL}/functions/v1/phishing-track?t=click&c=${job.campaign_id}&r=${job.recipient_id}`,
-        unsubscribe_url: `${SUPABASE_URL}/functions/v1/phishing-track?t=report&c=${job.campaign_id}&r=${job.recipient_id}`,
+        tracking_url:    trackingUrl,
+        unsubscribe_url: unsubscribeUrl,
+        from:            job.from_address,
+        from_name:       job.from_name,
+        rid:             job.recipient_id,
+
+        // GoPhish dotted aliases
+        ".FirstName":    firstName,
+        ".LastName":     lastName,
+        ".FullName":     fullName,
+        ".Email":        job.recipient_email,
+        ".Position":     position,
+        ".Department":   department,
+        ".From":         job.from_address,
+        ".URL":          trackingUrl,
+        ".TrackingURL":  trackingUrl,
+        ".Tracker":      `<img src="${pixelUrlEarly}" width="1" height="1" style="display:none" alt="" />`,
+        ".RId":          job.recipient_id,
       };
 
+      // Resolves both {{first_name}} and {{.FirstName}} (with optional whitespace).
       const resolveVars = (text: string) =>
-        text.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+        text.replace(/\{\{\s*(\.?[A-Za-z_][\w]*)\s*\}\}/g, (_, key) => vars[key] ?? "");
 
       const resolvedHtml    = resolveVars(job.email_html);
       const resolvedSubject = resolveVars(job.email_subject);
