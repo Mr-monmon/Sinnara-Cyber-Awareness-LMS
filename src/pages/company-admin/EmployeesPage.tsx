@@ -524,8 +524,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           emp.full_name,
           "Your password has been reset",
           "Password Reset",
-          "Your password has been reset to the default password. Please sign in and change your password as soon as possible.",
-          { loginUrl }
+          "Your password has been reset by your administrator. Use the credentials below to sign in, then change your password immediately.",
+          {
+            loginUrl,
+            credentials: {
+              email: emp.email,
+              password: newPassword,
+            },
+            showSecurityNote: true,
+          }
         );
       } catch (emailErr) {
         console.warn("Password reset email could not be sent:", emailErr);
