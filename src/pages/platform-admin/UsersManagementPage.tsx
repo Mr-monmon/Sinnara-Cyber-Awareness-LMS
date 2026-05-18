@@ -14,6 +14,8 @@ import {
   Shield,
   UserCog,
   User,
+  ShieldCheck,
+  ShieldOff,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { User as UserType, Company } from "../../lib/types";
@@ -810,6 +812,27 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
+  const handleToggleMfa = async (u: UserType) => {
+    const newVal = !u.mfa_enforced;
+    if (!confirm(newVal ? `Require MFA for ${u.full_name}?` : `Remove MFA enforcement for ${u.full_name}?`)) return;
+    const { data, error } = await supabase.functions.invoke("user-admin", {
+      body: { action: "setMfaEnforced", userId: u.id, enforced: newVal },
+    });
+    const bodyErr = data?.error ? String(data.error) : null;
+    if (error || bodyErr) { alert(bodyErr ?? error?.message ?? "Failed"); return; }
+    await loadData();
+  };
+
+  const handleResetMfa = async (u: UserType) => {
+    if (!confirm(`Reset all MFA factors for ${u.full_name}?`)) return;
+    const { data, error } = await supabase.functions.invoke("user-admin", {
+      body: { action: "resetMfa", userId: u.id },
+    });
+    const bodyErr = data?.error ? String(data.error) : null;
+    if (error || bodyErr) { alert(bodyErr ?? error?.message ?? "Failed"); return; }
+    await loadData();
+  };
+
   const handleDeleteUser = (
     userId: string,
     userEmail: string,
@@ -1409,6 +1432,22 @@ export const UsersManagementPage: React.FC = () => {
                         }
                       >
                         <Key size={13} />
+                      </button>
+                      <button
+                        className="aw-um-icon-btn reset"
+                        title={u.mfa_enforced ? "Disable required MFA" : "Require MFA"}
+                        onClick={() => handleToggleMfa(u)}
+                        style={u.mfa_enforced ? { color: "#34d399" } : undefined}
+                      >
+                        {u.mfa_enforced ? <ShieldCheck size={13} /> : <ShieldOff size={13} />}
+                      </button>
+                      <button
+                        className="aw-um-icon-btn reset"
+                        title="Reset MFA factors"
+                        onClick={() => handleResetMfa(u)}
+                        style={{ color: "#a78bfa" }}
+                      >
+                        <ShieldOff size={13} />
                       </button>
                       <select
                         className="aw-um-role-select"

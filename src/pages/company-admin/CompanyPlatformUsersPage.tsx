@@ -370,11 +370,14 @@ export const CompanyPlatformUsersPage: React.FC = () => {
     setEditing(true);
     setEditError(null);
     try {
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ role: editModal.newRole })
-        .eq("id", editModal.user.id);
-      if (updateError) throw updateError;
+      const { data: invokeData, error: invokeError } = await supabase.functions.invoke("user-admin", {
+        body: { action: "updateUserRole", userId: editModal.user.id, newRole: editModal.newRole },
+      });
+      const bodyErr =
+        invokeData && typeof invokeData === "object" && "error" in invokeData
+          ? String((invokeData as { error: unknown }).error)
+          : null;
+      if (invokeError || bodyErr) throw new Error(bodyErr ?? invokeError?.message ?? "Failed to update role");
       setEditModal({ open: false, user: null, newRole: "COMPANY_ADMIN" });
       void loadUsers();
     } catch (e: unknown) {

@@ -15,7 +15,6 @@ import { SubscriptionsPage }          from "./SubscriptionsPage";
 import { AnalyticsPage }              from "./AnalyticsPage";
 import { AuditLogsPage }              from "./AuditLogsPage";
 import { CertificateTemplatesPage }   from "./CertificateTemplatesPage";
-import { PhishingManagementPage }     from "./PhishingManagementPage";
 import { PhishingTemplatesPage }      from "./PhishingTemplatesPage";
 import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
 import { PhishingDomainsPage }        from "./PhishingDomainsPage";
@@ -116,7 +115,6 @@ const ACTIONS = [
   { page: 'analytics',               icon: BarChart3, color: T.blue,    label: 'Analytics & Reports',    sub: 'Platform statistics'            },
   { page: 'courses',                 icon: BookOpen,  color: T.cyan,    label: 'Manage Courses',         sub: 'Training content'               },
   { page: 'exams',                   icon: FileText,  color: T.orange,  label: 'Manage Exams',           sub: 'Assessments & quizzes'          },
-  { page: 'phishing-management',     icon: Shield,    color: T.red,     label: 'Phishing Management',    sub: 'Campaign oversight'             },
   { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
   { page: 'phishing-smtp-admin',    icon: Server,    color: T.cyan,    label: 'Platform SMTP Profiles', sub: 'Push SMTP to companies'         },
   { page: 'phishing-scenarios',     icon: Zap,       color: T.orange,  label: 'Phishing Scenarios',     sub: 'Predefined attack templates'    },
@@ -162,7 +160,6 @@ interface DashStats {
   pendingAmount: number;
   openSupport: number;
   pendingDemo: number;
-  pendingPhishing: number;
 }
 
 interface TopCompany { name: string; employees: number; }
@@ -172,7 +169,7 @@ const EMPTY_STATS: DashStats = {
   companies: 0, activeCompanies: 0, totalEmployees: 0, courses: 0,
   activeSubscriptions: 0, expiringIn30: 0,
   totalRevenue: 0, pendingAmount: 0,
-  openSupport: 0, pendingDemo: 0, pendingPhishing: 0,
+  openSupport: 0, pendingDemo: 0,
 };
 
 export const PlatformDashboard = () => {
@@ -196,7 +193,6 @@ export const PlatformDashboard = () => {
         invoicesRes,
         supportRes,
         demoRes,
-        phishingRes,
         companiesWithEmp,
       ] = await Promise.all([
         supabase.from("companies").select("id, name, is_active", { count: "exact" }),
@@ -207,7 +203,6 @@ export const PlatformDashboard = () => {
         supabase.from("invoices").select("total, status"),
         supabase.from("support_ticket").select("status"),
         supabase.from("demo_requests").select("status"),
-        supabase.from("phishing_campaign_requests").select("status"),
         supabase.from("users").select("company_id").eq("role", "EMPLOYEE"),
       ]);
 
@@ -223,10 +218,6 @@ export const PlatformDashboard = () => {
       // Demo
       const demos = demoRes.data ?? [];
       const pendingDemo = demos.filter(d => d.status === "pending").length;
-
-      // Phishing
-      const phish = phishingRes.data ?? [];
-      const pendingPhishing = phish.filter(p => p.status === "PENDING").length;
 
       // Top companies by employee count
       const companies = coRes.data ?? [];
@@ -272,7 +263,7 @@ export const PlatformDashboard = () => {
         pendingAmount,
         openSupport,
         pendingDemo,
-        pendingPhishing,
+
       });
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -292,7 +283,6 @@ export const PlatformDashboard = () => {
       case "audit-logs":               return <AuditLogsPage />;
       case "error-logs":               return <ErrorLogsPage />;
       case "certificates":             return <CertificateTemplatesPage />;
-      case "phishing-management":      return <PhishingManagementPage />;
       case "phishing-templates":       return <PhishingTemplatesPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
@@ -366,7 +356,7 @@ export const PlatformDashboard = () => {
       </div>
 
       {/* ── Attention Required ── */}
-      {(stats.openSupport > 0 || stats.pendingDemo > 0 || stats.pendingPhishing > 0 || stats.expiringIn30 > 0) && (
+      {(stats.openSupport > 0 || stats.pendingDemo > 0 || stats.expiringIn30 > 0) && (
         <div className="aw-fade-up" style={{ background: 'rgba(251,146,60,0.05)', border: '1px solid rgba(251,146,60,0.20)', borderRadius: 12, padding: '14px 18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <AlertTriangle size={14} style={{ color: T.orange }} />
@@ -385,13 +375,6 @@ export const PlatformDashboard = () => {
                 <Bell size={13} style={{ color: T.purple }} />
                 <span style={{ fontSize: 12, fontWeight: 700, color: T.purple }}>{stats.pendingDemo} Demo {stats.pendingDemo === 1 ? 'Request' : 'Requests'} Pending</span>
                 <ChevronRight size={11} style={{ color: T.purple }} />
-              </button>
-            )}
-            {stats.pendingPhishing > 0 && (
-              <button onClick={() => setActivePage('phishing-management')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, background: T.redBg, border: `1px solid ${T.redBorder}`, cursor: 'pointer', fontFamily: 'inherit' }}>
-                <Shield size={13} style={{ color: T.red }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: T.red }}>{stats.pendingPhishing} Phishing {stats.pendingPhishing === 1 ? 'Request' : 'Requests'} Pending Review</span>
-                <ChevronRight size={11} style={{ color: T.red }} />
               </button>
             )}
             {stats.expiringIn30 > 0 && (
@@ -502,7 +485,6 @@ export const PlatformDashboard = () => {
               { label: 'Active Subs',      value: stats.activeSubscriptions, color: T.cyan  },
               { label: 'Expiring Soon',    value: stats.expiringIn30,      color: stats.expiringIn30 > 0 ? T.orange : T.textMuted },
               { label: 'Open Support',     value: stats.openSupport,       color: stats.openSupport > 0 ? T.red : T.textMuted },
-              { label: 'Pending Phishing', value: stats.pendingPhishing,   color: stats.pendingPhishing > 0 ? T.red : T.textMuted },
               { label: 'Demo Requests',    value: stats.pendingDemo,       color: stats.pendingDemo > 0 ? T.purple : T.textMuted },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -522,7 +504,6 @@ export const PlatformDashboard = () => {
                 { page: 'email',              icon: Mail,          label: 'Send Email',             color: T.green  },
                 { page: 'demo-requests',      icon: Bell,          label: 'Demo Requests',          color: T.purple },
                 { page: 'support-requests',   icon: HelpCircle,    label: 'Support Tickets',        color: T.orange },
-                { page: 'phishing-management',icon: Shield,        label: 'Phishing Requests',      color: T.red    },
               ].map(({ page, icon: Icon, label, color }) => (
                 <button key={page} onClick={() => setActivePage(page)}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'rgba(255,255,255,0.02)', border: `1px solid rgba(255,255,255,0.05)`, borderRadius: 7, cursor: 'pointer', transition: 'background 0.18s', fontFamily: 'inherit' }}

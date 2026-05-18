@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Edit2, Check, X, RotateCcw, ShieldOff, Shield } from 'lucide-react';
+import { Sliders, Edit2, Check, X, RotateCcw, ShieldOff, Shield, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const T = {
@@ -45,6 +45,7 @@ interface CompanyLimit {
   month_reset_date: string;
   updated_at: string;
   companies: { name: string } | null;
+  license_quota?: number; // joined from phishing_campaign_quotas
 }
 
 interface EditForm {
@@ -71,12 +72,28 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
 
   const fetchLimits = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('company_phishing_limits')
-      .select('*, companies(name)')
-      .order('companies(name)');
-    setLimits(data || []);
+    const year = new Date().getFullYear();
+    const [limitsRes, quotasRes] = await Promise.all([
+      supabase.from('company_phishing_limits').select('*, companies(name)').order('companies(name)'),
+      supabase.from('phishing_campaign_quotas').select('company_id, annual_quota').eq('quota_year', year),
+    ]);
+    const quotaMap: Record<string, number> = {};
+    (quotasRes.data || []).forEach(q => { quotaMap[q.company_id] = q.annual_quota; });
+    const merged = (limitsRes.data || []).map(l => ({
+      ...l,
+      license_quota: quotaMap[l.company_id] ?? null,
+    }));
+    setLimits(merged);
     setLoading(false);
+  };
+
+  const syncFromLicenseQuota = async (l: CompanyLimit) => {
+    if (l.license_quota == null) { alert('No license quota set for this company.'); return; }
+    if (!confirm(`Set max campaigns/year to ${l.license_quota} (matching the license quota)?`)) return;
+    await supabase.from('company_phishing_limits')
+      .update({ max_campaigns_per_year: l.license_quota, updated_at: new Date().toISOString() })
+      .eq('id', l.id);
+    await fetchLimits();
   };
 
   const openEdit = (l: CompanyLimit) => {
@@ -176,6 +193,20 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
                     <td style={{ padding: '14px 18px' }}>
                       <span style={{ fontSize: 14, color: T.white }}>{l.max_campaigns_per_year}</span>
                       <span style={{ fontSize: 12, color: T.textMuted }}>/year</span>
+                      {l.license_quota != null && l.license_quota !== l.max_campaigns_per_year && (
+                        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ fontSize: 11, color: T.orange }}>License: {l.license_quota}</span>
+                          <button
+                            title="Sync max_campaigns_per_year from license quota"
+                            onClick={() => syncFromLicenseQuota(l)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 6, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <RefreshCw size={9} /> Sync
+                          </button>
+                        </div>
+                      )}
+                      {l.license_quota != null && l.license_quota === l.max_campaigns_per_year && (
+                        <div style={{ marginTop: 3, fontSize: 10, color: T.green }}>✓ In sync with license</div>
+                      )}
                     </td>
                     <td style={{ padding: '14px 18px' }}>
                       <div style={{ fontSize: 13, color: T.white, marginBottom: 4 }}>

@@ -197,7 +197,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       exams: "content-management",
       certificates: "content-management",
       // Platform admin phishing pages
-      "phishing-management":     "phishing-campaigns",
       "phishing-domains":        "phishing-campaigns",
       "phishing-smtp-admin":     "phishing-campaigns",
       "phishing-scenarios":      "phishing-campaigns",
@@ -283,7 +282,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           icon: Shield,
           section: "Phishing",
           children: [
-            { id: "phishing-management",     label: "Phishing Management",    icon: Shield  },
             { id: "phishing-domains",        label: "Phishing Domains",       icon: Globe   },
             { id: "phishing-smtp-admin",     label: "Platform SMTP Profiles", icon: Server  },
             { id: "phishing-scenarios",      label: "Phishing Scenarios",     icon: Zap     },
