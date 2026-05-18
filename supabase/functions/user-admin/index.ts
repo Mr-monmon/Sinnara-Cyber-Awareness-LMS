@@ -53,6 +53,7 @@ interface CreateUserPayload {
   full_name: string;
   phone?: string;
   employee_id?: string;
+  job_title?: string;
   role: string;
   company_id?: string;
   department?: string;
@@ -68,6 +69,7 @@ async function handleCreateUser(payload: CreateUserPayload) {
     full_name,
     phone,
     employee_id,
+    job_title,
     role,
     company_id,
     department,
@@ -91,6 +93,7 @@ async function handleCreateUser(payload: CreateUserPayload) {
     full_name,
     phone: phone ?? null,
     employee_id: employee_id ?? null,
+    job_title: job_title ?? null,
     role,
     company_id: company_id ?? null,
     department: department ?? null,
@@ -228,77 +231,75 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case "createUser": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const r = await handleCreateUser(body);
-        return json(r, r.success ? 200 : 400);
+        return json(r);
       }
 
       case "bulkCreate": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         return json(await handleBulkCreate(body.users));
       }
 
       case "resetPassword": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const r = await handleResetPassword(body.userId, body.password);
-        return json(r, r.success ? 200 : 400);
+        return json(r);
       }
 
       case "deleteUser": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
-        // COMPANY_SUPER_ADMIN rows can only be deleted by themselves (not by other admins)
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         if (body.userId !== caller.id) {
           const { data: targetProfile } = await supabaseAdmin
             .from("users").select("role").eq("id", body.userId).single();
           if (targetProfile?.role === "COMPANY_SUPER_ADMIN") {
-            return json({ error: "Cannot delete the company super admin" }, 403);
+            return json({ success: false, error: "Cannot delete the company super admin" });
           }
         }
         const r = await handleDeleteUser(body.userId);
-        return json(r, r.success ? 200 : 400);
+        return json(r);
       }
 
       // Reset MFA: unenroll all TOTP factors for the target user
       case "resetMfa": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const targetId: string = body.userId;
-        // List factors via admin API
         const { data: factorsData, error: listErr } =
           await supabaseAdmin.auth.admin.mfa.listFactors({ userId: targetId });
-        if (listErr) return json({ success: false, error: listErr.message }, 400);
+        if (listErr) return json({ success: false, error: listErr.message });
         const factors = (factorsData as { factors?: { id: string }[] })?.factors ?? [];
         for (const f of factors) {
           await supabaseAdmin.auth.admin.mfa.deleteFactor({ userId: targetId, id: f.id });
         }
-        await supabaseAdmin.from("users")
+        const { error: updErr } = await supabaseAdmin.from("users")
           .update({ mfa_enforced: false })
           .eq("id", targetId);
+        if (updErr) return json({ success: false, error: updErr.message });
         return json({ success: true, factors_removed: factors.length });
       }
 
       // Set/unset forced MFA for a user
       case "setMfaEnforced": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const { userId: targetId, enforced } = body;
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ mfa_enforced: !!enforced })
           .eq("id", targetId);
-        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        if (updErr) return json({ success: false, error: updErr.message });
         return json({ success: true });
       }
 
       // Force a specific user to change password on next login
       case "forcePasswordChange": {
-        if (!isAdmin(caller.role)) return json({ error: "Forbidden" }, 403);
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ requires_password_change: true })
           .eq("id", body.userId);
-        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        if (updErr) return json({ success: false, error: updErr.message });
         return json({ success: true });
       }
 
       // Change a user's role. Only PLATFORM_ADMIN or COMPANY_SUPER_ADMIN can do this.
-      // Service-role bypasses RLS so direct table updates from the client are unnecessary.
       case "updateUserRole": {
         const allowedRoles = [
           "PLATFORM_ADMIN",
@@ -309,27 +310,26 @@ Deno.serve(async (req) => {
           "EMPLOYEE",
         ];
         if (caller.role !== "PLATFORM_ADMIN" && caller.role !== "COMPANY_SUPER_ADMIN") {
-          return json({ error: "Forbidden" }, 403);
+          return json({ success: false, error: "Forbidden" });
         }
         const newRole: string = body.newRole;
         if (!allowedRoles.includes(newRole)) {
-          return json({ success: false, error: `Invalid role: ${newRole}` }, 400);
+          return json({ success: false, error: `Invalid role: ${newRole}` });
         }
-        // COMPANY_SUPER_ADMIN row cannot be re-roled by anyone other than themselves
         const { data: targetProfile } = await supabaseAdmin
           .from("users").select("role").eq("id", body.userId).single();
         if (targetProfile?.role === "COMPANY_SUPER_ADMIN" && body.userId !== caller.id) {
-          return json({ error: "Cannot change role of a company super admin" }, 403);
+          return json({ success: false, error: "Cannot change role of a company super admin" });
         }
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ role: newRole })
           .eq("id", body.userId);
-        if (updErr) return json({ success: false, error: updErr.message }, 400);
+        if (updErr) return json({ success: false, error: updErr.message });
         return json({ success: true });
       }
 
       default:
-        return json({ error: `Unknown action: ${action}` }, 400);
+        return json({ success: false, error: `Unknown action: ${action}` });
     }
   } catch (err) {
     return json(
