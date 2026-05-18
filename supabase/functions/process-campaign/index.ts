@@ -219,6 +219,10 @@ Deno.serve(async (req) => {
         phishing_campaigns(
           emails_per_minute, business_hours_only, business_hours_start,
           business_hours_end, timezone, status, company_id
+        ),
+        phishing_campaign_targets(
+          employee_id, first_name, last_name, position, department,
+          users(full_name, email, job_title, manager_name, office_location, phone, departments(name))
         )
       `)
       .eq("status", "PENDING")
@@ -276,20 +280,102 @@ Deno.serve(async (req) => {
         .eq("status", "PENDING");
       if (claimErr || claimed === 0) { skipped++; continue; }
 
+      // ── Resolve per-recipient template variables ─────────────────────────────
+      // Data-source priority:
+      //   1. Linked employee record (users table) — SOLE source when employee_id exists
+      //   2. Target persona columns (fallback only when employee_id is NULL)
+      //   3. Email-derived first_name as last resort
+      const target = (job.phishing_campaign_targets as Record<string, any> | null);
+      const linkedUser = (target?.users as Record<string, any> | null);
+
+      let firstName      = "";
+      let lastName       = "";
+      let position       = "";
+      let department     = "";
+      let managerName    = "";
+      let officeLocation = "";
+      let phone          = "";
+
+      if (linkedUser) {
+        // Employee record is authoritative; ignore persona fields entirely
+        const nameParts = (linkedUser.full_name || "").trim().split(/\s+/);
+        firstName      = nameParts[0] || "";
+        lastName       = nameParts.slice(1).join(" ") || "";
+        position       = linkedUser.job_title         || "";
+        department     = linkedUser.departments?.name || "";
+        managerName    = linkedUser.manager_name      || "";
+        officeLocation = linkedUser.office_location   || "";
+        phone          = linkedUser.phone             || "";
+      } else if (target) {
+        // Fallback to target persona columns
+        firstName  = target.first_name || "";
+        lastName   = target.last_name  || "";
+        position   = target.position   || "";
+        department = target.department || "";
+      }
+
+      if (!firstName) firstName = job.recipient_email.split("@")[0];
+
+      const trackingUrl    = `${SUPABASE_URL}/functions/v1/phishing-track?t=click&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const unsubscribeUrl = `${SUPABASE_URL}/functions/v1/phishing-track?t=report&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const pixelUrlEarly  = `${SUPABASE_URL}/functions/v1/phishing-track?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const fullName       = `${firstName} ${lastName}`.trim();
+
+      // Variables support both snake_case ({{first_name}}) and GoPhish dotted
+      // PascalCase ({{.FirstName}}) for backward compatibility.
+      const vars: Record<string, string> = {
+        // snake_case (native)
+        first_name:      firstName,
+        last_name:       lastName,
+        full_name:       fullName,
+        email:           job.recipient_email,
+        position,
+        job_title:       position,
+        department,
+        manager_name:    managerName,
+        office_location: officeLocation,
+        phone,
+        tracking_url:    trackingUrl,
+        unsubscribe_url: unsubscribeUrl,
+        from:            job.from_address,
+        from_name:       job.from_name,
+        rid:             job.recipient_id,
+
+        // GoPhish dotted aliases
+        ".FirstName":    firstName,
+        ".LastName":     lastName,
+        ".FullName":     fullName,
+        ".Email":        job.recipient_email,
+        ".Position":     position,
+        ".Department":   department,
+        ".From":         job.from_address,
+        ".URL":          trackingUrl,
+        ".TrackingURL":  trackingUrl,
+        ".Tracker":      `<img src="${pixelUrlEarly}" width="1" height="1" style="display:none" alt="" />`,
+        ".RId":          job.recipient_id,
+      };
+
+      // Resolves both {{first_name}} and {{.FirstName}} (with optional whitespace).
+      const resolveVars = (text: string) =>
+        text.replace(/\{\{\s*(\.?[A-Za-z_][\w]*)\s*\}\}/g, (_, key) => vars[key] ?? "");
+
+      const resolvedHtml    = resolveVars(job.email_html);
+      const resolvedSubject = resolveVars(job.email_subject);
+
       // Inject open-tracking pixel (idempotent: only if not already present)
       const trackBase   = `${SUPABASE_URL}/functions/v1/phishing-track`;
       const pixelUrl    = `${trackBase}?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
       const trackPixel  = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
-      const finalHtml   = job.email_html.includes("phishing-track?t=open")
-        ? job.email_html // already has pixel
-        : job.email_html.includes("</body>")
-          ? job.email_html.replace("</body>", trackPixel + "</body>")
-          : job.email_html + trackPixel;
+      const finalHtml   = resolvedHtml.includes("phishing-track?t=open")
+        ? resolvedHtml
+        : resolvedHtml.includes("</body>")
+          ? resolvedHtml.replace("</body>", trackPixel + "</body>")
+          : resolvedHtml + trackPixel;
 
       // Send
       const result = await sendEmail({
         to:               job.recipient_email,
-        subject:          job.email_subject,
+        subject:          resolvedSubject,
         html:             finalHtml,
         from_address:     job.from_address,
         from_name:        job.from_name,
