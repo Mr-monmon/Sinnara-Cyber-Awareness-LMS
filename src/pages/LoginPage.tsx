@@ -6,6 +6,7 @@ import { buildApexRedirectUrl } from "../lib/browserTenant";
 import { supabase } from "../lib/supabase";
 import { ForcePasswordChangeModal } from "../components/auth/ForcePasswordChangeModal";
 import { TwoFactorChallengeModal } from "../components/auth/TwoFactorChallengeModal";
+import { TwoFactorSetupModal } from "../components/auth/TwoFactorSetupModal";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -106,6 +107,7 @@ export const LoginPage = ({
   const [error, setError] = useState("");
   const [showForcePasswordChange, setShowForcePasswordChange] = useState(false);
   const [showMfaChallenge, setShowMfaChallenge] = useState(false);
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
   const navigate = useNavigate();
 
   const handleBack = () => {
@@ -162,6 +164,16 @@ export const LoginPage = ({
           p_user_agent: navigator.userAgent,
         });
         setShowMfaChallenge(true);
+        return;
+      }
+
+      if (result === "mfa_setup_required") {
+        await supabase.rpc("record_login_attempt", {
+          p_email: email,
+          p_success: true,
+          p_user_agent: navigator.userAgent,
+        });
+        setShowMfaSetup(true);
         return;
       }
 
@@ -499,6 +511,15 @@ export const LoginPage = ({
       <TwoFactorChallengeModal
         onSuccess={() => {
           setShowMfaChallenge(false);
+          navigate("/dashboard", { replace: true });
+        }}
+      />
+    )}
+
+    {showMfaSetup && (
+      <TwoFactorSetupModal
+        onComplete={() => {
+          setShowMfaSetup(false);
           navigate("/dashboard", { replace: true });
         }}
       />
