@@ -123,6 +123,7 @@ export const PhishingGroupsPage: React.FC = () => {
   const [searchEmployee, setSearchEmployee] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ inserted: number } | null>(null);
+  const [alreadySyncedIds, setAlreadySyncedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => { if (user?.company_id) loadGroups(); }, [user]);
 
@@ -272,7 +273,7 @@ export const PhishingGroupsPage: React.FC = () => {
   };
 
   const openSyncModal = async () => {
-    if (!user?.company_id) return;
+    if (!user?.company_id || !activeGroup) return;
     setSyncModal(true);
     setSyncResult(null);
     setSelectedEmployeeIds(new Set());
@@ -280,7 +281,7 @@ export const PhishingGroupsPage: React.FC = () => {
     setSearchEmployee('');
     setLoadingEmployees(true);
     try {
-      const [{ data: emps }, { data: depts }] = await Promise.all([
+      const [{ data: emps }, { data: depts }, { data: existing }] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, job_title, department_id, departments(name)')
@@ -292,6 +293,11 @@ export const PhishingGroupsPage: React.FC = () => {
           .select('id, name')
           .eq('company_id', user.company_id)
           .order('name'),
+        supabase
+          .from('phishing_group_members')
+          .select('employee_id')
+          .eq('group_id', activeGroup.id)
+          .not('employee_id', 'is', null),
       ]);
       setEmployees((emps || []).map((e: any) => ({
         id: e.id,
@@ -302,6 +308,7 @@ export const PhishingGroupsPage: React.FC = () => {
         department_name: e.departments?.name || '',
       })));
       setDepartments(depts || []);
+      setAlreadySyncedIds(new Set((existing || []).map((r: any) => r.employee_id)));
     } finally {
       setLoadingEmployees(false);
     }
@@ -311,9 +318,9 @@ export const PhishingGroupsPage: React.FC = () => {
     if (!activeGroup || selectedEmployeeIds.size === 0) return;
     setSyncing(true);
     try {
-      // Use the DB RPC if all in a single department, else insert directly
+      // Filter out anyone already synced (defence in depth — UI hides them too)
       const rows = employees
-        .filter(e => selectedEmployeeIds.has(e.id))
+        .filter(e => selectedEmployeeIds.has(e.id) && !alreadySyncedIds.has(e.id))
         .map(e => {
           const parts = e.full_name.trim().split(/\s+/);
           return {
@@ -330,10 +337,9 @@ export const PhishingGroupsPage: React.FC = () => {
       const BATCH = 100;
       let inserted = 0;
       for (let i = 0; i < rows.length; i += BATCH) {
-        const { data, error } = await supabase
-          .from('phishing_group_members')
-          .upsert(rows.slice(i, i + BATCH), { onConflict: 'group_id,employee_id', ignoreDuplicates: true });
-        if (!error) inserted += rows.slice(i, i + BATCH).length;
+        const chunk = rows.slice(i, i + BATCH);
+        const { error } = await supabase.from('phishing_group_members').insert(chunk);
+        if (!error) inserted += chunk.length;
       }
       setSyncResult({ inserted });
       loadMembers(activeGroup.id);
@@ -346,6 +352,7 @@ export const PhishingGroupsPage: React.FC = () => {
   };
 
   const filteredEmployees = employees.filter(e => {
+    if (alreadySyncedIds.has(e.id)) return false; // hide already-synced
     const matchDept = !filterDeptId || e.department_id === filterDeptId;
     const q = searchEmployee.toLowerCase();
     const matchSearch = !q || e.full_name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
