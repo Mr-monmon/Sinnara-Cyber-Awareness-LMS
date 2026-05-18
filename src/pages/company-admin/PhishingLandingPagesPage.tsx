@@ -150,7 +150,18 @@ export const PhishingLandingPagesPage: React.FC = () => {
   const [previewHtml, setPreviewHtml] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ form_detected: boolean; has_password_field: boolean; is_spa?: boolean; note?: string | null } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    form_detected: boolean;
+    has_password_field: boolean;
+    is_spa?: boolean;
+    rendered?: boolean;
+    render_service?: string;
+    synthetic_form_added?: boolean;
+    bundle_field_hints?: Array<{ type: string; name: string; placeholder: string; label: string }>;
+    bundle_api_endpoints?: string[];
+    spa_reason?: string;
+    note?: string | null;
+  } | null>(null);
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
 
@@ -227,10 +238,16 @@ export const PhishingLandingPagesPage: React.FC = () => {
       if (data?.html) {
         setForm(f => ({ ...f, html_content: data.html }));
         setImportResult({
-          form_detected: !!data.form_detected,
-          has_password_field: !!data.has_password_field,
-          is_spa: !!data.is_spa,
-          note: data.note || null,
+          form_detected:        !!data.form_detected,
+          has_password_field:   !!data.has_password_field,
+          is_spa:               !!data.is_spa,
+          rendered:             !!data.rendered,
+          render_service:       data.render_service || 'none',
+          synthetic_form_added: !!data.synthetic_form_added,
+          bundle_field_hints:   data.bundle_field_hints || [],
+          bundle_api_endpoints: data.bundle_api_endpoints || [],
+          spa_reason:           data.spa_reason || '',
+          note:                 data.note || null,
         });
         if (data.form_detected) {
           setForm(f => ({ ...f, capture_credentials: true }));
@@ -285,6 +302,9 @@ export const PhishingLandingPagesPage: React.FC = () => {
                     <div title={p.name} style={{ fontSize: 15, fontWeight: 700, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => { const blob = new Blob([p.html_content], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${p.name.replace(/[^a-z0-9]/gi, '_')}.html`; a.click(); URL.revokeObjectURL(a.href); }} title="Download HTML" style={{ width: 28, height: 28, borderRadius: 7, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Download size={12} />
+                    </button>
                     <button onClick={() => openEdit(p)} title="Edit" style={{ width: 28, height: 28, borderRadius: 7, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Edit2 size={12} />
                     </button>
@@ -360,13 +380,38 @@ export const PhishingLandingPagesPage: React.FC = () => {
                 {importing ? 'Cloning…' : 'Clone'}
               </button>
               {importResult && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ fontSize: 11, color: importResult.form_detected ? T.green : T.textMuted, whiteSpace: 'nowrap' }}>
-                    {importResult.form_detected ? `✓ Form detected${importResult.has_password_field ? ' + password field' : ''}` : 'No form detected'}
-                    {importResult.is_spa ? ' · SPA' : ''}
-                  </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200 }}>
+                  {/* Status badges */}
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 9999, fontWeight: 700,
+                      background: importResult.form_detected ? T.greenBg : T.redBg,
+                      border: `1px solid ${importResult.form_detected ? T.greenBorder : T.redBorder}`,
+                      color: importResult.form_detected ? T.green : T.red }}>
+                      {importResult.form_detected ? (importResult.synthetic_form_added ? '⚡ Synthetic form' : '✓ Form') : '✗ No form'}
+                      {importResult.has_password_field ? ' + 🔑' : ''}
+                    </span>
+                    {importResult.is_spa && (
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 9999, fontWeight: 700,
+                        background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue }}>
+                        SPA
+                      </span>
+                    )}
+                    {importResult.rendered && (
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 9999, fontWeight: 700,
+                        background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, color: T.purple }}>
+                        Rendered via {importResult.render_service}
+                      </span>
+                    )}
+                  </div>
+                  {/* Bundle field hints */}
+                  {importResult.bundle_field_hints && importResult.bundle_field_hints.length > 0 && (
+                    <div style={{ fontSize: 10, color: T.textMuted }}>
+                      JS fields detected: {importResult.bundle_field_hints.map(f => f.name).join(', ')}
+                    </div>
+                  )}
+                  {/* Note */}
                   {importResult.note && (
-                    <span style={{ fontSize: 10, color: T.orange, whiteSpace: 'nowrap' }}>{importResult.note}</span>
+                    <span style={{ fontSize: 10, color: T.orange, lineHeight: '14px' }}>{importResult.note}</span>
                   )}
                 </div>
               )}

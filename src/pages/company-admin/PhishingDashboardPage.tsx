@@ -332,7 +332,7 @@ const MetricCard: React.FC<{ icon: React.ElementType; color: string; bg: string;
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
-export const PhishingDashboardPage: React.FC = () => {
+export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => void }> = ({ onNavigate }) => {
   const { user }    = useAuth();
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [campaigns, setCampaigns]   = useState<PhishingCampaign[]>([]);
@@ -421,7 +421,7 @@ export const PhishingDashboardPage: React.FC = () => {
           <button className="aw-ph-dl-btn" onClick={exportCSV}>
             <Download size={14} /> Export Analytics
           </button>
-          <button className="aw-ph-primary-btn" disabled={remainingQuota <= 0}>
+          <button className="aw-ph-primary-btn" onClick={() => onNavigate?.('phishing-campaigns')}>
             <Plus size={14} /> Create Campaign
           </button>
         </div>

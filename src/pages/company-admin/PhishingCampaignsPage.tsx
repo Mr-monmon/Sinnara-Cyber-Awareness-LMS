@@ -266,7 +266,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     if (!companyId) return;
     const [scRes, grRes, smRes, etRes, lpRes, limRes] = await Promise.all([
       supabase.from('phishing_scenarios').select('*').eq('is_active', true).order('sort_order'),
-      supabase.from('phishing_groups').select('id, name').eq('company_id', companyId),
+      supabase.from('phishing_groups').select('id, name, member_count').eq('company_id', companyId),
       supabase.from('smtp_profiles').select('id, name, from_address, from_name'),
       supabase.from('phishing_company_email_templates').select('id, name, subject, html_content').eq('company_id', companyId),
       supabase.from('phishing_company_landing_pages').select('id, name, html_content').eq('company_id', companyId),
@@ -356,7 +356,13 @@ export const PhishingCampaignsPage: React.FC = () => {
 
   // Launch campaign
   const launchCampaign = async (asDraft: boolean) => {
-    if (!companyId || !form.name.trim()) return;
+    if (!companyId) return;
+    if (!form.name.trim()) { alert('Campaign name is required.'); return; }
+    if (!asDraft) {
+      if (form.selectedGroups.length === 0) { alert('Select at least one target group.'); return; }
+      if (totalTargets === 0) { alert('Selected groups have no members. Add members to the group first.'); return; }
+      if (!form.emailSubject.trim() || !form.emailHtml.trim()) { alert('Email subject and HTML body are required.'); return; }
+    }
     setSaving(true);
     try {
       const scheduledAt = form.launchType === 'scheduled' && form.scheduledAt ? form.scheduledAt : null;
@@ -820,7 +826,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     const steps = ['Setup', 'Targets & Sending', 'Email', 'Landing Page'];
     const canProceed = [
       form.name.trim().length > 0,
-      form.selectedGroups.length > 0,
+      form.selectedGroups.length > 0 && totalTargets > 0,
       form.emailSubject.trim().length > 0 && form.emailHtml.trim().length > 0,
       true,
     ];
@@ -886,16 +892,20 @@ export const PhishingCampaignsPage: React.FC = () => {
               <div>
                 <Label>Target Groups * ({totalTargets} targets)</Label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {groups.map(g => (
-                    <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${form.selectedGroups.includes(g.id) ? T.accent + '40' : T.borderFaint}`, borderRadius: 8, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={form.selectedGroups.includes(g.id)} onChange={e => setForm(f => ({ ...f, selectedGroups: e.target.checked ? [...f.selectedGroups, g.id] : f.selectedGroups.filter(x => x !== g.id) }))} />
+                  {groups.map(g => {
+                    const isEmpty = !g.member_count || g.member_count === 0;
+                    return (
+                    <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isEmpty ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.03)', border: `1px solid ${form.selectedGroups.includes(g.id) ? T.accent + '40' : T.borderFaint}`, borderRadius: 8, cursor: isEmpty ? 'not-allowed' : 'pointer', opacity: isEmpty ? 0.5 : 1 }}>
+                      <input type="checkbox" disabled={isEmpty} checked={form.selectedGroups.includes(g.id)} onChange={e => setForm(f => ({ ...f, selectedGroups: e.target.checked ? [...f.selectedGroups, g.id] : f.selectedGroups.filter(x => x !== g.id) }))} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: T.white }}>{g.name}</div>
-                        <div style={{ fontSize: 11, color: T.textMuted }}>{g.member_count || 0} members</div>
+                        <div style={{ fontSize: 11, color: isEmpty ? T.red : T.textMuted }}>{isEmpty ? 'No members — add members to this group first' : `${g.member_count} members`}</div>
                       </div>
                       {form.selectedGroups.includes(g.id) && <Check size={14} style={{ color: T.accent }} />}
+                      {isEmpty && <span style={{ fontSize: 9, fontWeight: 700, color: T.red, background: T.redBg, border: `1px solid ${T.redBorder}`, padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase' }}>Empty</span>}
                     </label>
-                  ))}
+                    );
+                  })}
                   {groups.length === 0 && <div style={{ color: T.textMuted, fontSize: 13 }}>No groups found. Create groups in Phishing Groups first.</div>}
                 </div>
               </div>
@@ -1009,14 +1019,9 @@ export const PhishingCampaignsPage: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Label>Email HTML *</Label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setTestEmailTo(''); setTestEmailResult(null); setTestEmailModal(true); }} style={{ background: 'none', border: `1px solid ${T.purpleBorder}`, borderRadius: 6, cursor: 'pointer', color: T.purple, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px' }}>
-                      <Send size={12} /> Send Test
-                    </button>
-                    <button onClick={() => setShowPreview(p => !p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Eye size={13} /> {showPreview ? 'Edit' : 'Preview'}
-                    </button>
-                  </div>
+                  <button onClick={() => setShowPreview(p => !p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Eye size={13} /> {showPreview ? 'Edit' : 'Preview'}
+                  </button>
                 </div>
                 {showPreview ? (
                   <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, height: 360, overflow: 'auto', background: '#fff' }}>
@@ -1100,6 +1105,9 @@ export const PhishingCampaignsPage: React.FC = () => {
             </button>
           ) : (
             <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setTestEmailTo(''); setTestEmailResult(null); setTestEmailModal(true); }} className="aw-pc-btn" style={{ background: T.purpleBg, color: T.purple, border: `1px solid ${T.purpleBorder}`, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Send size={13} /> Send Test Email
+              </button>
               <button className="aw-pc-btn" onClick={() => launchCampaign(true)} disabled={saving} style={{ background: 'rgba(255,255,255,0.06)', color: T.textBody }}>
                 Save as Draft
               </button>

@@ -249,7 +249,7 @@ export const CompanyDashboard = () => {
       case "exam-assignment":  return <ExamAssignmentPage />;
       case "course-assignment": return <CourseAssignmentPage />;
       case "analytics":        return <AnalyticsPage />;
-      case "phishing-dashboard": return <PhishingDashboardPage />;
+      case "phishing-dashboard": return <PhishingDashboardPage onNavigate={setActivePage} />;
       case "phishing-request": return <PhishingRequestPage />;
       case "phishing-campaigns": return <PhishingCampaignsPage />;
       case "phishing-smtp":    return <PhishingSmtpPage />;
