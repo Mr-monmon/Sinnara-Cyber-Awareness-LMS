@@ -1,10 +1,11 @@
-import { FormEvent, useState } from "react";
-import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck, CheckCircle } from "lucide-react";
+import { FormEvent, useState, useEffect } from "react";
+import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck, CheckCircle, ShieldOff, AlertCircle } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { checkPassword } from "../../lib/passwordPolicy";
 import { PasswordStrengthMeter } from "../../components/PasswordStrengthMeter";
+import { TwoFactorSetupModal } from "../../components/auth/TwoFactorSetupModal";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -146,6 +147,44 @@ const AccountSettings = () => {
   const [showPassword, setShowPassword] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
   const [error, setError]           = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── MFA state ────────────────────────────────────────────────────────
+  const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaMessage, setMfaMessage] = useState<string | null>(null);
+
+  const loadMfaStatus = async () => {
+    const { data } = await supabase.auth.mfa.listFactors();
+    const totpFactors = data?.totp ?? [];
+    const verified = totpFactors.some((f) => f.status === "verified");
+    setMfaEnrolled(verified);
+  };
+
+  useEffect(() => { void loadMfaStatus(); }, []);
+
+  const handleDisableMfa = async () => {
+    if (user?.mfa_enforced) {
+      alert("Your administrator has enforced MFA on your account. You cannot disable it yourself.");
+      return;
+    }
+    if (!confirm("Disable two-factor authentication on your account? You can re-enable it anytime.")) return;
+    setMfaBusy(true);
+    setMfaMessage(null);
+    try {
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const factors = factorsData?.all ?? factorsData?.totp ?? [];
+      for (const f of factors) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
+      setMfaEnrolled(false);
+      setMfaMessage("Two-factor authentication has been disabled.");
+    } catch (e) {
+      setMfaMessage(e instanceof Error ? e.message : "Failed to disable 2FA");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
 
   const toggleShow = (field: keyof typeof showPassword) =>
     setShowPassword(prev => ({ ...prev, [field]: !prev[field] }));
@@ -312,6 +351,86 @@ const AccountSettings = () => {
           </div>
         </form>
       </div>
+
+      {/* ── Two-Factor Authentication ── */}
+      <div className="aw-fade-up" style={{ animationDelay: '0.15s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={16} style={{ color: T.textLabel }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 2px' }}>Two-Factor Authentication (2FA)</h2>
+            <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>
+              Add an extra layer of security with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy).
+            </p>
+          </div>
+          {mfaEnrolled !== null && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+              borderRadius: 9999, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase',
+              background: mfaEnrolled ? 'rgba(52,211,153,0.10)' : 'rgba(251,146,60,0.10)',
+              border: mfaEnrolled ? '1px solid rgba(52,211,153,0.25)' : '1px solid rgba(251,146,60,0.25)',
+              color: mfaEnrolled ? '#34d399' : '#fb923c',
+            }}>
+              {mfaEnrolled ? <><CheckCircle size={12} /> Enabled</> : <><AlertCircle size={12} /> Disabled</>}
+            </span>
+          )}
+        </div>
+
+        <div style={{ padding: '20px 24px' }}>
+          {user?.mfa_enforced && !mfaEnrolled && (
+            <div style={{ padding: '12px 14px', background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.22)', borderRadius: 10, fontSize: 13, color: '#fb923c', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>Your administrator requires 2FA on your account. Please set it up now to continue using the platform securely.</span>
+            </div>
+          )}
+
+          {mfaMessage && (
+            <div style={{ padding: '10px 14px', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.22)', borderRadius: 10, fontSize: 13, color: '#34d399', marginBottom: 16 }}>
+              {mfaMessage}
+            </div>
+          )}
+
+          {mfaEnrolled === null ? (
+            <div style={{ fontSize: 13, color: T.textMuted }}>Loading…</div>
+          ) : mfaEnrolled ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, fontSize: 13, color: T.textBody, minWidth: 200 }}>
+                Two-factor authentication is currently active on your account. You'll be asked for a 6-digit code from your authenticator app on every sign-in.
+              </div>
+              {!user?.mfa_enforced && (
+                <button
+                  onClick={handleDisableMfa}
+                  disabled={mfaBusy}
+                  className="aw-submit-btn"
+                  style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171' }}
+                >
+                  {mfaBusy ? <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <ShieldOff size={15} />}
+                  Disable 2FA
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowMfaSetup(true)}
+              className="aw-submit-btn"
+            >
+              <ShieldCheck size={15} /> Enable 2FA
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showMfaSetup && (
+        <TwoFactorSetupModal
+          onComplete={() => {
+            setShowMfaSetup(false);
+            setMfaMessage("Two-factor authentication has been enabled.");
+            void loadMfaStatus();
+          }}
+          onSkip={() => setShowMfaSetup(false)}
+        />
+      )}
     </div>
   );
 };
