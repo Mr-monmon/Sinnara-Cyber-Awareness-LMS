@@ -387,10 +387,14 @@ export const CompanyPlatformUsersPage: React.FC = () => {
   const handleAction = async (action: string, userId: string, extraBody?: Record<string, unknown>) => {
     setActionLoading(`${action}-${userId}`);
     try {
-      const { error: invokeError } = await supabase.functions.invoke("user-admin", {
-        body: { action, user_id: userId, ...extraBody },
+      const { data: invokeData, error: invokeError } = await supabase.functions.invoke("user-admin", {
+        body: { action, userId, ...extraBody },
       });
-      if (invokeError) throw new Error(invokeError.message);
+      const bodyErr =
+        invokeData && typeof invokeData === "object" && "error" in invokeData
+          ? String((invokeData as { error: unknown }).error)
+          : null;
+      if (invokeError || bodyErr) throw new Error(bodyErr ?? invokeError?.message ?? `Failed to perform ${action}`);
       void loadUsers();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : `Failed to perform ${action}`);
@@ -411,12 +415,33 @@ export const CompanyPlatformUsersPage: React.FC = () => {
   };
 
   const handleResetPassword = (target: PlatformUser) => {
+    const newPw = generatePassword();
     setConfirm({
       open: true,
       title: "Reset Password",
-      message: `Send a password reset email to ${target.email}?`,
+      message: `Reset password for ${target.full_name}? A new temporary password will be generated and sent to ${target.email}.`,
       danger: false,
-      onConfirm: () => handleAction("resetPassword", target.id),
+      onConfirm: async () => {
+        await handleAction("resetPassword", target.id, { password: newPw });
+        try {
+          const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
+          const copy = ROLE_EMAIL_COPY[target.role as PlatformRole] ?? ROLE_EMAIL_COPY.COMPANY_ADMIN;
+          await sendNotificationEmail(
+            target.email,
+            target.full_name,
+            "Your Awareone password has been reset",
+            "Password Reset",
+            "An administrator has reset your password. Use the credentials below to sign in — you will be asked to set a new password on first login.",
+            {
+              loginUrl,
+              credentials: { email: target.email, password: newPw, role: ROLE_LABELS[target.role as PlatformRole] ?? target.role },
+              showSecurityNote: true,
+            }
+          );
+        } catch (emailErr) {
+          console.warn("Reset password email could not be sent:", emailErr);
+        }
+      },
     });
   };
 
@@ -439,7 +464,7 @@ export const CompanyPlatformUsersPage: React.FC = () => {
         ? `Require ${target.full_name} to set up MFA on next login?`
         : `Remove MFA enforcement for ${target.full_name}?`,
       danger: false,
-      onConfirm: () => handleAction("setMfaEnforced", target.id, { mfa_enforced: newVal }),
+      onConfirm: () => handleAction("setMfaEnforced", target.id, { enforced: newVal }),
     });
   };
 
@@ -784,6 +809,7 @@ export const CompanyPlatformUsersPage: React.FC = () => {
                     value={form.role}
                     onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as CreateUserForm["role"] }))}
                   >
+                    <option value="COMPANY_SUPER_ADMIN">Super Admin</option>
                     <option value="COMPANY_ADMIN">Company Admin</option>
                     <option value="PHISHING_OPERATOR">Phishing Operator</option>
                     <option value="REVIEWER">Reviewer</option>

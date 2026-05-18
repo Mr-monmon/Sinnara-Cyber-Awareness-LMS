@@ -75,12 +75,33 @@ const ROLE_CFG: Record<
     label: "Platform Admin",
     icon: Shield,
   },
+  COMPANY_SUPER_ADMIN: {
+    color: "#facc15",
+    bg: "rgba(250,204,21,0.08)",
+    border: "rgba(250,204,21,0.22)",
+    label: "Super Admin",
+    icon: Shield,
+  },
   COMPANY_ADMIN: {
     color: T.blue,
     bg: T.blueBg,
     border: T.blueBorder,
     label: "Company Admin",
     icon: UserCog,
+  },
+  PHISHING_OPERATOR: {
+    color: "#a78bfa",
+    bg: "rgba(167,139,250,0.08)",
+    border: "rgba(167,139,250,0.22)",
+    label: "Phishing Operator",
+    icon: UserCog,
+  },
+  REVIEWER: {
+    color: T.blue,
+    bg: T.blueBg,
+    border: T.blueBorder,
+    label: "Reviewer",
+    icon: User,
   },
   EMPLOYEE: {
     color: T.green,
@@ -1061,7 +1082,10 @@ export const UsersManagementPage: React.FC = () => {
   /* Stats */
   const roleCounts = {
     PLATFORM_ADMIN: 0,
+    COMPANY_SUPER_ADMIN: 0,
     COMPANY_ADMIN: 0,
+    PHISHING_OPERATOR: 0,
+    REVIEWER: 0,
     EMPLOYEE: 0,
   } as Record<string, number>;
   users.forEach((u) => {
@@ -1304,7 +1328,10 @@ export const UsersManagementPage: React.FC = () => {
         >
           <option value="">All Roles</option>
           <option value="PLATFORM_ADMIN">Platform Admin</option>
+          <option value="COMPANY_SUPER_ADMIN">Super Admin</option>
           <option value="COMPANY_ADMIN">Company Admin</option>
+          <option value="PHISHING_OPERATOR">Phishing Operator</option>
+          <option value="REVIEWER">Reviewer</option>
           <option value="EMPLOYEE">Employee</option>
         </select>
       </div>
@@ -1394,7 +1421,10 @@ export const UsersManagementPage: React.FC = () => {
                         }
                       >
                         <option value="PLATFORM_ADMIN">Platform Admin</option>
+                        <option value="COMPANY_SUPER_ADMIN">Super Admin</option>
                         <option value="COMPANY_ADMIN">Company Admin</option>
+                        <option value="PHISHING_OPERATOR">Phishing Operator</option>
+                        <option value="REVIEWER">Reviewer</option>
                         <option value="EMPLOYEE">Employee</option>
                       </select>
                       <button
@@ -1530,7 +1560,10 @@ export const UsersManagementPage: React.FC = () => {
                     }
                   >
                     <option value="EMPLOYEE">Employee</option>
+                    <option value="COMPANY_SUPER_ADMIN">Super Admin</option>
                     <option value="COMPANY_ADMIN">Company Admin</option>
+                    <option value="PHISHING_OPERATOR">Phishing Operator</option>
+                    <option value="REVIEWER">Reviewer</option>
                     <option value="PLATFORM_ADMIN">Platform Admin</option>
                   </select>
                 </div>
