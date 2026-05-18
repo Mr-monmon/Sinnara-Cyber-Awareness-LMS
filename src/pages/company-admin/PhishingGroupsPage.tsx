@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Users, Plus, Edit2, Trash2, ArrowLeft, Upload,
-  Download, X, Check, Loader2, AlertCircle, UserPlus, Search
+  Download, X, Check, Loader2, AlertCircle, UserPlus, Search,
+  RefreshCw, Building2, ChevronDown
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -83,6 +84,8 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-groups-style
 
 interface Group { id: string; company_id: string; name: string; description: string; member_count: number; created_at: string; }
 interface Member { id: string; group_id: string; first_name: string; last_name: string; email: string; position: string; department: string; created_at: string; }
+interface Employee { id: string; full_name: string; email: string; job_title: string; department_id: string | null; department_name: string; }
+interface Department { id: string; name: string; }
 
 const EMPTY_MEMBER = { first_name: '', last_name: '', email: '', position: '', department: '' };
 
@@ -109,6 +112,17 @@ export const PhishingGroupsPage: React.FC = () => {
   const [csvImporting, setCsvImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync from employees
+  const [syncModal, setSyncModal] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [filterDeptId, setFilterDeptId] = useState<string>('');
+  const [searchEmployee, setSearchEmployee] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ inserted: number } | null>(null);
 
   useEffect(() => { if (user?.company_id) loadGroups(); }, [user]);
 
@@ -257,6 +271,98 @@ export const PhishingGroupsPage: React.FC = () => {
     a.click(); URL.revokeObjectURL(url);
   };
 
+  const openSyncModal = async () => {
+    if (!user?.company_id) return;
+    setSyncModal(true);
+    setSyncResult(null);
+    setSelectedEmployeeIds(new Set());
+    setFilterDeptId('');
+    setSearchEmployee('');
+    setLoadingEmployees(true);
+    try {
+      const [{ data: emps }, { data: depts }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, job_title, department_id, departments(name)')
+          .eq('company_id', user.company_id)
+          .eq('role', 'EMPLOYEE')
+          .order('full_name'),
+        supabase
+          .from('departments')
+          .select('id, name')
+          .eq('company_id', user.company_id)
+          .order('name'),
+      ]);
+      setEmployees((emps || []).map((e: any) => ({
+        id: e.id,
+        full_name: e.full_name,
+        email: e.email,
+        job_title: e.job_title || '',
+        department_id: e.department_id,
+        department_name: e.departments?.name || '',
+      })));
+      setDepartments(depts || []);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  const syncEmployees = async () => {
+    if (!activeGroup || selectedEmployeeIds.size === 0) return;
+    setSyncing(true);
+    try {
+      // Use the DB RPC if all in a single department, else insert directly
+      const rows = employees
+        .filter(e => selectedEmployeeIds.has(e.id))
+        .map(e => {
+          const parts = e.full_name.trim().split(/\s+/);
+          return {
+            group_id: activeGroup.id,
+            employee_id: e.id,
+            first_name: parts[0] || '',
+            last_name: parts.slice(1).join(' ') || '',
+            email: e.email,
+            position: e.job_title,
+            department: e.department_name,
+          };
+        });
+
+      const BATCH = 100;
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const { data, error } = await supabase
+          .from('phishing_group_members')
+          .upsert(rows.slice(i, i + BATCH), { onConflict: 'group_id,employee_id', ignoreDuplicates: true });
+        if (!error) inserted += rows.slice(i, i + BATCH).length;
+      }
+      setSyncResult({ inserted });
+      loadMembers(activeGroup.id);
+      loadGroups();
+    } catch (err: any) {
+      alert(err.message || 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const filteredEmployees = employees.filter(e => {
+    const matchDept = !filterDeptId || e.department_id === filterDeptId;
+    const q = searchEmployee.toLowerCase();
+    const matchSearch = !q || e.full_name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
+    return matchDept && matchSearch;
+  });
+
+  const toggleEmployee = (id: string) => {
+    setSelectedEmployeeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedEmployeeIds(new Set(filteredEmployees.map(e => e.id)));
+  const clearAll  = () => setSelectedEmployeeIds(new Set());
+
   const filteredMembers = searchMember.trim()
     ? members.filter(m => `${m.first_name} ${m.last_name} ${m.email} ${m.department}`.toLowerCase().includes(searchMember.toLowerCase()))
     : members;
@@ -403,9 +509,14 @@ export const PhishingGroupsPage: React.FC = () => {
           </div>
           {activeGroup?.description && <p style={{ fontSize: 12, color: T.textMuted, margin: 0, marginTop: 2 }}>{activeGroup.description}</p>}
         </div>
-        <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 8, color: T.green, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
-          <Download size={13} /> Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={openSyncModal} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, borderRadius: 8, color: T.purple, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+            <RefreshCw size={13} /> Sync from Employees
+          </button>
+          <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 8, color: T.green, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+            <Download size={13} /> Export CSV
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
@@ -557,6 +668,123 @@ export const PhishingGroupsPage: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync from Employees Modal */}
+      {syncModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => { if (!syncing) setSyncModal(false); }}>
+          <div className="aw-modal-in" style={{ width: '100%', maxWidth: 640, maxHeight: '85vh', background: T.bgCard, border: `1px solid ${T.purpleBorder}`, borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ height: 3, background: `linear-gradient(90deg, ${T.purple}, ${T.purple}40)` }} />
+
+            {/* Modal header */}
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <RefreshCw size={15} style={{ color: T.purple }} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.white }}>Sync from Employees</div>
+                  <div style={{ fontSize: 12, color: T.textMuted }}>Select employees to add to <span style={{ color: T.white, fontWeight: 600 }}>{activeGroup?.name}</span></div>
+                </div>
+              </div>
+              <button onClick={() => setSyncModal(false)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            {syncResult ? (
+              /* Success state */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '32px 20px' }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: T.greenBg, border: `1px solid ${T.greenBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={24} style={{ color: T.green }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: T.white, marginBottom: 6 }}>Sync Complete</div>
+                  <div style={{ fontSize: 13, color: T.textBody }}>{syncResult.inserted} employee{syncResult.inserted !== 1 ? 's' : ''} added to the group.</div>
+                  <div style={{ fontSize: 12, color: T.textMuted, marginTop: 4 }}>Existing members were skipped automatically.</div>
+                </div>
+                <button onClick={() => setSyncModal(false)} style={{ padding: '10px 24px', borderRadius: 10, background: T.accent, color: T.accentDark, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13 }}>Done</button>
+              </div>
+            ) : (
+              <>
+                {/* Filters */}
+                <div style={{ padding: '12px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10, flexShrink: 0 }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.textMuted }} />
+                    <input className="aw-groups-input" value={searchEmployee} onChange={e => setSearchEmployee(e.target.value)} placeholder="Search name or email…" style={{ paddingLeft: 30, padding: '8px 10px 8px 30px', fontSize: 12 }} />
+                  </div>
+                  <div style={{ position: 'relative', minWidth: 160 }}>
+                    <Building2 size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+                    <ChevronDown size={11} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' }} />
+                    <select value={filterDeptId} onChange={e => setFilterDeptId(e.target.value)}
+                      style={{ width: '100%', paddingLeft: 28, paddingRight: 26, padding: '8px 26px 8px 28px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 12, color: T.textBody, outline: 'none', appearance: 'none', fontFamily: 'inherit', cursor: 'pointer' }}>
+                      <option value="">All Departments</option>
+                      {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Select all / clear row */}
+                <div style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${T.borderFaint}`, flexShrink: 0, background: 'rgba(255,255,255,0.015)' }}>
+                  <span style={{ fontSize: 12, color: T.textMuted }}>{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''} shown</span>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={selectAll} style={{ fontSize: 12, color: T.purple, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Select all</button>
+                    <button onClick={clearAll} style={{ fontSize: 12, color: T.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Clear</button>
+                  </div>
+                </div>
+
+                {/* Employee list */}
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                  {loadingEmployees ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.purple, animation: 'aw-spin 0.8s linear infinite' }} />
+                    </div>
+                  ) : filteredEmployees.length === 0 ? (
+                    <div style={{ padding: '40px 20px', textAlign: 'center', color: T.textMuted, fontSize: 13 }}>
+                      No employees found.
+                    </div>
+                  ) : (
+                    filteredEmployees.map(e => {
+                      const selected = selectedEmployeeIds.has(e.id);
+                      return (
+                        <div key={e.id} onClick={() => toggleEmployee(e.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', cursor: 'pointer', borderBottom: `1px solid ${T.borderFaint}`, background: selected ? 'rgba(167,139,250,0.06)' : 'transparent', transition: 'background 0.15s' }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${selected ? T.purple : T.border}`, background: selected ? T.purple : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+                            {selected && <Check size={11} style={{ color: T.white }} />}
+                          </div>
+                          <div style={{ minWidth: 32, height: 32, borderRadius: '50%', background: T.purpleBg, border: `1px solid ${T.purpleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: T.purple }}>{e.full_name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.full_name}</div>
+                            <div style={{ fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.email}</div>
+                          </div>
+                          {e.department_name && (
+                            <span style={{ fontSize: 11, padding: '2px 8px', background: T.blueBg, border: `1px solid ${T.blueBorder}`, borderRadius: 9999, color: T.blue, flexShrink: 0 }}>{e.department_name}</span>
+                          )}
+                          {e.job_title && (
+                            <span style={{ fontSize: 11, color: T.textMuted, flexShrink: 0, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.job_title}</span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                  <span style={{ fontSize: 13, color: selectedEmployeeIds.size > 0 ? T.purple : T.textMuted, fontWeight: selectedEmployeeIds.size > 0 ? 700 : 400 }}>
+                    {selectedEmployeeIds.size} selected
+                  </span>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setSyncModal(false)} style={{ padding: '9px 18px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 13 }}>Cancel</button>
+                    <button onClick={syncEmployees} disabled={syncing || selectedEmployeeIds.size === 0}
+                      style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 10, background: selectedEmployeeIds.size > 0 ? T.purple : 'rgba(255,255,255,0.04)', color: selectedEmployeeIds.size > 0 ? T.white : T.textMuted, border: 'none', cursor: (syncing || selectedEmployeeIds.size === 0) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, opacity: syncing ? 0.7 : 1 }}>
+                      {syncing ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Syncing…</> : <><RefreshCw size={13} /> Sync {selectedEmployeeIds.size > 0 ? selectedEmployeeIds.size : ''} Employee{selectedEmployeeIds.size !== 1 ? 's' : ''}</>}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
