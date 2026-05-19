@@ -14,6 +14,7 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import DOMPurify from "dompurify";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { PhishingTemplate, PhishingCampaignQuota, PhishingDomain } from "../../lib/types";
@@ -1791,7 +1792,7 @@ export const PhishingRequestPage: React.FC = () => {
               >
                 <div
                   dangerouslySetInnerHTML={{
-                    __html: previewTemplate.html_content,
+                    __html: DOMPurify.sanitize(previewTemplate.html_content),
                   }}
                 />
               </div>

@@ -3,6 +3,7 @@ import {
   Plus, Edit2, Trash2, Mail, Eye,
   CheckCircle, XCircle, X, Save, Loader2,
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -537,7 +538,7 @@ export const PhishingTemplatesPage: React.FC = () => {
                   <Mail size={11} style={{ color: T.orange }} /> Email Content
                 </div>
                 <div style={{ padding: '20px', background: '#ffffff', maxHeight: 420, overflowY: 'auto', fontSize: 14, lineHeight: '1.6', color: '#1a1a1a' }} className="aw-ptp-scroll">
-                  <div dangerouslySetInnerHTML={{ __html: previewTemplate.html_content }} />
+                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewTemplate.html_content) }} />
                 </div>
               </div>
             </div>
