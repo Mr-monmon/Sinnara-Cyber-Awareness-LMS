@@ -1,17 +1,10 @@
-// supabase/functions/create-user/index.ts
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Read from environment variables
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-// Create Supabase client with service role
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
+const supabase = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 interface reqPayload {
@@ -21,20 +14,36 @@ interface reqPayload {
 export const corsHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-  "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // Verify caller identity
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: authErr } = await userClient.auth.getUser();
+  if (authErr || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
   const { company_id }: reqPayload = await req.json();
+
+  // Verify caller belongs to this company (or is platform admin)
+  const { data: caller } = await supabase
+    .from("users").select("role, company_id").eq("id", user.id).single();
+  if (!caller) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+  }
+  if (caller.role !== "PLATFORM_ADMIN" && caller.company_id !== company_id) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+  }
 
   const { data: employees } = await supabase
     .from("users")
