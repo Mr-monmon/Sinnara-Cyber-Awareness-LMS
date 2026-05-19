@@ -280,7 +280,7 @@ export const PhishingSmtpPage: React.FC = () => {
         body: { test_smtp_profile_id: testModal.profileId, test_to: testEmail.trim() },
       });
       if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      if (data?.success === false || data?.error) throw new Error(data?.error || 'Send failed');
       setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
     } catch (err: unknown) {
       setTestResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });

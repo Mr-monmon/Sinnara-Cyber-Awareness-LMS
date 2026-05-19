@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
   }
   const { data: caller } = await supabase
     .from("users").select("role, company_id").eq("id", user.id).single();
-  if (!caller || (caller.role !== "PLATFORM_ADMIN" && caller.role !== "COMPANY_ADMIN")) {
+  if (!caller || caller.role === "EMPLOYEE") {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
   }
 
@@ -224,9 +224,9 @@ Deno.serve(async (req) => {
           : String(body.test_smtp_profile_id),
       });
       if (!result.success) {
-        return new Response(JSON.stringify({ error: result.error }), { status: 400, headers: corsHeaders });
+        return new Response(JSON.stringify({ success: false, error: result.error }), { headers: corsHeaders });
       }
-      return new Response(JSON.stringify({ sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test" }), { headers: corsHeaders });
+      return new Response(JSON.stringify({ success: true, sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test" }), { headers: corsHeaders });
     }
 
     const campaign_id = body.campaign_id as string | undefined;
