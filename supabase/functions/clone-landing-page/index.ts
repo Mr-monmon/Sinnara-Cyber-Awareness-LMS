@@ -609,6 +609,12 @@ Deno.serve(async (req) => {
   if (authErr || !user) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
+  // Only non-employee roles can clone pages (company admins, phishing operators, platform admins)
+  const { data: caller } = await createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { autoRefreshToken: false, persistSession: false } })
+    .from("users").select("role").eq("id", user.id).single();
+  if (!caller || caller.role === "EMPLOYEE") {
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+  }
 
   try {
     const body = await req.json();

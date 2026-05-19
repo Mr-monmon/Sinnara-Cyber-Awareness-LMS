@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle, BarChart2, Edit2, Check } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle, BarChart2, Edit2, Check, Activity, RefreshCw, Pause, Play } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { RequestWithCompany } from "../../lib/types";
 import RequestPreview from "./RequestPreview";
@@ -159,6 +159,161 @@ interface CompanyQuota {
   used_campaigns: number;
 }
 
+/* ═══════════════════════════════════════════
+   MONITORING TAB — all active campaigns
+═══════════════════════════════════════════ */
+interface LiveCampaign {
+  id: string;
+  name: string;
+  status: string;
+  company_id: string;
+  company_name: string;
+  total_queue_size: number;
+  emails_sent: number;
+  emails_opened: number;
+  links_clicked: number;
+  data_submitted: number;
+  created_at: string;
+  completion_date: string | null;
+}
+
+const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
+  RUNNING:   { color: T.orange, bg: 'rgba(251,146,60,0.12)' },
+  PAUSED:    { color: T.blue,   bg: 'rgba(96,165,250,0.12)' },
+  COMPLETED: { color: T.green,  bg: 'rgba(52,211,153,0.12)' },
+  DRAFT:     { color: T.textMuted, bg: 'rgba(255,255,255,0.05)' },
+};
+
+const MonitoringTab: React.FC = () => {
+  const [campaigns, setCampaigns] = useState<LiveCampaign[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [updating, setUpdating]   = useState<string | null>(null);
+  const [filter, setFilter]       = useState<'ALL' | 'RUNNING' | 'PAUSED' | 'COMPLETED'>('ALL');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: camps } = await supabase
+        .from('phishing_campaigns')
+        .select('*, companies(name)')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      setCampaigns((camps || []).map((c: any) => ({
+        id:               c.id,
+        name:             c.name,
+        status:           c.status,
+        company_id:       c.company_id,
+        company_name:     c.companies?.name || 'Unknown',
+        total_queue_size: c.total_queue_size || 0,
+        emails_sent:      c.emails_sent || 0,
+        emails_opened:    c.emails_opened || 0,
+        links_clicked:    c.links_clicked || 0,
+        data_submitted:   c.data_submitted || 0,
+        created_at:       c.created_at,
+        completion_date:  c.completion_date,
+      })));
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const togglePause = async (camp: LiveCampaign) => {
+    setUpdating(camp.id);
+    const newStatus = camp.status === 'RUNNING' ? 'PAUSED' : 'RUNNING';
+    await supabase.from('phishing_campaigns')
+      .update({ status: newStatus, ...(newStatus === 'PAUSED' ? { paused_at: new Date().toISOString() } : { paused_at: null }) })
+      .eq('id', camp.id);
+    setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, status: newStatus } : c));
+    setUpdating(null);
+  };
+
+  const filtered = filter === 'ALL' ? campaigns : campaigns.filter(c => c.status === filter);
+  const counts = {
+    ALL: campaigns.length,
+    RUNNING: campaigns.filter(c => c.status === 'RUNNING').length,
+    PAUSED: campaigns.filter(c => c.status === 'PAUSED').length,
+    COMPLETED: campaigns.filter(c => c.status === 'COMPLETED').length,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['ALL', 'RUNNING', 'PAUSED', 'COMPLETED'] as const).map(s => (
+            <button key={s} onClick={() => setFilter(s)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${filter === s ? 'rgba(200,255,0,0.3)' : T.border}`, background: filter === s ? 'rgba(200,255,0,0.08)' : 'transparent', color: filter === s ? T.accent : T.textMuted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {s} {counts[s] > 0 && <span style={{ marginLeft: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 4, padding: '1px 5px' }}>{counts[s]}</span>}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <RefreshCw size={12} /> Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}><Loader2 size={20} style={{ animation: 'aw-spin 0.8s linear infinite' }} /></div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.textMuted, fontSize: 14 }}>No campaigns found.</div>
+        ) : (
+          <table className="aw-pmp-table">
+            <thead>
+              <tr>
+                {['Company', 'Campaign', 'Status', 'Progress', 'Opened', 'Clicked', 'Submitted', 'Actions'].map(h => (
+                  <th key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(c => {
+                const pct = c.total_queue_size > 0 ? Math.round((c.emails_sent / c.total_queue_size) * 100) : 0;
+                const st = STATUS_STYLE[c.status] || STATUS_STYLE.DRAFT;
+                return (
+                  <tr key={c.id}>
+                    <td style={{ color: T.textBody, fontSize: 12 }}>{c.company_name}</td>
+                    <td style={{ color: T.white, fontWeight: 600, maxWidth: 180 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: T.textMuted }}>{new Date(c.created_at).toLocaleDateString()}</div>
+                    </td>
+                    <td>
+                      <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, color: st.color, background: st.bg }}>
+                        {c.status}
+                      </span>
+                    </td>
+                    <td style={{ minWidth: 120 }}>
+                      <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 4 }}>{c.emails_sent} / {c.total_queue_size} ({pct}%)</div>
+                      <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: T.accent, borderRadius: 2, transition: 'width 0.3s' }} />
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center', color: c.emails_opened > 0 ? T.orange : T.textMuted, fontWeight: 600 }}>{c.emails_opened}</td>
+                    <td style={{ textAlign: 'center', color: c.links_clicked > 0 ? T.red : T.textMuted, fontWeight: 600 }}>{c.links_clicked}</td>
+                    <td style={{ textAlign: 'center', color: c.data_submitted > 0 ? '#f43f5e' : T.textMuted, fontWeight: 700 }}>{c.data_submitted}</td>
+                    <td>
+                      {(c.status === 'RUNNING' || c.status === 'PAUSED') && (
+                        <button
+                          onClick={() => togglePause(c)}
+                          disabled={updating === c.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, border: `1px solid ${T.border}`, background: 'transparent', color: c.status === 'RUNNING' ? T.orange : T.green, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {updating === c.id ? <Loader2 size={12} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : c.status === 'RUNNING' ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Resume</>}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const QuotaTab: React.FC = () => {
   const [quotas, setQuotas] = useState<CompanyQuota[]>([]);
   const [loading, setLoading] = useState(true);
@@ -309,7 +464,7 @@ const StatCard: React.FC<{ color: string; label: string; value: number; onClick?
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
-type MainTab = 'campaigns' | 'quota';
+type MainTab = 'campaigns' | 'monitoring' | 'quota';
 
 export const PhishingManagementPage: React.FC = () => {
   const [mainTab, setMainTab] = useState<MainTab>('campaigns');
@@ -420,7 +575,8 @@ export const PhishingManagementPage: React.FC = () => {
       {/* ── Main tabs ── */}
       <div style={{ display: 'flex', gap: 6 }}>
         {([
-          { key: 'campaigns' as MainTab, icon: Shield, label: 'Campaigns' },
+          { key: 'campaigns' as MainTab, icon: Shield, label: 'Requests' },
+          { key: 'monitoring' as MainTab, icon: Activity, label: 'Live Monitor' },
           { key: 'quota' as MainTab, icon: BarChart2, label: 'Quota Management' },
         ]).map(tab => (
           <button key={tab.key} onClick={() => setMainTab(tab.key)}
@@ -431,6 +587,7 @@ export const PhishingManagementPage: React.FC = () => {
       </div>
 
       {mainTab === 'quota' && <QuotaTab />}
+      {mainTab === 'monitoring' && <MonitoringTab />}
       {mainTab === 'campaigns' && <>
 
       {/* ── Stat cards (clickable filters) ── */}

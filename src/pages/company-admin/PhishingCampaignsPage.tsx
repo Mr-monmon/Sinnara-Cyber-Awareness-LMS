@@ -524,10 +524,14 @@ export const PhishingCampaignsPage: React.FC = () => {
             p_count: queueEntries.length,
           });
 
-          // Trigger first batch immediately (fire-and-forget)
-          supabase.functions.invoke('process-campaign', {
+          // Trigger first batch — surface errors to user
+          const { error: invokeErr } = await supabase.functions.invoke('process-campaign', {
             body: { campaign_id: camp.id, batch_size: 50 },
-          }).catch(() => {});
+          });
+          if (invokeErr) {
+            console.error('[launchCampaign] invoke error:', invokeErr);
+            alert(`Campaign saved but email sending failed to start: ${invokeErr.message}. Check your SMTP settings and try relaunching.`);
+          }
         }
 
         // Alert: campaign started

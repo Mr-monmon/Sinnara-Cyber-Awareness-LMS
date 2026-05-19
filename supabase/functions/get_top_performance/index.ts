@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
 
   const { company_id }: reqPayload = await req.json();
 
-  // Verify caller belongs to this company (or is platform admin)
+  // Verify caller belongs to this company (or is platform admin) — all roles allowed
   const { data: caller } = await supabase
     .from("users").select("role, company_id").eq("id", user.id).single();
   if (!caller) {
@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
   if (caller.role !== "PLATFORM_ADMIN" && caller.company_id !== company_id) {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
   }
+  // Note: all authenticated roles (including EMPLOYEE) can view their company's leaderboard
 
   const { data: employees } = await supabase
     .from("users")
