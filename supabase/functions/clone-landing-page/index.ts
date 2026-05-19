@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL        = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_ANON_KEY   = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 // Optional headless render services — configure in Supabase edge function env vars
 // Browserless.io: set BROWSERLESS_URL (e.g. https://chrome.browserless.io) + BROWSERLESS_TOKEN
 // ScrapingBee:    set SCRAPINGBEE_KEY
@@ -598,6 +599,16 @@ function buildTrackingScript(): string {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+
+  // Verify caller is an authenticated admin (company or platform)
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: authErr } = await userClient.auth.getUser();
+  if (authErr || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  }
 
   try {
     const body = await req.json();
