@@ -23,6 +23,20 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/* ── Decode encryption key — supports both hex (64 chars) and base64url (43 chars) ── */
+function decodeKey(keyStr: string): Uint8Array {
+  const trimmed = keyStr.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      bytes[i] = parseInt(trimmed.slice(i * 2, i * 2 + 2), 16);
+    }
+    return bytes;
+  }
+  const b64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
 /* ── AES-256-GCM encrypt ── */
 async function encryptPassword(plaintext: string): Promise<{ ciphertext: string; encrypted: boolean }> {
   const keyStr = Deno.env.get("SMTP_ENCRYPTION_KEY");
@@ -30,10 +44,11 @@ async function encryptPassword(plaintext: string): Promise<{ ciphertext: string;
     return { ciphertext: plaintext, encrypted: false };
   }
 
-  const keyBytes = Uint8Array.from(
-    atob(keyStr.replace(/-/g, "+").replace(/_/g, "/")),
-    c => c.charCodeAt(0)
-  );
+  const keyBytes = decodeKey(keyStr);
+  if (keyBytes.length !== 32) {
+    console.error("[encryptPassword] Invalid key length:", keyBytes.length, "expected 32");
+    return { ciphertext: plaintext, encrypted: false };
+  }
   const cryptoKey = await crypto.subtle.importKey(
     "raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]
   );
