@@ -230,23 +230,29 @@ Deno.serve(async (req) => {
 
     // ── Test-send path: send a single test email via a stored SMTP profile ──
     if (body.test_smtp_profile_id && body.test_to) {
-      const isCampaignTest = !!(body.test_subject || body.test_html);
-      const result = await sendEmail({
-        to:              String(body.test_to),
-        subject:         body.test_subject ? String(body.test_subject) : "Awareone SMTP Test",
-        html:            body.test_html
-          ? String(body.test_html)
-          : "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
-        from_address:    body.test_from_address ? String(body.test_from_address) : "noreply@awareone.io",
-        from_name:       body.test_from_name ? String(body.test_from_name) : "Awareone Security",
-        smtp_profile_id: body.test_smtp_profile_id === "platform_default"
-          ? null
-          : String(body.test_smtp_profile_id),
-      });
-      if (!result.success) {
-        return new Response(JSON.stringify({ success: false, error: result.error }), { headers: corsHeaders });
+      try {
+        const isCampaignTest = !!(body.test_subject || body.test_html);
+        const result = await sendEmail({
+          to:              String(body.test_to),
+          subject:         body.test_subject ? String(body.test_subject) : "Awareone SMTP Test",
+          html:            body.test_html
+            ? String(body.test_html)
+            : "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
+          from_address:    body.test_from_address ? String(body.test_from_address) : "noreply@awareone.io",
+          from_name:       body.test_from_name ? String(body.test_from_name) : "Awareone Security",
+          smtp_profile_id: body.test_smtp_profile_id === "platform_default"
+            ? null
+            : String(body.test_smtp_profile_id),
+        });
+        if (!result.success) {
+          return new Response(JSON.stringify({ success: false, error: result.error ?? "Send failed" }), { status: 200, headers: corsHeaders });
+        }
+        return new Response(JSON.stringify({ success: true, sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test" }), { status: 200, headers: corsHeaders });
+      } catch (testErr) {
+        const msg = testErr instanceof Error ? testErr.message : "Unexpected error during test send";
+        console.error("[process-campaign] test-send error:", msg);
+        return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: corsHeaders });
       }
-      return new Response(JSON.stringify({ success: true, sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test" }), { headers: corsHeaders });
     }
 
     const campaign_id = body.campaign_id as string | undefined;
