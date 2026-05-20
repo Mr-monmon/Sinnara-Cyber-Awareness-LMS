@@ -329,7 +329,7 @@ export const ExamAssignmentPage: React.FC = () => {
       supabase.from("exams").select("id,title").in("id", examIds),
       empIds.length  > 0 ? supabase.from("users").select("id,full_name,email").in("id", empIds)         : Promise.resolve({ data: [] }),
       deptIds.length > 0 ? supabase.from("departments").select("id,name").in("id", deptIds)             : Promise.resolve({ data: [] }),
-      supabase.from("exam_results").select("assignment_id,passed").eq("passed", true),
+      supabase.from("exam_results").select("assignment_id,passed").eq("passed", true).in("assignment_id", raw.map(a => a.id)),
     ]);
 
     const em = new Map((er.data || []).map(e => [e.id, e]));

@@ -15,6 +15,8 @@ import {
   Unlock,
   ShieldCheck,
   ShieldOff,
+  UserX,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -431,6 +433,27 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       loadEmployees();
     } catch {
       alert("Failed to delete employee");
+    }
+  };
+
+  const handleToggleActive = async (emp: UserType) => {
+    const willDeactivate = emp.is_active !== false;
+    const label = willDeactivate ? "deactivate" : "reactivate";
+    if (!confirm(`${willDeactivate ? "Deactivate" : "Reactivate"} account for ${emp.full_name}? ${willDeactivate ? "They will not be able to log in." : "They will regain access."}`)) return;
+    try {
+      const { error } = await supabase.from("users").update({ is_active: !willDeactivate }).eq("id", emp.id);
+      if (error) throw error;
+      supabase.from("audit_logs").insert([{
+        user_id: currentUser?.id,
+        action_type: willDeactivate ? "DEACTIVATE_USER" : "REACTIVATE_USER",
+        entity_type: "EMPLOYEE",
+        entity_name: emp.full_name,
+        company_id: currentUser?.company_id,
+        description: `${willDeactivate ? "Deactivated" : "Reactivated"} account for: ${emp.email}`,
+      }]).then(() => {});
+      loadEmployees();
+    } catch {
+      alert(`Failed to ${label} employee`);
     }
   };
 
@@ -1152,6 +1175,16 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                       onClick={() => handleEdit(emp)}
                     >
                       <Edit2 size={13} />
+                    </button>
+                    <button
+                      className="aw-emp-icon-btn reset"
+                      title={emp.is_active === false ? "Reactivate Account" : "Deactivate Account"}
+                      onClick={() => handleToggleActive(emp)}
+                      style={emp.is_active === false
+                        ? { background: "rgba(52,211,153,0.10)", borderColor: "rgba(52,211,153,0.35)", color: "#34d399" }
+                        : { background: "rgba(251,146,60,0.10)", borderColor: "rgba(251,146,60,0.35)", color: "#fb923c" }}
+                    >
+                      {emp.is_active === false ? <UserCheck size={13} /> : <UserX size={13} />}
                     </button>
                     <button
                       className="aw-emp-icon-btn del"

@@ -332,30 +332,56 @@ export const AnalyticsPage: React.FC = () => {
       if (!employees) return;
       const { data: preExam  } = await supabase.from('exams').select('id').eq('exam_type', 'PRE_ASSESSMENT').maybeSingle();
       const { data: postExam } = await supabase.from('exams').select('id').eq('exam_type', 'POST_ASSESSMENT').maybeSingle();
-      const { data: allCourses } = await supabase.from('courses').select('id').eq('company_id', user.company_id);
+      // Courses are assigned to companies via company_courses junction, not a direct company_id
+      const { data: allCourses } = await supabase.from('company_courses').select('course_id').eq('company_id', user.company_id);
       const { data: allExams   } = await supabase.from('exams').select('id');
       const totalCourses = allCourses?.length || 0;
       const totalExams   = allExams?.length || 0;
 
-      const perfData: EmployeePerformance[] = await Promise.all(employees.map(async emp => {
+      const empIds = employees.map(e => e.id);
+
+      // Batch-load all exam results and course progress in two queries instead of N×4
+      const [allResultsRes, allCoursesRes] = await Promise.all([
+        empIds.length > 0
+          ? supabase.from('exam_results').select('employee_id,exam_id,percentage,completed_at').in('employee_id', empIds)
+          : Promise.resolve({ data: [] as { employee_id: string; exam_id: string; percentage: number; completed_at: string }[] }),
+        empIds.length > 0
+          ? supabase.from('employee_courses').select('employee_id,completed_at').in('employee_id', empIds)
+          : Promise.resolve({ data: [] as { employee_id: string; completed_at: string | null }[] }),
+      ]);
+
+      // Group by employee client-side
+      const resultsByEmp = new Map<string, { employee_id: string; exam_id: string; percentage: number; completed_at: string }[]>();
+      (allResultsRes.data ?? []).forEach(r => {
+        if (!resultsByEmp.has(r.employee_id)) resultsByEmp.set(r.employee_id, []);
+        resultsByEmp.get(r.employee_id)!.push(r);
+      });
+
+      const coursesByEmp = new Map<string, { completed_at: string | null }[]>();
+      (allCoursesRes.data ?? []).forEach(c => {
+        if (!coursesByEmp.has(c.employee_id)) coursesByEmp.set(c.employee_id, []);
+        coursesByEmp.get(c.employee_id)!.push(c);
+      });
+
+      const perfData: EmployeePerformance[] = employees.map(emp => {
+        const empResults = resultsByEmp.get(emp.id) ?? [];
         let preScore: number | undefined;
         let postScore: number | undefined;
         if (preExam) {
-          const { data: r } = await supabase.from('exam_results').select('percentage').eq('employee_id', emp.id).eq('exam_id', preExam.id).order('completed_at', { ascending: false }).limit(1).maybeSingle();
-          if (r) preScore = Math.round(r.percentage);
+          const latest = empResults.filter(r => r.exam_id === preExam.id).sort((a, b) => b.completed_at.localeCompare(a.completed_at))[0];
+          if (latest) preScore = Math.round(latest.percentage);
         }
         if (postExam) {
-          const { data: r } = await supabase.from('exam_results').select('percentage').eq('employee_id', emp.id).eq('exam_id', postExam.id).order('completed_at', { ascending: false }).limit(1).maybeSingle();
-          if (r) postScore = Math.round(r.percentage);
+          const latest = empResults.filter(r => r.exam_id === postExam.id).sort((a, b) => b.completed_at.localeCompare(a.completed_at))[0];
+          if (latest) postScore = Math.round(latest.percentage);
         }
-        const { data: cp } = await supabase.from('employee_courses').select('id,completed_at').eq('employee_id', emp.id);
-        const coursesCompleted = cp?.filter(c => c.completed_at !== null).length || 0;
-        const { data: er } = await supabase.from('exam_results').select('id').eq('employee_id', emp.id);
-        const examsCompleted = er?.length || 0;
+        const empCourses = coursesByEmp.get(emp.id) ?? [];
+        const coursesCompleted = empCourses.filter(c => c.completed_at !== null).length;
+        const examsCompleted   = empResults.length;
         const improvement = postScore !== undefined && preScore !== undefined ? postScore - preScore : 0;
         const status = postScore !== undefined ? (postScore >= 70 ? 'Passed' : 'Failed') : preScore !== undefined ? 'In Progress' : 'Not Started';
         return { employee: emp, preScore, postScore, improvement, status, coursesCompleted, totalCourses, examsCompleted, totalExams };
-      }));
+      });
       setPerformance(perfData);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }

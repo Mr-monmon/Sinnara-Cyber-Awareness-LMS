@@ -61,6 +61,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const profile = await fetchProfile(session.user.id);
+
+      if (profile?.is_active === false) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setSentryUser(null);
+        return;
+      }
+
       setUser(profile);
       if (profile) setSentryUser({ id: profile.id, email: profile.email, role: profile.role });
     };
