@@ -373,7 +373,7 @@ export const CertificatesPage: React.FC = () => {
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
-      <p style={{ fontSize: 14, color: T.textBody }}>Loading certificates…</p>
+      <p style={{ fontSize: 14, color: T.textBody }}>{t("certificates.loading", { ns: "employee" })}</p>
     </div>
   );
 
@@ -398,9 +398,8 @@ export const CertificatesPage: React.FC = () => {
       {/* ── Stats ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
         {[
-          { icon: Award,       color: T.gold,    bg: T.goldBg,               border: T.goldBorder,             label: t("certificates.summary.total",  { ns: "employee" }), value: formatLocalizedNumber(certificates.length, currentLanguage) },
-          { icon: CheckCircle, color: '#34d399', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.22)',  label: t("certificates.summary.active", { ns: "employee" }), value: formatLocalizedNumber(certificates.length, currentLanguage) },
-          { icon: Calendar,    color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)',  label: t("labels.latestYear", { ns: "common" }),              value: certificates.length > 0 ? formatLocalizedNumber(new Date(certificates[0].issued_at).getFullYear(), currentLanguage) : '—' },
+          { icon: Award,    color: T.gold,    bg: T.goldBg,               border: T.goldBorder,             label: t("certificates.summary.total",  { ns: "employee" }), value: formatLocalizedNumber(certificates.length, currentLanguage) },
+          { icon: Calendar, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)',  label: t("labels.latestYear", { ns: "common" }),              value: certificates.length > 0 ? formatLocalizedNumber(new Date(certificates[0].issued_at).getFullYear(), currentLanguage) : '—' },
         ].map(({ icon: Icon, color, bg, border, label, value }) => (
           <div key={label} style={{ padding: '14px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, minWidth: 160 }}>
             <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

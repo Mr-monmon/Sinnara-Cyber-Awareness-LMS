@@ -267,7 +267,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
         supabase.from("users").select("full_name").eq("id", user.id).maybeSingle(),
         supabase.from("courses").select("title, certificate_id").eq("id", courseId).maybeSingle(),
       ]);
-      const certNumber = `CERT-${new Date().getFullYear()}-${Math.floor(Math.random() * 999999).toString().padStart(6, "0")}`;
+      const certNumber = `CERT-${new Date().getFullYear()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
       await supabase.from("issued_certificates").insert({
         certificate_number: certNumber, employee_id: user.id, course_id: courseId,
         template_id: courseData?.certificate_id || null,
@@ -291,7 +291,8 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     questions.forEach((q, i) => { if (quizAnswers[i] === q.correct_answer) correct++; });
     const score = Math.round((correct / questions.length) * 100);
     setQuizScore(score); setQuizSubmitted(true);
-    if (score >= 60) markSectionComplete(currentSection.id);
+    const passingScore = (getSectionData(currentSection).passing_score as number | undefined) ?? 60;
+    if (score >= passingScore) markSectionComplete(currentSection.id);
   };
 
   /* ── Loading ── */

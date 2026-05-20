@@ -258,18 +258,21 @@ export const EmployeeDashboard: React.FC = () => {
   const [assignedExams, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
   const [company, setCompany]             = useState<Company | null>(null);
   const [stats, setStats] = useState({ assignedCourses: 0, completedCourses: 0, inProgressCourses: 0, pendingExams: 0, certificates: 0 });
-  const [userRank, setUserRank] = useState(0);
+  const [userRank, setUserRank] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [lastCourse, setLastCourse] = useState<{ title: string; progress_percentage: number; last_accessed_at: string | null } | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
 
-  useEffect(() => { loadCompany(); loadAssignedExams(); loadStats(); }, [user]);
+  useEffect(() => { loadCompany(); loadStats(); }, [user]);
   useEffect(() => { if (!isLoading && assignedExams.length > 0) setActivePage("my-exams"); }, [isLoading, assignedExams]);
 
   const loadAssignedExams = async () => {
     if (!user) return;
     const { data } = await supabase.from("employee_available_exams").select("*").eq("employee_id", user.id);
-    setAssignedExams((data as EmployeeAvailableExam[]) || []);
+    const exams = (data as EmployeeAvailableExam[]) || [];
+    setAssignedExams(exams);
+    return exams;
   };
 
   const loadCompany = async () => {
@@ -278,7 +281,10 @@ export const EmployeeDashboard: React.FC = () => {
     try {
       const { data } = await supabase.from("companies").select("id, name, is_active").eq("id", user.company_id).single();
       setCompany(data);
-    } catch { setIsLoading(false); }
+    } catch {
+      setIsLoading(false);
+      setLoadError(true);
+    }
   };
 
   const loadStats = async () => {
@@ -362,17 +368,22 @@ export const EmployeeDashboard: React.FC = () => {
       const { data: rankData } = await supabase.functions.invoke("get_user_rank", {
         method: "POST", body: { company_id: user.company_id, employee_id: user.id }
       });
-      setUserRank(rankData?.index || 0);
+      setUserRank(rankData?.index ?? null);
+
+      const exams = await loadAssignedExams() ?? [];
 
       setStats({
         assignedCourses:   totalCount,
         completedCourses:  completedCount,
         inProgressCourses: inProgressCount,
-        pendingExams:      assignedExams.length,
+        pendingExams:      exams.length,
         certificates:      certs?.length || 0,
       });
       setIsLoading(false);
-    } catch { setIsLoading(false); }
+    } catch {
+      setIsLoading(false);
+      setLoadError(true);
+    }
   };
 
   const renderDashboard = () => {
@@ -382,21 +393,31 @@ export const EmployeeDashboard: React.FC = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'Inter',sans-serif" }}>
 
+        {/* Load error */}
+        {loadError && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)', borderRadius: 10 }}>
+            <AlertTriangle size={16} style={{ color: T.red, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: T.red }}>{t('dashboard.loadError')}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="aw-d-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, margin: '0 0 5px', letterSpacing: '-0.3px' }}>{t("dashboard.title")} 👋</h1>
             <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>{t("dashboard.subtitle")}</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', background: T.bgCard, border: '1px solid rgba(200,255,0,0.18)', borderRadius: 11 }}>
-            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(200,255,0,0.10)', border: '2px solid rgba(200,255,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 15, fontWeight: 900, color: T.accent }}>{formatLocalizedNumber(userRank, currentLanguage)}</span>
+          {userRank !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', background: T.bgCard, border: '1px solid rgba(200,255,0,0.18)', borderRadius: 11 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(200,255,0,0.10)', border: '2px solid rgba(200,255,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 15, fontWeight: 900, color: T.accent }}>{formatLocalizedNumber(userRank, currentLanguage)}</span>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{t("dashboard.rankLabel")}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t("dashboard.rankHint")}</div>
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{t("dashboard.rankLabel")}</div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>{t("dashboard.rankHint")}</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Stats */}
@@ -545,7 +566,7 @@ export const EmployeeDashboard: React.FC = () => {
   const renderContent = () => {
     switch (activePage) {
       case "my-courses":   return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
-      case "my-exams":     return <MyExamsPage onExamCompleted={() => { loadAssignedExams(); loadStats(); }} />;
+      case "my-exams":     return <MyExamsPage onExamCompleted={() => { void loadStats(); }} />;
       case "fraud-alerts": return <FraudAlertsPage />;
       case "certificates": return <CertificatesPage />;
       case "account":      return <AccountSettings />;
