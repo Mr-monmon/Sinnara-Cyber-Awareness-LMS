@@ -1,27 +1,25 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_URL             = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY        = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-interface reqPayload {
-  to: string;
-  subject: string;
-  html: string;
-}
-
-export const corsHeaders = {
+const corsHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Verify caller is an authenticated user
   const authHeader = req.headers.get("Authorization") ?? "";
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
@@ -32,47 +30,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { to, subject, html }: reqPayload = await req.json();
+    const { to, subject, html }: { to: string; subject: string; html: string } = await req.json();
 
-    const res = await fetch("https://api.zeptomail.com/v1.1/email", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Zoho-enczapikey ${Deno.env.get("ZEPTOMAIL_TOKEN")}`,
-      },
-      body: JSON.stringify({
-        from: {
-          address: "support@awareone.net",
-          name: "Awareone",
-        },
-        to: [
-          {
-            email_address: {
-              address: to,
-              name: "User",
-            },
-          },
-        ],
-        subject,
-        htmlbody: html,
-      }),
-    });
+    if (!to || !subject || !html) {
+      return new Response(
+        JSON.stringify({ error: "to, subject, and html are required" }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
 
-    const data = await res.json();
+    const { data, error: insertErr } = await serviceClient
+      .from("email_queue")
+      .insert({ to_email: to, subject, html, created_by: user.id })
+      .select("id")
+      .single();
 
-    return new Response(JSON.stringify(data), {
-      status: res.ok ? 200 : res.status,
-      headers: corsHeaders,
-    });
+    if (insertErr) throw insertErr;
+
+    return new Response(
+      JSON.stringify({ queued: true, id: data!.id }),
+      { status: 200, headers: corsHeaders },
+    );
   } catch (error) {
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to send email",
-      }),
-      {
-        status: 500,
-        headers: corsHeaders,
-      }
+      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to queue email" }),
+      { status: 500, headers: corsHeaders },
     );
   }
 });

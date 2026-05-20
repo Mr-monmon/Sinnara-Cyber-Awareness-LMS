@@ -27,6 +27,7 @@ import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
 import { supabase }                   from "../../lib/supabase";
 import SupportRequestsPage            from "./SupportRequestsPage";
 import EmailPage                      from "./EmailPage";
+import { EmailQueuePage }             from "./EmailQueuePage";
 import { ErrorLogsPage }              from "./ErrorLogsPage";
 
 /* ─────────────────────────────────────────
@@ -125,6 +126,7 @@ const ACTIONS = [
   { page: 'certificates',            icon: Award,     color: T.cyan,    label: 'Certificate Templates',  sub: 'Manage certificate designs'     },
   { page: 'audit-logs',              icon: History,   color: T.red,     label: 'Audit Logs',             sub: 'Track all activities'           },
   { page: 'email',                   icon: Mail,      color: T.green,   label: 'Email',                  sub: 'Send and manage emails'         },
+  { page: 'email-queue',             icon: Clock,     color: T.purple,  label: 'Email Queue',            sub: 'Monitor outbound email delivery' },
   { page: 'support-requests',        icon: Zap,       color: T.gold,    label: 'Support Requests',       sub: 'Customer support tickets'       },
 ] as const;
 
@@ -293,6 +295,7 @@ export const PlatformDashboard = () => {
       case "partners-management":      return <PartnersManagementPage />;
       case "support-requests":         return <SupportRequestsPage />;
       case "email":                    return <EmailPage />;
+      case "email-queue":              return <EmailQueuePage />;
       default:                         return renderDashboard();
     }
   };
