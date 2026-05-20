@@ -2,6 +2,7 @@
   "dashboard": {
     "title": "My Dashboard",
     "subtitle": "Welcome back! Continue your cybersecurity training journey.",
+    "loadError": "Some data could not be loaded. Please refresh the page.",
     "rankLabel": "User Rank",
     "rankHint": "Keep leveling up",
     "charts": {
@@ -67,6 +68,7 @@
     "certificates": "Certificates"
   },
   "courses": {
+    "loading": "Loading courses…",
     "title": "My Training Courses",
     "subtitle": "Continue your cybersecurity awareness training",
     "summary": {
@@ -85,6 +87,7 @@
     }
   },
   "exams": {
+    "loading": "Loading assessments…",
     "title": "My Assessments",
     "subtitle": "View your assessment results",
     "summary": {
@@ -127,6 +130,7 @@
     }
   },
   "certificates": {
+    "loading": "Loading certificates…",
     "title": "My Certificates",
     "subtitle": "View and download your earned certificates",
     "summary": {

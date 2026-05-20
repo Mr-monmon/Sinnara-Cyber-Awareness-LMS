@@ -266,9 +266,8 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const getCourseStatus = (courseId: string): StatusKey => {
     const prog = courseProgress[courseId];
     if (!prog) return "ASSIGNED";
-    const p = prog.progress_percentage || 0;
-    if (p >= 100) return "COMPLETED";
-    if (p > 0)    return "IN_PROGRESS";
+    if (prog.status === "COMPLETED")   return "COMPLETED";
+    if (prog.status === "IN_PROGRESS") return "IN_PROGRESS";
     return "ASSIGNED";
   };
 
@@ -311,7 +310,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
-      <p style={{ fontSize: 14, color: T.textBody }}>Loading courses…</p>
+      <p style={{ fontSize: 14, color: T.textBody }}>{t("courses.loading", { ns: "employee" })}</p>
     </div>
   );
 

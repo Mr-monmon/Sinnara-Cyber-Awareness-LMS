@@ -142,7 +142,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
-      <p style={{ fontSize: 14, color: T.textBody }}>Loading assessments…</p>
+      <p style={{ fontSize: 14, color: T.textBody }}>{t("exams.loading", { ns: "employee" })}</p>
     </div>
   );
 
