@@ -4,6 +4,7 @@ import {
   CreditCard, History, Shield, ChevronRight,
   Mail, Globe, Bell, Award, Zap, AlertTriangle,
   TrendingUp, HelpCircle, Clock, CheckCircle, DollarSign, Server,
+  Target, MousePointer, Send as SendIcon, Eye,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { CompaniesPage }              from "./CompaniesPage";
@@ -162,16 +163,28 @@ interface DashStats {
   pendingAmount: number;
   openSupport: number;
   pendingDemo: number;
+  activeCampaigns: number;
+  totalCampaigns: number;
+  phishingEmailsSent: number;
+  phishingClicked: number;
 }
 
 interface TopCompany { name: string; employees: number; }
 interface MonthRevenue { month: string; amount: number; }
+interface PhishingCampaignRow {
+  id: string; name: string; status: string;
+  emails_sent: number; emails_opened: number; emails_clicked: number;
+  total_queue_size: number; company_id: string;
+  companies: { name: string } | null;
+  created_at: string;
+}
 
 const EMPTY_STATS: DashStats = {
   companies: 0, activeCompanies: 0, totalEmployees: 0, courses: 0,
   activeSubscriptions: 0, expiringIn30: 0,
   totalRevenue: 0, pendingAmount: 0,
   openSupport: 0, pendingDemo: 0,
+  activeCampaigns: 0, totalCampaigns: 0, phishingEmailsSent: 0, phishingClicked: 0,
 };
 
 export const PlatformDashboard = () => {
@@ -179,6 +192,7 @@ export const PlatformDashboard = () => {
   const [stats, setStats] = useState<DashStats>(EMPTY_STATS);
   const [topCompanies, setTopCompanies] = useState<TopCompany[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthRevenue[]>([]);
+  const [recentCampaigns, setRecentCampaigns] = useState<PhishingCampaignRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadStats(); }, []);
@@ -196,6 +210,8 @@ export const PlatformDashboard = () => {
         supportRes,
         demoRes,
         companiesWithEmp,
+        campaignCountRes,
+        campaignsRes,
       ] = await Promise.all([
         supabase.from("companies").select("id, name, is_active", { count: "exact" }),
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "EMPLOYEE"),
@@ -206,6 +222,11 @@ export const PlatformDashboard = () => {
         supabase.from("support_ticket").select("status"),
         supabase.from("demo_requests").select("status"),
         supabase.from("users").select("company_id").eq("role", "EMPLOYEE"),
+        supabase.from("phishing_campaigns").select("id", { count: "exact", head: true }),
+        supabase.from("phishing_campaigns")
+          .select("id, name, status, emails_sent, emails_opened, emails_clicked, total_queue_size, company_id, companies(name), created_at")
+          .order("created_at", { ascending: false })
+          .limit(8),
       ]);
 
       // Revenue
@@ -254,6 +275,10 @@ export const PlatformDashboard = () => {
       const rev: MonthRevenue[] = Array.from(monthMap.entries()).map(([, amount], i) => ({ month: months[i], amount }));
       setMonthlyRevenue(rev);
 
+      // Phishing
+      const campaigns = (campaignsRes.data ?? []) as PhishingCampaignRow[];
+      setRecentCampaigns(campaigns);
+
       setStats({
         companies: coRes.count ?? 0,
         activeCompanies: companies.filter(c => c.is_active).length,
@@ -265,7 +290,10 @@ export const PlatformDashboard = () => {
         pendingAmount,
         openSupport,
         pendingDemo,
-
+        activeCampaigns: campaigns.filter(c => c.status === 'RUNNING').length,
+        totalCampaigns: campaignCountRes.count ?? 0,
+        phishingEmailsSent: campaigns.reduce((s, c) => s + (c.emails_sent || 0), 0),
+        phishingClicked: campaigns.reduce((s, c) => s + (c.emails_clicked || 0), 0),
       });
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -391,6 +419,111 @@ export const PlatformDashboard = () => {
         </div>
       )}
 
+      {/* ── Phishing Overview ── */}
+      <div className="aw-fade-up" style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '13px 18px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Target size={14} style={{ color: T.red }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Phishing Simulation Overview</span>
+          </div>
+          <button onClick={() => setActivePage('phishing-results')}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 7, color: T.red, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+            View All <ChevronRight size={11} />
+          </button>
+        </div>
+
+        {/* KPI strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${T.borderFaint}` }}>
+          {[
+            { icon: Zap,            color: T.orange, bg: T.orangeBg, label: 'Active Campaigns',  value: stats.activeCampaigns  },
+            { icon: Target,         color: T.red,    bg: T.redBg,    label: 'Total Campaigns',   value: stats.totalCampaigns   },
+            { icon: SendIcon,       color: T.blue,   bg: T.blueBg,   label: 'Emails Sent',       value: stats.phishingEmailsSent },
+            { icon: MousePointer,   color: T.purple, bg: T.purpleBg, label: 'Link Clicks',       value: stats.phishingClicked  },
+          ].map(({ icon: Icon, color, bg, label, value }, i) => (
+            <div key={label} style={{ padding: '14px 18px', borderRight: i < 3 ? `1px solid ${T.borderFaint}` : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: bg, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon size={15} style={{ color }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: T.white }}>{value.toLocaleString()}</div>
+                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>{label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Campaigns table */}
+        {recentCampaigns.length === 0 ? (
+          <div style={{ padding: '28px 18px', textAlign: 'center', color: T.textMuted, fontSize: 13 }}>No phishing campaigns yet.</div>
+        ) : (
+          <div>
+            {/* Table header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 110px 130px 90px 90px', gap: 8, padding: '8px 18px', borderBottom: `1px solid ${T.borderFaint}` }}>
+              {['Company', 'Campaign', 'Status', 'Sent / Total', 'Opened', 'Clicked'].map(h => (
+                <span key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</span>
+              ))}
+            </div>
+            {recentCampaigns.map(c => {
+              const total = c.total_queue_size || 0;
+              const pct   = total > 0 ? Math.round((c.emails_sent / total) * 100) : 0;
+              const STATUS_COLOR: Record<string, { color: string; bg: string; border: string }> = {
+                RUNNING:   { color: T.orange, bg: T.orangeBg, border: T.orangeBorder },
+                COMPLETED: { color: T.green,  bg: T.greenBg,  border: T.greenBorder  },
+                PAUSED:    { color: T.gold,   bg: T.goldBg,   border: T.goldBorder   },
+                DRAFT:     { color: T.textMuted, bg: 'rgba(255,255,255,0.03)', border: T.borderFaint },
+                SUBMITTED: { color: T.blue,   bg: T.blueBg,   border: T.blueBorder   },
+                APPROVED:  { color: T.purple, bg: T.purpleBg, border: T.purpleBorder  },
+                REJECTED:  { color: T.red,    bg: T.redBg,    border: T.redBorder    },
+              };
+              const sc = STATUS_COLOR[c.status] ?? STATUS_COLOR.DRAFT;
+              return (
+                <div key={c.id}
+                  style={{ display: 'grid', gridTemplateColumns: '180px 1fr 110px 130px 90px 90px', gap: 8, padding: '10px 18px', borderBottom: `1px solid ${T.borderFaint}`, cursor: 'pointer' }}
+                  onClick={() => setActivePage('phishing-results')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+
+                  {/* Company */}
+                  <span style={{ fontSize: 12, color: T.textBody, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                    {(c.companies as any)?.name ?? '—'}
+                  </span>
+
+                  {/* Campaign name */}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', alignSelf: 'center' }}>{c.name}</span>
+
+                  {/* Status */}
+                  <div style={{ alignSelf: 'center' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 9999, background: sc.bg, border: `1px solid ${sc.border}`, color: sc.color }}>
+                      {c.status}
+                    </span>
+                  </div>
+
+                  {/* Sent / Total with progress bar */}
+                  <div style={{ alignSelf: 'center' }}>
+                    <div style={{ fontSize: 11, color: T.textBody, marginBottom: 3 }}>{c.emails_sent} / {total > 0 ? total : '?'}</div>
+                    <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: T.orange, borderRadius: 2 }} />
+                    </div>
+                  </div>
+
+                  {/* Opened */}
+                  <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Eye size={10} style={{ color: T.blue }} />
+                    <span style={{ fontSize: 12, color: T.blue, fontWeight: 600 }}>{c.emails_opened || 0}</span>
+                  </div>
+
+                  {/* Clicked */}
+                  <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <MousePointer size={10} style={{ color: T.red }} />
+                    <span style={{ fontSize: 12, color: T.red, fontWeight: 600 }}>{c.emails_clicked || 0}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── Charts row ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
@@ -489,6 +622,7 @@ export const PlatformDashboard = () => {
               { label: 'Expiring Soon',    value: stats.expiringIn30,      color: stats.expiringIn30 > 0 ? T.orange : T.textMuted },
               { label: 'Open Support',     value: stats.openSupport,       color: stats.openSupport > 0 ? T.red : T.textMuted },
               { label: 'Demo Requests',    value: stats.pendingDemo,       color: stats.pendingDemo > 0 ? T.purple : T.textMuted },
+              { label: 'Active Phishing',  value: stats.activeCampaigns,   color: stats.activeCampaigns > 0 ? T.orange : T.textMuted },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: T.textBody }}>{label}</span>
@@ -504,8 +638,8 @@ export const PlatformDashboard = () => {
             <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {[
                 { page: 'audit-logs',         icon: History,       label: 'View Audit Logs',       color: T.red    },
+                { page: 'phishing-results',   icon: Target,        label: 'Phishing Campaigns',    color: T.orange },
                 { page: 'email',              icon: Mail,          label: 'Send Email',             color: T.green  },
-                { page: 'demo-requests',      icon: Bell,          label: 'Demo Requests',          color: T.purple },
                 { page: 'support-requests',   icon: HelpCircle,    label: 'Support Tickets',        color: T.orange },
               ].map(({ page, icon: Icon, label, color }) => (
                 <button key={page} onClick={() => setActivePage(page)}
