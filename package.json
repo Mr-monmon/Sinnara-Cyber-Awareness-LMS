@@ -13,6 +13,7 @@
     "deploy:worker": "npm run build && npx wrangler deploy"
   },
   "dependencies": {
+    "@sentry/react": "^10.53.1",
     "@supabase/supabase-js": "^2.57.4",
     "dompurify": "^3.3.1",
     "html2canvas": "^1.4.1",

@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "./lib/sentry"; // Must be first — initialises Sentry before any other code runs
 import App from "./App.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { supabaseConfigured } from "./lib/supabase.ts";

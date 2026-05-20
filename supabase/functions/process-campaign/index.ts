@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { captureException } from "../_shared/sentry.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -532,6 +533,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Worker error";
     console.error("[process-campaign]", msg);
+    await captureException(err, { function: "process-campaign" });
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
   }
 });
