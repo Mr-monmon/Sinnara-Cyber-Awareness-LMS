@@ -267,6 +267,8 @@ export const PhishingCampaignsPage: React.FC = () => {
     const [scRes, grRes, smRes, etRes, lpRes, limRes] = await Promise.all([
       supabase.from('phishing_scenarios').select('*').eq('is_active', true).order('sort_order'),
       supabase.from('phishing_groups').select('id, name, member_count').eq('company_id', companyId),
+      // Intentionally no company_id filter: company admins can use platform-level SMTP
+      // profiles that have been pushed to them, in addition to their own company profiles.
       supabase.from('smtp_profiles').select('id, name, from_address, from_name'),
       supabase.from('phishing_company_email_templates').select('id, name, subject, html_content').eq('company_id', companyId),
       supabase.from('phishing_company_landing_pages').select('id, name, html_content').eq('company_id', companyId),

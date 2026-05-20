@@ -216,13 +216,14 @@ export const CompanyDashboard = () => {
         supabase.from("employee_available_exams").select("employee_id").in("employee_id", ids),
       ]);
 
-      const completedSet = new Set([
-        ...(courseRes.data?.map(e => e.employee_id) || []),
-        ...(resultsRes.data?.filter(r => r.passed).map(r => r.employee_id) || []),
-      ]);
+      // Employees who completed at least one course
+      const completedCoursesSet = new Set(courseRes.data?.map(e => e.employee_id) || []);
+
+      // Unique employees with pending assessments (not total exam rows)
+      const pendingEmployeesSet = new Set(examsRes.data?.map(e => e.employee_id) || []);
 
       const { data: topData } = await supabase.functions.invoke("get_top_performance", { method: "POST", body: { company_id: user.company_id } });
-      setStats({ totalEmployees: employees?.length || 0, completedTraining: completedSet.size, averageScore: topData?.avgScore || 0, pendingAssessments: examsRes.data?.length || 0 });
+      setStats({ totalEmployees: employees?.length || 0, completedTraining: completedCoursesSet.size, averageScore: topData?.avgScore || 0, pendingAssessments: pendingEmployeesSet.size });
       setTopEmployees(topData?.rankedEmployees || []);
       setIsLoading(false);
     } catch (err) { console.error(err); setIsLoading(false); }
@@ -276,9 +277,9 @@ export const CompanyDashboard = () => {
     /* Stat card definitions */
     const STATS = [
       { icon: Users,          color: T.accent,  bg: 'rgba(200,255,0,0.08)',  border: 'rgba(200,255,0,0.20)',  label: 'Total Employees',     sub: 'Active accounts',         value: stats.totalEmployees,     pct: null },
-      { icon: Award,          color: T.green,   bg: T.greenBg,              border: T.greenBorder,            label: 'Completed Training',  sub: 'Certified or passed',     value: stats.completedTraining,  pct: completionRate },
+      { icon: Award,          color: T.green,   bg: T.greenBg,              border: T.greenBorder,            label: 'Completed Training',  sub: 'Completed ≥1 course',     value: stats.completedTraining,  pct: completionRate },
       { icon: TrendingUp,     color: T.blue,    bg: T.blueBg,               border: T.blueBorder,             label: 'Average Score',       sub: 'Across all assessments',  value: `${stats.averageScore}%`, pct: stats.averageScore },
-      { icon: AlertCircle,    color: T.orange,  bg: T.orangeBg,             border: T.orangeBorder,           label: 'Pending Assessments', sub: 'Needs attention',         value: stats.pendingAssessments, pct: null },
+      { icon: AlertCircle,    color: T.orange,  bg: T.orangeBg,             border: T.orangeBorder,           label: 'Pending Assessments', sub: 'Employees with pending',  value: stats.pendingAssessments, pct: null },
     ] as const;
 
     /* Quick actions */

@@ -192,6 +192,10 @@ export const CourseAssignmentPage: React.FC = () => {
 
   const loadEmployeeCourses = async () => {
     if (!user?.company_id) return;
+    // Scope to this company's employees only
+    const { data: empData } = await supabase.from("users").select("id").eq("company_id", user.company_id).eq("role", "EMPLOYEE");
+    const empIds = (empData ?? []).map((e: { id: string }) => e.id);
+    if (empIds.length === 0) { setEmployeeCourses([]); return; }
     const { data } = await supabase
       .from("employee_courses")
       .select(`
@@ -201,6 +205,7 @@ export const CourseAssignmentPage: React.FC = () => {
           department:departments!users_department_id_fkey(id, name)
         )
       `)
+      .in("employee_id", empIds)
       .order("assigned_at");
     if (data) setEmployeeCourses(data as unknown as EmployeeCourse[]);
   };
