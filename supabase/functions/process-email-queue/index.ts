@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { captureException } from "../_shared/sentry.ts";
 
 const SUPABASE_URL             = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -207,6 +208,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Worker error";
     console.error("[process-email-queue]", msg);
+    await captureException(err, { function: "process-email-queue" });
     return new Response(
       JSON.stringify({ error: msg }),
       { status: 500, headers: corsHeaders },

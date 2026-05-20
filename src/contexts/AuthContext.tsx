@@ -4,6 +4,7 @@ import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
 import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
 import { extractTenantSubdomain, getHostAccessMode } from "../lib/tenant";
+import { setSentryUser } from "../lib/sentry";
 
 export type LoginResult =
   | "success"
@@ -55,11 +56,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const syncUserFromSession = async (session: Session | null) => {
       if (!session?.user) {
         setUser(null);
+        setSentryUser(null);
         return;
       }
 
       const profile = await fetchProfile(session.user.id);
       setUser(profile);
+      if (profile) setSentryUser({ id: profile.id, email: profile.email, role: profile.role });
     };
 
     const init = async () => {
@@ -141,6 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setSentryUser(null);
     setForcePasswordChange(false);
     setMfaRequired(false);
     setMfaFactorId(null);

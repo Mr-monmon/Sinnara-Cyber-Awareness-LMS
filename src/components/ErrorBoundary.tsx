@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronRight } from "lucide-react";
 import { logErrorToSupabase } from "../lib/errorLogger";
+import { captureException } from "../lib/sentry";
 
 interface Props {
   children: ReactNode;
@@ -39,6 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
     void logErrorToSupabase(error, errorInfo.componentStack ?? undefined);
+    captureException(error, { componentStack: errorInfo.componentStack ?? "" });
   }
 
   handleReload = () => window.location.reload();
