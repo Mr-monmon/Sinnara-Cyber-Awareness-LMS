@@ -117,7 +117,6 @@ interface ExamQuestion {
   exam_id: string;
   question: string;
   options: string[];
-  correct_answer: string;
   order_index: number;
 }
 interface ExamViewerProps {
@@ -155,8 +154,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60);
   const [examStarted, setExamStarted] = useState(false);
   const [examSubmitted, setExamSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState(0);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
@@ -188,7 +187,6 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
         onBack();
         return;
       }
-      setAssignmentId(data.assignment_id);
       setAttemptsRemaining(data.max_attempts - data.attempts_used);
       await loadQuestions();
     } catch {
@@ -214,12 +212,11 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
 
   const loadQuestions = async () => {
     try {
-      const { data } = await supabase
-        .from("exam_questions")
-        .select("*")
-        .eq("exam_id", examId)
-        .order("order_index");
-      if (data) setQuestions(data);
+      // Server-side RPC returns questions WITHOUT correct_answer (CRIT-02).
+      const { data } = await supabase.rpc("get_exam_questions", {
+        p_exam_id: examId,
+      });
+      if (data) setQuestions(data as ExamQuestion[]);
     } catch (err) {
       console.error("Error loading questions:", err);
     } finally {
@@ -233,46 +230,27 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const handleAutoSubmit = () => handleSubmit();
 
   const handleSubmit = async () => {
-    if (!user) return;
-    let correctCount = 0;
-    questions.forEach((q) => {
-      if (answers[q.id] === q.correct_answer) correctCount++;
-    });
-    const finalScore = Math.round((correctCount / questions.length) * 100);
-    const didPass = finalScore >= passingScore;
+    if (!user || submitting) return;
+    setSubmitting(true);
     setExamSubmitted(true);
+    // Scoring happens server-side: the browser never sees correct answers and
+    // cannot forge a result. We send only the selected option per question.
+    const startedAt = new Date(
+      Date.now() - (timeLimit * 60 - timeRemaining) * 1000
+    ).toISOString();
     try {
-      await supabase.from("exam_results").insert([
-        {
-          employee_id: user.id,
-          exam_id: examId,
-          assignment_id: assignmentId,
-          score: correctCount,
-          total_questions: questions.length,
-          percentage: finalScore,
-          passed: didPass,
-          answers: questions.map((q) => ({
-            question: q.question,
-            selected_answer: answers[q.id] || "Not answered",
-            correct_answer: q.correct_answer,
-            is_correct: answers[q.id] === q.correct_answer,
-          })),
-          started_at: new Date(
-            Date.now() - (timeLimit * 60 - timeRemaining) * 1000
-          ).toISOString(),
-          completed_at: new Date().toISOString(),
-        },
-      ]);
-
-      await supabase
-        .from("assigned_exams")
-        .update({
-          status: "completed",
-        })
-        .eq("id", assignmentId)
-        .eq("assigned_to_employee", user.id);
+      const { error } = await supabase.functions.invoke("submit-exam", {
+        body: { examId, answers, startedAt },
+      });
+      if (error) {
+        console.error("Error submitting exam:", error);
+        alert(t("examViewer.submitError", { ns: "employee" }));
+      }
     } catch (err) {
-      console.error("Error saving exam result:", err);
+      console.error("Error submitting exam:", err);
+      alert(t("examViewer.submitError", { ns: "employee" }));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -963,7 +941,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           {isLast ? (
             <button
               className="aw-btn-primary"
-              disabled={!allAnswered}
+              disabled={!allAnswered || submitting}
               onClick={handleSubmit}
             >
               <Check size={15} />
