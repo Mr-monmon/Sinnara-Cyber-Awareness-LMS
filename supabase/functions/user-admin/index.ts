@@ -19,7 +19,7 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
 }
 
-async function getCallerProfile(req: Request) {
+async function getCallerProfile(req: Request): Promise<CallerProfile | null> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -36,11 +36,73 @@ async function getCallerProfile(req: Request) {
     .eq("id", user.id)
     .single();
 
-  return profile;
+  return profile as CallerProfile | null;
 }
 
 function isAdmin(role: string) {
   return role === "PLATFORM_ADMIN" || role === "COMPANY_ADMIN" || role === "COMPANY_SUPER_ADMIN";
+}
+
+interface CallerProfile {
+  id: string;
+  role: string;
+  company_id: string | null;
+}
+
+// Record a blocked cross-tenant attempt for security monitoring. Fire-and-forget
+// (uses the service role client so it bypasses RLS); never throws into the caller path.
+async function logBlockedAttempt(
+  caller: CallerProfile,
+  action: string,
+  targetUserId: string | null,
+  detail: string,
+) {
+  try {
+    await supabaseAdmin.from("audit_logs").insert({
+      user_id: caller.id,
+      user_role: caller.role,
+      action_type: "SECURITY_BLOCKED",
+      entity_type: "USER",
+      entity_id: targetUserId,
+      company_id: caller.company_id,
+      description: `Blocked ${action}: ${detail}`,
+    });
+  } catch (_e) {
+    // Audit logging must never break the request flow.
+  }
+}
+
+// Verify the caller is allowed to operate on a target user.
+// PLATFORM_ADMIN may act on anyone. Other admins may only act on users
+// within their own company. Returns true when allowed; otherwise records
+// a SECURITY_BLOCKED audit entry and returns false.
+async function assertSameTenant(
+  caller: CallerProfile,
+  targetUserId: string,
+  action: string,
+): Promise<boolean> {
+  if (caller.role === "PLATFORM_ADMIN") return true;
+
+  const { data: target } = await supabaseAdmin
+    .from("users")
+    .select("company_id")
+    .eq("id", targetUserId)
+    .single();
+
+  if (!target) {
+    await logBlockedAttempt(caller, action, targetUserId, "target user not found");
+    return false;
+  }
+  if (target.company_id !== caller.company_id) {
+    await logBlockedAttempt(
+      caller,
+      action,
+      targetUserId,
+      `cross-tenant: target company ${target.company_id} != caller company ${caller.company_id}`,
+    );
+    return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,23 +300,45 @@ Deno.serve(async (req) => {
     switch (action) {
       case "createUser": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        // Non-platform admins may only create users inside their own company.
+        if (caller.role !== "PLATFORM_ADMIN" && body.company_id !== caller.company_id) {
+          await logBlockedAttempt(caller, "createUser", null, `target company ${body.company_id} != caller company ${caller.company_id}`);
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         const r = await handleCreateUser(body);
         return json(r);
       }
 
       case "bulkCreate": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
-        return json(await handleBulkCreate(body.users));
+        const users: CreateUserPayload[] = body.users ?? [];
+        // Non-platform admins may only bulk-create within their own company.
+        if (caller.role !== "PLATFORM_ADMIN") {
+          const foreign = users.find((u) => u.company_id && u.company_id !== caller.company_id);
+          if (foreign) {
+            await logBlockedAttempt(caller, "bulkCreate", null, `target company ${foreign.company_id} != caller company ${caller.company_id}`);
+            return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+          }
+          // Force every created user into the caller's company regardless of payload.
+          users.forEach((u) => { u.company_id = caller.company_id ?? undefined; });
+        }
+        return json(await handleBulkCreate(users));
       }
 
       case "resetPassword": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "resetPassword"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         const r = await handleResetPassword(body.userId, body.password);
         return json(r);
       }
 
       case "deleteUser": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "deleteUser"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         if (body.userId !== caller.id) {
           const { data: targetProfile } = await supabaseAdmin
             .from("users").select("role").eq("id", body.userId).single();
@@ -269,6 +353,9 @@ Deno.serve(async (req) => {
       // Reset MFA: unenroll all TOTP factors for the target user
       case "resetMfa": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "resetMfa"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         const targetId: string = body.userId;
 
         // Use getUserById to fetch factors — available in all supabase-js v2 versions
@@ -292,6 +379,9 @@ Deno.serve(async (req) => {
       // Set/unset forced MFA for a user
       case "setMfaEnforced": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "setMfaEnforced"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         const { userId: targetId, enforced } = body;
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ mfa_enforced: !!enforced })
@@ -303,6 +393,9 @@ Deno.serve(async (req) => {
       // Force a specific user to change password on next login
       case "forcePasswordChange": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "forcePasswordChange"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
         const { error: updErr } = await supabaseAdmin.from("users")
           .update({ requires_password_change: true })
           .eq("id", body.userId);
@@ -326,6 +419,9 @@ Deno.serve(async (req) => {
         const newRole: string = body.newRole;
         if (!allowedRoles.includes(newRole)) {
           return json({ success: false, error: `Invalid role: ${newRole}` });
+        }
+        if (!(await assertSameTenant(caller, body.userId, "updateUserRole"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
         }
         const { data: targetProfile } = await supabaseAdmin
           .from("users").select("role").eq("id", body.userId).single();
