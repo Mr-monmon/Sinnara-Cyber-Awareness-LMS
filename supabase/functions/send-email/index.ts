@@ -29,6 +29,29 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
+  // HIGH-01: only privileged roles may trigger transactional emails.
+  // EMPLOYEE / REVIEWER (and any unknown role) must be rejected so the
+  // email-sending capability cannot be abused for spam or spoofed notifications.
+  const ALLOWED_EMAIL_ROLES = [
+    "PLATFORM_ADMIN",
+    "COMPANY_ADMIN",
+    "COMPANY_SUPER_ADMIN",
+    "PHISHING_OPERATOR",
+  ];
+
+  const { data: profile, error: profileErr } = await serviceClient
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileErr || !profile || !ALLOWED_EMAIL_ROLES.includes(profile.role)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden" }),
+      { status: 403, headers: corsHeaders },
+    );
+  }
+
   try {
     const { to, subject, html }: { to: string; subject: string; html: string } = await req.json();
 
