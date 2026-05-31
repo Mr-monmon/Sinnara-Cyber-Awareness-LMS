@@ -212,6 +212,7 @@ export const PlatformDashboard = () => {
         companiesWithEmp,
         campaignCountRes,
         campaignsRes,
+        phishingTotalsRes,
       ] = await Promise.all([
         supabase.from("companies").select("id, name, is_active", { count: "exact" }),
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "EMPLOYEE"),
@@ -227,6 +228,7 @@ export const PlatformDashboard = () => {
           .select("id, name, status, emails_sent, emails_opened, emails_clicked, total_queue_size, company_id, companies(name), created_at")
           .order("created_at", { ascending: false })
           .limit(8),
+        supabase.from("phishing_campaigns").select("emails_sent, emails_clicked"),
       ]);
 
       // Revenue
@@ -292,8 +294,8 @@ export const PlatformDashboard = () => {
         pendingDemo,
         activeCampaigns: campaigns.filter(c => c.status === 'RUNNING').length,
         totalCampaigns: campaignCountRes.count ?? 0,
-        phishingEmailsSent: campaigns.reduce((s, c) => s + (c.emails_sent || 0), 0),
-        phishingClicked: campaigns.reduce((s, c) => s + (c.emails_clicked || 0), 0),
+        phishingEmailsSent: (phishingTotalsRes.data ?? []).reduce((s: number, c: { emails_sent: number }) => s + (c.emails_sent || 0), 0),
+        phishingClicked: (phishingTotalsRes.data ?? []).reduce((s: number, c: { emails_clicked: number }) => s + (c.emails_clicked || 0), 0),
       });
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
