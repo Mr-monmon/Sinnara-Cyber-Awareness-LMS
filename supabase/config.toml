@@ -31,3 +31,11 @@ entrypoint = "./functions/send-email/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-email/*.html" ]
+
+# Public landing-page host for phishing campaigns — recipients reach this with no
+# auth. Tenant scoping is enforced inside the function (campaign ↔ landing page ↔
+# recipient must all match), so verify_jwt is intentionally disabled here.
+[functions.serve-landing-page]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/serve-landing-page/index.ts"

@@ -8,9 +8,10 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const ZEPTO_TOKEN       = Deno.env.get("ZEPTOMAIL_TOKEN") ?? "";
+const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY  = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ZEPTO_TOKEN        = Deno.env.get("ZEPTOMAIL_TOKEN") ?? "";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -211,19 +212,27 @@ async function sendEmail(params: {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
-  // Verify caller is an authenticated admin (company or platform)
+  // Two callers are allowed:
+  //   1. pg_cron (every minute) — authenticates with the service-role key. This is the
+  //      recurring driver that drains all due PENDING jobs across every RUNNING campaign.
+  //   2. An authenticated company/platform admin — the manual "launch / relaunch" path.
   const authHeader = req.headers.get("Authorization") ?? "";
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: { user }, error: authErr } = await userClient.auth.getUser();
-  if (authErr || !user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-  }
-  const { data: caller } = await supabase
-    .from("users").select("role, company_id").eq("id", user.id).single();
-  if (!caller || caller.role === "EMPLOYEE") {
-    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+  const bearer     = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const isCron     = bearer.length > 0 && bearer === SERVICE_ROLE_KEY;
+
+  if (!isCron) {
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+    const { data: caller } = await supabase
+      .from("users").select("role, company_id").eq("id", user.id).single();
+    if (!caller || caller.role === "EMPLOYEE") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
   }
 
   try {

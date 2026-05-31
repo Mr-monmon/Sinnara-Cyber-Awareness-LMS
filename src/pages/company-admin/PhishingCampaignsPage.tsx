@@ -415,6 +415,7 @@ export const PhishingCampaignsPage: React.FC = () => {
         name: form.name,
         status,
         smtp_profile_id: form.smtpProfileId || null,
+        landing_page_id: form.landingPageId || null,
         group_ids: form.selectedGroups,
         scenario_id: form.selectedScenario?.id || null,
         emails_per_minute: form.emailsPerMinute,
@@ -473,6 +474,12 @@ export const PhishingCampaignsPage: React.FC = () => {
               : 0;
             const sendAt = new Date(baseTime + i * intervalMs + randomDelaySec * 1000);
 
+            // If a landing page is selected, the click link must redirect to the hosted
+            // serve-landing-page endpoint (per-recipient) instead of the raw redirect URL.
+            const targetRedirectUrl = form.landingPageId
+              ? `${supabaseUrl}/functions/v1/serve-landing-page?lp=${form.landingPageId}&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`
+              : redirectUrl;
+
             // Full variable resolution per target
             const resolvedHtml = resolveVariables(emailHtml, {
               email:       t.email,
@@ -484,7 +491,7 @@ export const PhishingCampaignsPage: React.FC = () => {
             }, {
               campaign_id:   camp.id,
               company_name:  companyName,
-              redirect_url:  redirectUrl,
+              redirect_url:  targetRedirectUrl,
               tracking_base: trackBase,
             }, customVars);
 
@@ -504,7 +511,7 @@ export const PhishingCampaignsPage: React.FC = () => {
               smtp_profile_id: form.smtpProfileId || null,
               recipient_email: t.email,
               recipient_id:   t.recipient_id,
-              email_subject:  resolveVariables(subject, { email: t.email, first_name: t.first_name, last_name: t.last_name, department: t.department, position: t.position, recipient_id: t.recipient_id }, { campaign_id: camp.id, company_name: companyName, redirect_url: redirectUrl, tracking_base: trackBase }, customVars),
+              email_subject:  resolveVariables(subject, { email: t.email, first_name: t.first_name, last_name: t.last_name, department: t.department, position: t.position, recipient_id: t.recipient_id }, { campaign_id: camp.id, company_name: companyName, redirect_url: targetRedirectUrl, tracking_base: trackBase }, customVars),
               email_html:     finalHtml,
               from_address:   fromAddr,
               from_name:      fromName,
