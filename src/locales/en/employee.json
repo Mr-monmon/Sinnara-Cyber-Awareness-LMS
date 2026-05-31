@@ -181,12 +181,14 @@
     "checkEnrollmentError": "Error: {{message}}",
     "alreadyCompleted": "You have already completed this course!",
     "completionFailed": "Failed to mark course as complete: {{message}}",
+    "quizSubmitError": "We couldn't submit your quiz. Please try again.",
     "certificateReady": "Congratulations! Course completed successfully. Your certificate is ready!",
     "certificateGenerated": "Congratulations! You have successfully completed the course! Your certificate has been generated.",
     "fallbackCourseName": "Course"
   },
   "examViewer": {
     "accessError": "Error checking exam access. Please try again.",
+    "submitError": "We couldn't submit your assessment. Please try again.",
     "alreadyPassed": "You have already passed this exam!",
     "noAttemptsLeft": "You have used all your attempts for this exam. Contact your admin for more.",
     "loading": "Loading assessment...",

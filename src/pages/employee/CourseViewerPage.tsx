@@ -138,7 +138,8 @@ if (typeof document !== "undefined" && !document.getElementById("aw-course-viewe
 type QuizQuestion = {
   question: string;
   options: string[];
-  correct_answer: string;
+  // correct_answer is intentionally absent: it is stripped server-side by the
+  // get_course_sections RPC and never sent to the browser (CRIT-03).
 };
 
 type CourseSectionContentData = {
@@ -188,6 +189,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [quizAnswers, setQuizAnswers]     = useState<Record<number, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore]         = useState(0);
   const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
   const isRtl = i18n.dir() === "rtl";
@@ -200,7 +202,8 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     if (!user) return;
     setIsLoading(true);
     const [sectionsRes, progressRes] = await Promise.all([
-      supabase.from("course_sections").select("*").eq("course_id", courseId).order("order_index"),
+      // RPC returns sections with correct_answer stripped from quiz JSONB (CRIT-03).
+      supabase.rpc("get_course_sections", { p_course_id: courseId }),
       supabase.from("course_section_progress").select("*").eq("employee_id", user.id).eq("course_id", courseId),
     ]);
     setIsLoading(false);
@@ -283,16 +286,35 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     onBack();
   };
 
-  const handleSubmitQuiz = () => {
+  const handleSubmitQuiz = async () => {
     if (!currentSection || currentSection.section_type !== "QUIZ") return;
+    if (quizSubmitting) return;
     const questions = getSectionQuestions(currentSection);
     if (questions.length === 0) return;
-    let correct = 0;
-    questions.forEach((q, i) => { if (quizAnswers[i] === q.correct_answer) correct++; });
-    const score = Math.round((correct / questions.length) * 100);
-    setQuizScore(score); setQuizSubmitted(true);
-    const passingScore = (getSectionData(currentSection).passing_score as number | undefined) ?? 60;
-    if (score >= passingScore) markSectionComplete(currentSection.id);
+    setQuizSubmitting(true);
+    // Scoring happens server-side: correct answers never reach the browser and
+    // a tampered client cannot mark a quiz as passed (CRIT-03).
+    try {
+      const { data, error } = await supabase.functions.invoke("submit-quiz", {
+        body: { sectionId: currentSection.id, lang: isArabic ? "ar" : "en", answers: quizAnswers },
+      });
+      if (error || !data) {
+        alert(t("courseViewer.quizSubmitError", { ns: "employee" }));
+        return;
+      }
+      const result = data as { score: number; passed: boolean };
+      setQuizScore(result.score);
+      setQuizSubmitted(true);
+      // Section completion is persisted server-side on pass; refresh progress.
+      if (result.passed) {
+        await loadCourseData();
+        if (sections[currentSectionIndex + 1]?.section_type === "QUIZ") {
+          setQuizSubmitted(false); setQuizAnswers({});
+        }
+      }
+    } finally {
+      setQuizSubmitting(false);
+    }
   };
 
   /* ── Loading ── */
@@ -529,9 +551,9 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 
                     <button
                       className="aw-btn-accent"
-                      disabled={Object.keys(quizAnswers).length !== currentSectionQuestions.length}
+                      disabled={Object.keys(quizAnswers).length !== currentSectionQuestions.length || quizSubmitting}
                       onClick={handleSubmitQuiz}
-                      style={Object.keys(quizAnswers).length !== currentSectionQuestions.length ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)', boxShadow: 'none', cursor: 'not-allowed' } : {}}
+                      style={(Object.keys(quizAnswers).length !== currentSectionQuestions.length || quizSubmitting) ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)', boxShadow: 'none', cursor: 'not-allowed' } : {}}
                     >
                       <ClipboardCheck size={16} />
                       {t("courseViewer.submitAnswers", { ns: "employee" })}

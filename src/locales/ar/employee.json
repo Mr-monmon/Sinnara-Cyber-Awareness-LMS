@@ -181,12 +181,14 @@
     "checkEnrollmentError": "خطأ: {{message}}",
     "alreadyCompleted": "لقد أكملت هذه الدورة بالفعل!",
     "completionFailed": "تعذر تحديد الدورة كمكتملة: {{message}}",
+    "quizSubmitError": "تعذّر إرسال الاختبار. حاول مرة أخرى.",
     "certificateReady": "تهانينا! اكتملت الدورة بنجاح. شهادتك جاهزة!",
     "certificateGenerated": "تهانينا! لقد أكملت الدورة بنجاح وتم إنشاء شهادتك.",
     "fallbackCourseName": "دورة"
   },
   "examViewer": {
     "accessError": "حدث خطأ أثناء التحقق من إمكانية الوصول إلى التقييم. حاول مرة أخرى.",
+    "submitError": "تعذّر إرسال التقييم. حاول مرة أخرى.",
     "alreadyPassed": "لقد اجتزت هذا التقييم بالفعل!",
     "noAttemptsLeft": "لقد استخدمت جميع محاولات هذا التقييم. تواصل مع المسؤول لطلب المزيد.",
     "loading": "جارٍ تحميل التقييم...",
