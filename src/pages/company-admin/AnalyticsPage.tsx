@@ -334,24 +334,22 @@ export const AnalyticsPage: React.FC = () => {
       const { data: postExam } = await supabase.from('exams').select('id').eq('exam_type', 'POST_ASSESSMENT').maybeSingle();
       // Courses are assigned to companies via company_courses junction, not a direct company_id
       const { data: allCourses } = await supabase.from('company_courses').select('course_id').eq('company_id', user.company_id);
-      const empIds2 = employees.map((e: { id: string }) => e.id);
-      const { data: assignedExams } = empIds2.length > 0
-        ? await supabase.from('assigned_exams').select('exam_id').in('assigned_to_employee', empIds2)
-        : { data: [] };
-      const totalCourses = allCourses?.length || 0;
-      const totalExams   = new Set(assignedExams?.map((e: { exam_id: string }) => e.exam_id) ?? []).size;
-
       const empIds = employees.map(e => e.id);
+      const totalCourses = allCourses?.length || 0;
 
-      // Batch-load all exam results and course progress in two queries instead of N×4
-      const [allResultsRes, allCoursesRes] = await Promise.all([
+      // Batch-load all exam results, course progress, and assigned exams concurrently
+      const [allResultsRes, allCoursesRes, assignedExamsRes] = await Promise.all([
         empIds.length > 0
           ? supabase.from('exam_results').select('employee_id,exam_id,percentage,completed_at').in('employee_id', empIds)
           : Promise.resolve({ data: [] as { employee_id: string; exam_id: string; percentage: number; completed_at: string }[] }),
         empIds.length > 0
           ? supabase.from('employee_courses').select('employee_id,completed_at').in('employee_id', empIds)
           : Promise.resolve({ data: [] as { employee_id: string; completed_at: string | null }[] }),
+        empIds.length > 0
+          ? supabase.from('assigned_exams').select('exam_id').in('assigned_to_employee', empIds)
+          : Promise.resolve({ data: [] as { exam_id: string }[] }),
       ]);
+      const totalExams = new Set((assignedExamsRes.data ?? []).map((e: { exam_id: string }) => e.exam_id)).size;
 
       // Group by employee client-side
       const resultsByEmp = new Map<string, { employee_id: string; exam_id: string; percentage: number; completed_at: string }[]>();

@@ -50,7 +50,6 @@ interface PhishingTrend {
   campaign_name: string;
   total_targets: number;
   clicked: number;
-  credentials: number;
   click_rate: number;
 }
 
@@ -321,7 +320,6 @@ export function AdvancedAnalyticsPage() {
         campaign_name: c.name,
         total_targets: c.total_queue_size ?? 0,
         clicked: c.emails_clicked ?? 0,
-        credentials: 0,
         click_rate: (c.total_queue_size ?? 0) > 0 ? Math.round(((c.emails_clicked ?? 0) / c.total_queue_size) * 100) : 0,
       })));
     }
