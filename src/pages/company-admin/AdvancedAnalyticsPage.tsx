@@ -230,9 +230,9 @@ export function AdvancedAnalyticsPage() {
     // 3. Phishing campaigns for this company
     const { data: campaigns } = await supabase
       .from("phishing_campaigns")
-      .select("id, campaign_name, total_targets, emails_opened, links_clicked, credentials_entered")
+      .select("id, name, total_queue_size, emails_opened, emails_clicked")
       .eq("company_id", cid)
-      .order("launch_date", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(8);
 
     // ── Process risk rows ──────────────────────────
@@ -318,11 +318,11 @@ export function AdvancedAnalyticsPage() {
     // ── Process phishing campaigns ─────────────────
     if (campaigns) {
       setPhishingTrends(campaigns.map((c: any) => ({
-        campaign_name: c.campaign_name,
-        total_targets: c.total_targets ?? 0,
-        clicked: c.links_clicked ?? 0,
-        credentials: c.credentials_entered ?? 0,
-        click_rate: c.total_targets > 0 ? Math.round(((c.links_clicked ?? 0) / c.total_targets) * 100) : 0,
+        campaign_name: c.name,
+        total_targets: c.total_queue_size ?? 0,
+        clicked: c.emails_clicked ?? 0,
+        credentials: 0,
+        click_rate: (c.total_queue_size ?? 0) > 0 ? Math.round(((c.emails_clicked ?? 0) / c.total_queue_size) * 100) : 0,
       })));
     }
 
@@ -360,7 +360,6 @@ export function AdvancedAnalyticsPage() {
       Campaign: p.campaign_name,
       "Total Targets": p.total_targets,
       "Clicked Link": p.clicked,
-      "Entered Credentials": p.credentials,
       "Click Rate %": p.click_rate,
     })));
   }
@@ -555,7 +554,7 @@ export function AdvancedAnalyticsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {["Campaign", "Targets", "Clicked", "Credentials", "Click Rate"].map(h => (
+                  {["Campaign", "Targets", "Clicked", "Click Rate"].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: h === "Campaign" ? "left" : "right", color: T.textMuted, fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
                   ))}
                 </tr>
@@ -566,7 +565,6 @@ export function AdvancedAnalyticsPage() {
                     <td style={{ padding: "10px 10px", color: T.text, fontWeight: 600 }}>{p.campaign_name}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.textSub }}>{p.total_targets}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.orange, fontWeight: 600 }}>{p.clicked}</td>
-                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.red, fontWeight: 600 }}>{p.credentials}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
                       <span style={{
                         padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,

@@ -45,6 +45,7 @@ interface AnalyticsData {
   totalCourses: number;   completedCourses: number;
   totalExams: number;     passedExams: number;
   averageScore: number;   platformUsage: number;
+  totalExamAttempts: number;
 }
 interface CompanyStats {
   company_id: string; company_name: string;
@@ -361,7 +362,7 @@ export const AnalyticsPage: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     totalCompanies: 0, activeCompanies: 0, totalUsers: 0, totalEmployees: 0,
     totalCourses: 0, completedCourses: 0, totalExams: 0, passedExams: 0,
-    averageScore: 0, platformUsage: 0,
+    averageScore: 0, platformUsage: 0, totalExamAttempts: 0,
   });
   const [companyStats, setCompanyStats] = useState<CompanyStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -401,6 +402,7 @@ export const AnalyticsPage: React.FC = () => {
         totalExams: exams.length, passedExams,
         averageScore: Math.round(avgScore),
         platformUsage: employeeCourses.length + examResults.length,
+        totalExamAttempts: examResults.length,
       });
 
       const statsMap = new Map<string, CompanyStats>();
@@ -457,7 +459,7 @@ export const AnalyticsPage: React.FC = () => {
         <StatCard icon={Building2}  color={T.accent}  bg="rgba(200,255,0,0.08)"  label="Total Companies"   value={analytics.totalCompanies}   sub={`${analytics.activeCompanies} active`}      delay="0.00s" />
         <StatCard icon={Users}      color={T.green}   bg={T.greenBg}             label="Total Employees"   value={analytics.totalEmployees}   sub={`${analytics.totalUsers} total users`}      delay="0.04s" />
         <StatCard icon={BookOpen}   color={T.purple}  bg={T.purpleBg}            label="Completed Courses" value={analytics.completedCourses} sub={`of ${analytics.totalCourses} total`}       delay="0.08s" />
-        <StatCard icon={Award}      color={T.orange}  bg={T.orangeBg}            label="Passed Exams"      value={analytics.passedExams}      sub={`of ${analytics.totalExams} exams`}         delay="0.12s" />
+        <StatCard icon={Award}      color={T.orange}  bg={T.orangeBg}            label="Passed Exams"      value={analytics.passedExams}      sub={`of ${analytics.totalExamAttempts} attempts`} delay="0.12s" />
         <StatCard icon={Activity}   color={T.blue}    bg={T.blueBg}              label="Total Activities"  value={analytics.platformUsage}    sub="courses + exams"                            delay="0.16s" />
         <StatCard icon={TrendingUp} color={T.accent}  bg="rgba(200,255,0,0.08)" label="Avg Score"         value={`${analytics.averageScore}%`} sub={`Platform-wide · ${lvl.label}`}           delay="0.20s" />
       </div>
@@ -502,7 +504,7 @@ export const AnalyticsPage: React.FC = () => {
           </div>
           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
             <MiniBar label="Course Completion" value={analytics.completedCourses} max={analytics.totalCourses}  color={T.purple} />
-            <MiniBar label="Exam Pass Rate"    value={analytics.passedExams}      max={analytics.totalExams}    color={T.green}  />
+            <MiniBar label="Exam Pass Rate"    value={analytics.passedExams}      max={analytics.totalExamAttempts || 1}    color={T.green}  />
             <MiniBar label="Employee Coverage" value={analytics.totalEmployees}   max={analytics.totalUsers}    color={T.blue}   />
             <div style={{ paddingTop: 12, borderTop: `1px solid ${T.borderFaint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: T.textBody }}>Total Activities</span>

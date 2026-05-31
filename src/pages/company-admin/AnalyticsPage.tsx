@@ -334,9 +334,12 @@ export const AnalyticsPage: React.FC = () => {
       const { data: postExam } = await supabase.from('exams').select('id').eq('exam_type', 'POST_ASSESSMENT').maybeSingle();
       // Courses are assigned to companies via company_courses junction, not a direct company_id
       const { data: allCourses } = await supabase.from('company_courses').select('course_id').eq('company_id', user.company_id);
-      const { data: allExams   } = await supabase.from('exams').select('id');
+      const empIds2 = employees.map((e: { id: string }) => e.id);
+      const { data: assignedExams } = empIds2.length > 0
+        ? await supabase.from('assigned_exams').select('exam_id').in('assigned_to_employee', empIds2)
+        : { data: [] };
       const totalCourses = allCourses?.length || 0;
-      const totalExams   = allExams?.length || 0;
+      const totalExams   = new Set(assignedExams?.map((e: { exam_id: string }) => e.exam_id) ?? []).size;
 
       const empIds = employees.map(e => e.id);
 
