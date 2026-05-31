@@ -9,7 +9,7 @@
  * not already passed) so a tampered client cannot bypass the gate.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { captureException } from "../_shared/sentry.ts";
+import { captureException } from "./sentry.ts";
 
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!;
