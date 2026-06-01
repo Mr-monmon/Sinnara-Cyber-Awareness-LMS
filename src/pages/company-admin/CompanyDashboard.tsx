@@ -137,8 +137,8 @@ const DonutChart: React.FC<{ completed: number; pending: number; pct: number }> 
         <svg width={140} height={140} viewBox="0 0 140 140">
           <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={10} />
           <circle cx={cx} cy={cy} r={R} fill="none" stroke={T.orange} strokeWidth={10} strokeLinecap="round"
-            strokeDasharray={`${circ - dash} ${dash}`}
-            strokeDashoffset={dash * 0}
+            strokeDasharray={`${circ} ${circ}`}
+            strokeDashoffset={-dash}
             style={{ transform: 'rotate(-90deg)', transformOrigin: '70px 70px' }}
           />
           <circle cx={cx} cy={cy} r={R} fill="none" stroke={T.green} strokeWidth={10} strokeLinecap="round"

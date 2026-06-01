@@ -470,7 +470,7 @@ export const ComplianceReportPage: React.FC = () => {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text("This report is generated automatically from data captured in the Sinnara Cyber Awareness LMS.", margin, y);
+      doc.text("This report is generated automatically from data captured in the AwareOne Platform.", margin, y);
       y += 12;
       doc.text("It maps observed activity to controls from NCA ECC and SAMA Cybersecurity Framework.", margin, y);
       y += 12;

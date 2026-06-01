@@ -50,7 +50,6 @@ interface PhishingTrend {
   campaign_name: string;
   total_targets: number;
   clicked: number;
-  credentials: number;
   click_rate: number;
 }
 
@@ -230,7 +229,7 @@ export function AdvancedAnalyticsPage() {
     // 3. Phishing campaigns for this company
     const { data: campaigns } = await supabase
       .from("phishing_campaigns")
-      .select("id, name, total_queue_size, emails_opened, emails_clicked")
+      .select("id, name, total_queue_size, emails_opened, links_clicked")
       .eq("company_id", cid)
       .order("created_at", { ascending: false })
       .limit(8);
@@ -320,9 +319,8 @@ export function AdvancedAnalyticsPage() {
       setPhishingTrends(campaigns.map((c: any) => ({
         campaign_name: c.name,
         total_targets: c.total_queue_size ?? 0,
-        clicked: c.emails_clicked ?? 0,
-        credentials: 0,
-        click_rate: (c.total_queue_size ?? 0) > 0 ? Math.round(((c.emails_clicked ?? 0) / c.total_queue_size) * 100) : 0,
+        clicked: c.links_clicked ?? 0,
+        click_rate: (c.total_queue_size ?? 0) > 0 ? Math.round(((c.links_clicked ?? 0) / c.total_queue_size) * 100) : 0,
       })));
     }
 

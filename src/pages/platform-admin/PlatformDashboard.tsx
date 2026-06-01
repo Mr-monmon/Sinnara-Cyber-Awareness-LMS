@@ -173,7 +173,7 @@ interface TopCompany { name: string; employees: number; }
 interface MonthRevenue { month: string; amount: number; }
 interface PhishingCampaignRow {
   id: string; name: string; status: string;
-  emails_sent: number; emails_opened: number; emails_clicked: number;
+  emails_sent: number; emails_opened: number; links_clicked: number;
   total_queue_size: number; company_id: string;
   companies: { name: string } | null;
   created_at: string;
@@ -225,10 +225,10 @@ export const PlatformDashboard = () => {
         supabase.from("users").select("company_id").eq("role", "EMPLOYEE"),
         supabase.from("phishing_campaigns").select("id", { count: "exact", head: true }),
         supabase.from("phishing_campaigns")
-          .select("id, name, status, emails_sent, emails_opened, emails_clicked, total_queue_size, company_id, companies(name), created_at")
+          .select("id, name, status, emails_sent, emails_opened, links_clicked, total_queue_size, company_id, companies(name), created_at")
           .order("created_at", { ascending: false })
           .limit(8),
-        supabase.from("phishing_campaigns").select("emails_sent, emails_clicked"),
+        supabase.from("phishing_campaigns").select("emails_sent, links_clicked"),
       ]);
 
       // Revenue
@@ -295,7 +295,7 @@ export const PlatformDashboard = () => {
         activeCampaigns: campaigns.filter(c => c.status === 'RUNNING').length,
         totalCampaigns: campaignCountRes.count ?? 0,
         phishingEmailsSent: (phishingTotalsRes.data ?? []).reduce((s: number, c: { emails_sent: number }) => s + (c.emails_sent || 0), 0),
-        phishingClicked: (phishingTotalsRes.data ?? []).reduce((s: number, c: { emails_clicked: number }) => s + (c.emails_clicked || 0), 0),
+        phishingClicked: (phishingTotalsRes.data ?? []).reduce((s: number, c: { links_clicked: number }) => s + (c.links_clicked || 0), 0),
       });
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -517,7 +517,7 @@ export const PlatformDashboard = () => {
                   {/* Clicked */}
                   <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <MousePointer size={10} style={{ color: T.red }} />
-                    <span style={{ fontSize: 12, color: T.red, fontWeight: 600 }}>{c.emails_clicked || 0}</span>
+                    <span style={{ fontSize: 12, color: T.red, fontWeight: 600 }}>{c.links_clicked || 0}</span>
                   </div>
                 </div>
               );

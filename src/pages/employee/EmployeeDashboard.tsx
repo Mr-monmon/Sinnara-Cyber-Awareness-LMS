@@ -265,7 +265,7 @@ export const EmployeeDashboard: React.FC = () => {
   const isRtl = i18n.dir() === "rtl";
 
   useEffect(() => { loadCompany(); loadStats(); }, [user]);
-  useEffect(() => { if (!isLoading && assignedExams.length > 0) setActivePage("my-exams"); }, [isLoading, assignedExams]);
+  // intentionally not auto-redirecting to exams — employee can navigate freely
 
   const loadAssignedExams = async () => {
     if (!user) return;
@@ -579,7 +579,7 @@ export const EmployeeDashboard: React.FC = () => {
       {isLoading ? (
         <LoadingScreen />
       ) : company?.is_active ? (
-        <DashboardLayout activePage={activePage} onNavigate={(page) => { if (assignedExams.length > 0 && page !== "my-exams") return; setActivePage(page); }}>
+        <DashboardLayout activePage={activePage} onNavigate={(page) => setActivePage(page)}>
           {renderContent()}
         </DashboardLayout>
       ) : (
