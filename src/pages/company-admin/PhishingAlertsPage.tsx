@@ -57,7 +57,7 @@ interface PhishingAlert {
   message: string;
   is_read: boolean;
   created_at: string;
-  phishing_campaigns?: { campaign_name: string } | null;
+  phishing_campaigns?: { name: string } | null;
 }
 
 type FilterTab = 'ALL' | 'UNREAD' | 'CRITICAL' | 'HIGH';
@@ -76,7 +76,7 @@ export const PhishingAlertsPage: React.FC = () => {
     setLoading(true);
     const { data } = await supabase
       .from('phishing_alerts')
-      .select('*, phishing_campaigns(campaign_name)')
+      .select('*, phishing_campaigns(name)')
       .eq('company_id', user?.company_id)
       .order('created_at', { ascending: false })
       .limit(200);
@@ -199,8 +199,8 @@ export const PhishingAlertsPage: React.FC = () => {
                     <p style={{ margin: '0 0 4px', fontSize: 13, color: T.textBody, lineHeight: 1.5 }}>{alert.message}</p>
                     <div style={{ display: 'flex', gap: 12, fontSize: 12, color: T.textMuted }}>
                       <span>{timeAgo(alert.created_at)}</span>
-                      {alert.phishing_campaigns?.campaign_name && (
-                        <span style={{ color: T.blue }}>Campaign: {alert.phishing_campaigns.campaign_name}</span>
+                      {alert.phishing_campaigns?.name && (
+                        <span style={{ color: T.blue }}>Campaign: {alert.phishing_campaigns.name}</span>
                       )}
                     </div>
                   </div>
@@ -230,10 +230,10 @@ export const PhishingAlertsPage: React.FC = () => {
             </div>
             <div style={{ fontSize: 14, color: T.textBody, lineHeight: 1.7, marginBottom: 16 }}>{selected.message}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {selected.phishing_campaigns?.campaign_name && (
+              {selected.phishing_campaigns?.name && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span style={{ fontSize: 12, color: T.textMuted, width: 90 }}>Campaign</span>
-                  <span style={{ fontSize: 12, color: T.blue }}>{selected.phishing_campaigns.campaign_name}</span>
+                  <span style={{ fontSize: 12, color: T.blue }}>{selected.phishing_campaigns.name}</span>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
