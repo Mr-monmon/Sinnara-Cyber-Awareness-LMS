@@ -130,9 +130,11 @@ export interface RequestWithCompany extends PhishingCampaignRequest {
 
 export interface PhishingCampaign {
   id: string;
-  campaign_name: string;
+  name: string;
   status: string;
-  launch_date: string;
+  launched_at: string | null;
+  launch_date: string | null;
+  total_queue_size: number;
   total_targets: number;
   emails_sent: number;
   open_rate: number;
@@ -143,7 +145,7 @@ export interface PhishingCampaign {
   links_clicked: number;
   credentials_entered: number;
   emails_reported: number;
-  completion_date: string;
+  completion_date: string | null;
 }
 
 export interface PhishingCampaignQuota {

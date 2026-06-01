@@ -241,12 +241,18 @@ const CampaignBarChart: React.FC<{ campaigns: PhishingCampaign[] }> = ({ campaig
         })}
         {/* Bars */}
         {data.map((c, i) => {
+          const total = c.total_queue_size || c.total_targets || 0;
+          const computedRates = {
+            click_rate:      total > 0 ? Math.round((c.links_clicked       / total) * 100) : 0,
+            reporting_rate:  total > 0 ? Math.round((c.emails_reported     / total) * 100) : 0,
+            credential_rate: total > 0 ? Math.round((c.credentials_entered / total) * 100) : 0,
+          };
           const x = barX(i);
           const miniW = BAR_W / 3;
           return (
             <g key={c.id}>
               {metrics.map((m, mi) => {
-                const val = (c[m.key] || 0);
+                const val = computedRates[m.key];
                 const bh  = (val / maxVal) * H;
                 return (
                   <rect key={mi} x={x + mi * miniW} y={H - bh} width={miniW - 2} height={bh}
@@ -255,7 +261,7 @@ const CampaignBarChart: React.FC<{ campaigns: PhishingCampaign[] }> = ({ campaig
               })}
               {/* Campaign label */}
               <text x={x + BAR_W / 2} y={H + 14} textAnchor="middle" fontSize={8} fill={T.textMuted} fontFamily="Inter">
-                {c.campaign_name.slice(0, 8)}
+                {(c.name || '').slice(0, 8)}
               </text>
             </g>
           );
@@ -290,8 +296,8 @@ const TrendLine: React.FC<{ campaigns: PhishingCampaign[] }> = ({ campaigns }) =
   const xStep = (W - PAD * 2) / (data.length - 1);
   const toXY = (i: number, val: number) => ({ x: PAD + i * xStep, y: PAD + ((100 - val) / 100) * (H - PAD * 2) });
 
-  const clickPts  = data.map((c, i) => toXY(i, c.click_rate || 0));
-  const reportPts = data.map((c, i) => toXY(i, c.reporting_rate || 0));
+  const clickPts  = data.map((c, i) => { const t = c.total_queue_size || c.total_targets || 0; return toXY(i, t > 0 ? Math.round((c.links_clicked   / t) * 100) : 0); });
+  const reportPts = data.map((c, i) => { const t = c.total_queue_size || c.total_targets || 0; return toXY(i, t > 0 ? Math.round((c.emails_reported / t) * 100) : 0); });
 
   const path = (pts: { x: number; y: number }[]) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
@@ -371,13 +377,21 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const handleSelectCampaign = async (id: string) => { setSelectedCampaign(id); await loadDeptStats(id); };
 
   const exportCSV = () => {
-    const rows = campaigns.map(c => ({
-      'Campaign': c.campaign_name, 'Status': c.status,
-      'Launch Date': c.launch_date ? new Date(c.launch_date).toLocaleDateString() : 'N/A',
-      'Targets': c.total_targets, 'Sent': c.emails_sent,
-      'Open %': c.open_rate || 0, 'Click %': c.click_rate || 0,
-      'Cred %': c.credential_rate || 0, 'Report %': c.reporting_rate || 0,
-    }));
+    const rows = campaigns.map(c => {
+      const total = c.total_queue_size || c.total_targets || 0;
+      const launchDate = c.launched_at || c.launch_date;
+      return {
+        'Campaign':   c.name,
+        'Status':     c.status,
+        'Launch Date': launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
+        'Targets':    total,
+        'Sent':       c.emails_sent,
+        'Open %':     total > 0 ? Math.round((c.emails_opened       / total) * 100) : 0,
+        'Click %':    total > 0 ? Math.round((c.links_clicked        / total) * 100) : 0,
+        'Cred %':     total > 0 ? Math.round((c.credentials_entered  / total) * 100) : 0,
+        'Report %':   total > 0 ? Math.round((c.emails_reported      / total) * 100) : 0,
+      };
+    });
     const csv = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
@@ -393,10 +407,16 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
 
   const completedCampaigns  = campaigns.filter(c => c.status === 'COMPLETED');
   const remainingQuota      = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-  const avgClickRate        = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.click_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgReportRate       = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.reporting_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgCredRate         = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + (c.credential_rate || 0), 0) / completedCampaigns.length).toFixed(1) : '0';
+  const computeRate = (c: PhishingCampaign, count: number) => { const t = c.total_queue_size || c.total_targets || 0; return t > 0 ? (count / t) * 100 : 0; };
+  const avgClickRate        = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.links_clicked),        0) / completedCampaigns.length).toFixed(1) : '0';
+  const avgReportRate       = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.emails_reported),       0) / completedCampaigns.length).toFixed(1) : '0';
+  const avgCredRate         = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.credentials_entered),   0) / completedCampaigns.length).toFixed(1) : '0';
   const selectedData        = campaigns.find(c => c.id === selectedCampaign);
+  const selTotal            = selectedData ? (selectedData.total_queue_size || selectedData.total_targets || 0) : 0;
+  const selClickRate        = selTotal > 0 && selectedData ? Math.round((selectedData.links_clicked        / selTotal) * 100) : 0;
+  const selCredRate         = selTotal > 0 && selectedData ? Math.round((selectedData.credentials_entered  / selTotal) * 100) : 0;
+  const selReportRate       = selTotal > 0 && selectedData ? Math.round((selectedData.emails_reported      / selTotal) * 100) : 0;
+  const selOpenRate         = selTotal > 0 && selectedData ? Math.round((selectedData.emails_opened        / selTotal) * 100) : 0;
   const radarData           = deptStats.map(d => ({ label: d.department?.name || 'Dept', score: d.vulnerability_score }));
 
   return (
@@ -504,7 +524,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
               <select className="aw-ph-select" value={selectedCampaign || ''} onChange={e => handleSelectCampaign(e.target.value)}>
                 {completedCampaigns.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.campaign_name} — {c.completion_date ? new Date(c.completion_date).toLocaleDateString('en-SA', { month: 'short', year: 'numeric' }) : 'N/A'}
+                    {c.name || 'Campaign'} — {c.completion_date ? new Date(c.completion_date).toLocaleDateString('en-SA', { month: 'short', year: 'numeric' }) : 'N/A'}
                   </option>
                 ))}
               </select>
@@ -514,10 +534,10 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
           {/* Campaign metric mini cards */}
           <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
             {[
-              { icon: TrendingUp,      color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate',       sub: `${selectedData.emails_opened} opened`,                     value: `${selectedData.open_rate || 0}%` },
-              { icon: MousePointerClick, color: T.red,  bg: T.redBg,    border: T.redBorder,    label: 'Click Rate',      sub: `${selectedData.links_clicked} clicked`,                    value: `${selectedData.click_rate || 0}%` },
-              { icon: KeyRound,        color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate', sub: `${selectedData.credentials_entered || 0} entered creds`,   value: `${selectedData.credential_rate || 0}%` },
-              { icon: Flag,            color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Reporting Rate',  sub: `${selectedData.emails_reported} reported`,                 value: `${selectedData.reporting_rate || 0}%` },
+              { icon: TrendingUp,        color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate',       sub: `${selectedData.emails_opened} opened`,                    value: `${selOpenRate}%`   },
+              { icon: MousePointerClick, color: T.red,   bg: T.redBg,    border: T.redBorder,    label: 'Click Rate',      sub: `${selectedData.links_clicked} clicked`,                   value: `${selClickRate}%`  },
+              { icon: KeyRound,          color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate', sub: `${selectedData.credentials_entered || 0} entered creds`,  value: `${selCredRate}%`   },
+              { icon: Flag,              color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Reporting Rate',  sub: `${selectedData.emails_reported} reported`,                value: `${selReportRate}%` },
             ].map(({ icon: Icon, color, bg, border, label, sub, value }) => (
               <div key={label} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
