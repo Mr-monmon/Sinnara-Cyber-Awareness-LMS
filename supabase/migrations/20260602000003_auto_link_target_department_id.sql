@@ -47,13 +47,14 @@ $$;
 -- Trigger definition is unchanged (BEFORE INSERT); recreating the function is enough.
 
 -- Backfill department_id for existing target rows that have a matchable employee.
+-- NOTE: in UPDATE ... FROM, the update target (t) cannot be referenced inside an
+-- explicit JOIN ... ON, so the join lives entirely in the WHERE clause.
 UPDATE phishing_campaign_targets t
 SET department_id = u.department_id
-FROM phishing_campaigns c
-JOIN users u
-  ON lower(u.email) = lower(t.email)
- AND u.company_id   = c.company_id
- AND u.role         = 'EMPLOYEE'
-WHERE t.campaign_id = c.id
+FROM phishing_campaigns c, users u
+WHERE t.campaign_id    = c.id
+  AND lower(u.email)   = lower(t.email)
+  AND u.company_id     = c.company_id
+  AND u.role           = 'EMPLOYEE'
   AND t.department_id IS NULL
   AND u.department_id IS NOT NULL;
