@@ -45,9 +45,10 @@ async function logEvent(params: {
   const { campaign_id, recipient_id, event_type, ip, ua, metadata = {} } = params;
   const uaParsed = parseUserAgent(ua);
 
+  // Pull the current funnel state so we can dedupe and avoid status regression.
   const { data: target } = await supabase
     .from("phishing_campaign_targets")
-    .select("id, email, campaign_id")
+    .select("id, email, campaign_id, status, opened_at, clicked_at, submitted_at, reported_at")
     .eq("recipient_id", recipient_id)
     .eq("campaign_id", campaign_id)
     .single();
@@ -62,6 +63,7 @@ async function logEvent(params: {
 
   if (!campaign) return null;
 
+  // Always record the raw event — multiple opens/clicks are legitimate history.
   const { data: event } = await supabase.from("phishing_events").insert({
     campaign_id,
     target_id: target.id,
@@ -77,35 +79,54 @@ async function logEvent(params: {
     metadata,
   }).select().single();
 
+  // Map each event to its funnel timestamp, target status, rank, and aggregate counter.
+  // Rank lets us advance status forward only (an EMAIL_OPENED must never overwrite CLICKED).
   const tsField: Record<string, string> = {
     EMAIL_OPENED: "opened_at",
     LINK_CLICKED: "clicked_at",
     FORM_SUBMITTED: "submitted_at",
+    EMAIL_REPORTED: "reported_at",
   };
   const statusMap: Record<string, string> = {
     EMAIL_OPENED: "OPENED",
     LINK_CLICKED: "CLICKED",
     FORM_SUBMITTED: "SUBMITTED",
   };
-  if (tsField[event_type]) {
-    await supabase.from("phishing_campaign_targets")
-      .update({ [tsField[event_type]]: new Date().toISOString(), status: statusMap[event_type] })
-      .eq("id", target.id);
-  }
-
   const statField: Record<string, string> = {
     EMAIL_OPENED: "emails_opened",
     LINK_CLICKED: "links_clicked",
     FORM_SUBMITTED: "data_submitted",
+    EMAIL_REPORTED: "emails_reported",
   };
-  if (statField[event_type]) {
-    await supabase.rpc("increment_campaign_stat", {
-      p_campaign_id: campaign_id,
-      p_field: statField[event_type],
-    }).then(() => {});
+  const statusRank: Record<string, number> = {
+    PENDING: 0, SENT: 1, OPENED: 2, CLICKED: 3, SUBMITTED: 4,
+  };
+
+  // Has this target already reached this stage? If so, this is a repeat hit —
+  // record the event above but do NOT increment the campaign counter again.
+  const existingTs = (target as Record<string, unknown>)[tsField[event_type] ?? ""] as string | null;
+  const isFirstForStage = !existingTs;
+
+  if (tsField[event_type] && isFirstForStage) {
+    const update: Record<string, unknown> = { [tsField[event_type]]: new Date().toISOString() };
+    // Reporting is independent of the open→click→submit funnel and must not move status.
+    const newStatus = statusMap[event_type];
+    if (newStatus) {
+      const currentRank = statusRank[target.status as string] ?? 0;
+      const newRank = statusRank[newStatus] ?? 0;
+      if (newRank > currentRank) update.status = newStatus;
+    }
+    await supabase.from("phishing_campaign_targets").update(update).eq("id", target.id);
+
+    if (statField[event_type]) {
+      await supabase.rpc("increment_campaign_stat", {
+        p_campaign_id: campaign_id,
+        p_field: statField[event_type],
+      }).then(() => {});
+    }
   }
 
-  if (event_type === "LINK_CLICKED" || event_type === "FORM_SUBMITTED") {
+  if (isFirstForStage && (event_type === "LINK_CLICKED" || event_type === "FORM_SUBMITTED")) {
     const priority = event_type === "FORM_SUBMITTED" ? "CRITICAL" : "HIGH";
     const alertTitle = event_type === "FORM_SUBMITTED"
       ? `Credentials Submitted — ${target.email}`
@@ -228,6 +249,22 @@ Deno.serve(async (req) => {
     }
     const redirectUrl = url.searchParams.get("redirect") ?? "https://www.google.com";
     return Response.redirect(redirectUrl, 302);
+  }
+
+  if (t === "report") {
+    // Recipient reported the email as phishing (e.g. "Report" button / mailbox plugin).
+    // Independent of the funnel — feeds reporting_rate, never alters open/click/submit status.
+    logEvent({ campaign_id, recipient_id, event_type: "EMAIL_REPORTED", ip, ua }).catch(() => {});
+    if (req.method === "GET") {
+      return new Response(TRANSPARENT_GIF, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   const errId = `PT-${Date.now().toString(36).toUpperCase()}-UNKNOWN`;
