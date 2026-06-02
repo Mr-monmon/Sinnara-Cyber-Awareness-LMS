@@ -119,6 +119,18 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
     if (!editTarget || !form) return;
     setSaving(true);
     await supabase.from('company_phishing_limits').update({ ...form, updated_at: new Date().toISOString() }).eq('id', editTarget.id);
+    // Keep the license quota in sync — "Max Campaigns / Year" here and the
+    // "Annual Quota" in Campaign Requests → Quota Management are the same
+    // concept, so an edit in either place updates both (no contradiction).
+    await supabase.from('phishing_campaign_quotas').upsert(
+      {
+        company_id: editTarget.company_id,
+        annual_quota: form.max_campaigns_per_year,
+        quota_year: new Date().getFullYear(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'company_id,quota_year' }
+    );
     await fetchLimits();
     setSaving(false);
     setEditTarget(null);

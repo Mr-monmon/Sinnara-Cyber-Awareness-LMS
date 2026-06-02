@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import {
   Upload, AlertCircle, CheckCircle, Loader2, X,
   Shield, Mail, MousePointer, FileText, Flag,
-  Building2, ChevronRight, Eye,
+  Building2, ChevronRight, Eye, Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { parseCSV, calculateCampaignStats, getStatusFromRecord } from "../../lib/gophishCsvParser";
@@ -153,11 +153,6 @@ interface TargetData {
   first_name: string; last_name: string;
   position: string; status: string;
 }
-interface CampaignTargetUpdate {
-  status: string; sent_at: string | null;
-  opened_at?: string; clicked_at?: string;
-  submitted_at?: string; reported_at?: string;
-}
 const getErrorMessage = (err: unknown, fallback: string) => {
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) {
@@ -248,42 +243,111 @@ export const PhishingCampaignResultsPage: React.FC = () => {
     setUploading(true); setError(''); setSuccess('');
     try {
       const stats = calculateCampaignStats(csvData.records);
-      await supabase.from('phishing_campaigns').insert({
-        company_id: selectedCampaign.company_id,
-        campaign_name: selectedCampaign.campaign_name,
-        template_id: selectedCampaign.template_id,
-        launch_date: new Date().toISOString(),
-        request_id: selectedCampaign.id,
-        total_targets: stats.total_targets,
-        emails_sent: stats.emails_sent,
-        emails_opened: stats.emails_opened,
-        links_clicked: stats.links_clicked,
-        data_submitted: stats.data_submitted,
-        emails_reported: stats.emails_reported,
-        status: 'COMPLETED',
-        completion_date: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      const nowIso = new Date().toISOString();
+
+      // 1. Create the campaign record. We populate BOTH the legacy and the new
+      //    aggregate columns so every dashboard (Live Monitor + the company
+      //    Phishing Dashboard, which computes rates from raw counts) reflects
+      //    the uploaded numbers.
+      const { data: campaign, error: campErr } = await supabase
+        .from('phishing_campaigns')
+        .insert({
+          company_id: selectedCampaign.company_id,
+          name: selectedCampaign.campaign_name,
+          template_id: selectedCampaign.template_id || null,
+          request_id: selectedCampaign.id,
+          launch_date: nowIso,
+          launched_at: nowIso,
+          total_targets: stats.total_targets,
+          total_queue_size: stats.total_targets,
+          emails_sent: stats.emails_sent,
+          emails_opened: stats.emails_opened,
+          links_clicked: stats.links_clicked,
+          data_submitted: stats.data_submitted,
+          credentials_entered: stats.data_submitted,
+          emails_reported: stats.emails_reported,
+          status: 'COMPLETED',
+          completion_date: nowIso,
+          updated_at: nowIso,
+        })
+        .select('id')
+        .single();
+      if (campErr) throw campErr;
+      const campaignId = campaign.id as string;
+
+      // 2. Insert one row per target, linked to the campaign we just created.
+      //    employee_id is left NULL on purpose: the auto_link_target_to_employee
+      //    trigger matches each row to the real employee by email within the
+      //    company, so the result reflects on that employee's risk profile.
+      const rows = targetData.map(target => {
+        const rec = csvData.records.find(r => r.email === target.email);
+        const mod = rec?.modified_date ? new Date(rec.modified_date).toISOString() : null;
+        const row: Record<string, unknown> = {
+          campaign_id: campaignId,
+          employee_id: null,
+          email: target.email,
+          first_name: target.first_name,
+          last_name: target.last_name,
+          position: target.position,
+          status: target.status,
+          sent_at: rec?.send_date ? new Date(rec.send_date).toISOString() : null,
+        };
+        if (target.status === 'OPENED')    row.opened_at    = mod;
+        if (target.status === 'CLICKED')   row.clicked_at   = mod;
+        if (target.status === 'SUBMITTED') { row.submitted_at = mod; row.credentials_entered = true; }
+        if (target.status === 'REPORTED')  row.reported_at  = mod;
+        return row;
       });
-      for (const target of targetData) {
-        const gophishRecord = csvData.records.find(r => r.email === target.email);
-        if (!gophishRecord) continue;
-        const { data: existing } = await supabase.from('phishing_campaign_targets').select('id').eq('campaign_id', selectedCampaign.id).eq('email', target.email).maybeSingle();
-        const updateData: CampaignTargetUpdate = { status: target.status, sent_at: gophishRecord.send_date ? new Date(gophishRecord.send_date).toISOString() : null };
-        if (target.status === 'OPENED')    updateData.opened_at    = new Date(gophishRecord.modified_date).toISOString();
-        if (target.status === 'CLICKED')   updateData.clicked_at   = new Date(gophishRecord.modified_date).toISOString();
-        if (target.status === 'SUBMITTED') updateData.submitted_at = new Date(gophishRecord.modified_date).toISOString();
-        if (target.status === 'REPORTED')  updateData.reported_at  = new Date(gophishRecord.modified_date).toISOString();
-        if (existing) {
-          await supabase.from('phishing_campaign_targets').update(updateData).eq('id', existing.id);
-        } else {
-          await supabase.from('phishing_campaign_targets').insert([{ campaign_id: selectedCampaign.id, employee_id: '00000000-0000-0000-0000-000000000000', email: target.email, first_name: target.first_name, last_name: target.last_name, position: target.position, ...updateData }]);
-        }
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error: tErr } = await supabase.from('phishing_campaign_targets').insert(rows.slice(i, i + 500));
+        if (tErr) throw tErr;
       }
-      setSuccess('Campaign results uploaded successfully!');
+
+      // 3. Safety net — link any target the trigger could not match (e.g. RLS
+      //    ordering) to its employee by email.
+      await supabase.rpc('link_targets_to_employees', { p_campaign_id: campaignId });
+
+      // 4. Close out the originating request so it leaves the active queue.
+      await supabase.from('phishing_campaign_requests')
+        .update({ status: 'COMPLETED', updated_at: nowIso })
+        .eq('id', selectedCampaign.id);
+
+      setSuccess('Campaign results uploaded and linked to employees successfully!');
       setCsvData(null); setTargetData([]); setSelectedCampaign(null);
       loadCampaigns();
     } catch (err) { setError(getErrorMessage(err, 'Failed to upload campaign results')); }
     finally { setUploading(false); }
+  };
+
+  /* Download the exact tab-separated format the parser expects (the native
+     Gophish "Export CSV" layout). Gives the platform team a ready-to-fill
+     template so uploaded results always parse and map to employees. */
+  const downloadTemplate = () => {
+    const headers = [
+      'id', 'status', 'ip', 'latitude', 'longitude',
+      'send_date', 'reported', 'modified_date',
+      'email', 'first_name', 'last_name', 'position',
+    ];
+    const sample = [
+      '1', 'Email Sent', '', '', '',
+      '2026-01-01T09:00:00Z', 'false', '2026-01-01T09:00:00Z',
+      'employee@company.com', 'Sara', 'Ahmed', 'Operations',
+    ];
+    const sample2 = [
+      '2', 'Clicked Link', '11.22.33.44', '24.7136', '46.6753',
+      '2026-01-01T09:00:00Z', 'false', '2026-01-01T09:05:00Z',
+      'manager@company.com', 'Omar', 'Khalid', 'Finance',
+    ];
+    const tsv = [headers, sample, sample2].map(r => r.join('\t')).join('\n') + '\n';
+    const blob = new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'gophish-results-template.tsv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (loading) return (
@@ -389,19 +453,45 @@ export const PhishingCampaignResultsPage: React.FC = () => {
               <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Upload size={14} style={{ color: T.accent }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Upload Gophish CSV</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Upload Gophish Results</span>
+                  <button
+                    onClick={downloadTemplate}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.25)', color: T.accent, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <Download size={12} /> Download Template
+                  </button>
                 </div>
                 <div style={{ padding: '18px 20px' }}>
+                  {/* Required format documentation */}
+                  <div style={{ padding: '12px 14px', background: 'rgba(96,165,250,0.06)', border: `1px solid ${T.blueBorder}`, borderRadius: 10, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.blue, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <FileText size={12} /> Required file format (tab-separated, native Gophish export)
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textBody, lineHeight: '18px', marginBottom: 8 }}>
+                      Columns, in order:{' '}
+                      <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4, fontSize: 10 }}>
+                        id · status · ip · latitude · longitude · send_date · reported · modified_date · email · first_name · last_name · position
+                      </code>
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textMuted, lineHeight: '18px' }}>
+                      <strong style={{ color: T.textBody }}>status</strong> values that map to results:{' '}
+                      <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>Email Sent</code>,{' '}
+                      <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>Opened</code>,{' '}
+                      <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>Clicked Link</code>,{' '}
+                      <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>Submitted Data</code>.{' '}
+                      Set <strong style={{ color: T.textBody }}>reported</strong> to <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>true</code> for reported emails.
+                      The <strong style={{ color: T.textBody }}>email</strong> column must match the employee's address so results link to their profile.
+                    </div>
+                  </div>
                   <label className="aw-pcr-label" style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>
-                    CSV / TSV File from Gophish export
+                    Results file from Gophish export
                   </label>
                   <input
-                    type="file" accept=".csv,.txt"
+                    type="file" accept=".csv,.txt,.tsv"
                     className="aw-pcr-file-input"
                     onChange={handleFileUpload}
                     disabled={csvData !== null}
                   />
-                  <p style={{ fontSize: 11, color: T.textMuted, marginTop: 8 }}>Accepts CSV or TSV format exported from Gophish</p>
+                  <p style={{ fontSize: 11, color: T.textMuted, marginTop: 8 }}>Accepts the tab-separated CSV / TSV file exported from Gophish</p>
                 </div>
               </div>
 

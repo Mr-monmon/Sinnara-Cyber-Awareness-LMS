@@ -352,6 +352,11 @@ const QuotaTab: React.FC = () => {
         { company_id: companyId, annual_quota: val, quota_year: new Date().getFullYear(), updated_at: new Date().toISOString() },
         { onConflict: 'company_id,quota_year' }
       );
+      // Keep the per-company limit in sync — both represent "campaigns / year",
+      // so editing the annual quota here also updates Company Phishing Limits.
+      await supabase.from('company_phishing_limits')
+        .update({ max_campaigns_per_year: val, updated_at: new Date().toISOString() })
+        .eq('company_id', companyId);
       setEditId(null);
       loadQuotas();
     } catch (err: any) { alert(err.message || 'Failed to save'); }
