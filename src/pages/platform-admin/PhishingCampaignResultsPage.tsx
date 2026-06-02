@@ -6,7 +6,7 @@ import {
   Building2, ChevronRight, Eye, Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { parseCSV, calculateCampaignStats, getStatusFromRecord } from "../../lib/gophishCsvParser";
+import { parseCSV, calculateCampaignStats, getStatusFromRecord, classifyRecord } from "../../lib/gophishCsvParser";
 import { RequestWithCompany } from "../../lib/types";
 
 /* ─────────────────────────────────────────
@@ -282,6 +282,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
       const rows = targetData.map(target => {
         const rec = csvData.records.find(r => r.email === target.email);
         const mod = rec?.modified_date ? new Date(rec.modified_date).toISOString() : null;
+        const f = rec ? classifyRecord(rec) : null;
         const row: Record<string, unknown> = {
           campaign_id: campaignId,
           employee_id: null,
@@ -292,10 +293,13 @@ export const PhishingCampaignResultsPage: React.FC = () => {
           status: target.status,
           sent_at: rec?.send_date ? new Date(rec.send_date).toISOString() : null,
         };
-        if (target.status === 'OPENED')    row.opened_at    = mod;
-        if (target.status === 'CLICKED')   row.clicked_at   = mod;
-        if (target.status === 'SUBMITTED') { row.submitted_at = mod; row.credentials_entered = true; }
-        if (target.status === 'REPORTED')  row.reported_at  = mod;
+        // Cumulative timestamps — a click implies an open, a submit implies a
+        // click, so every stage reached is recorded (not just the furthest).
+        if (f?.opened)    row.opened_at = mod;
+        if (f?.clicked)   row.clicked_at = mod;
+        if (f?.submitted) { row.submitted_at = mod; row.credentials_entered = true; }
+        // Reporting is independent of the funnel stage.
+        if (f?.reported)  row.reported_at = mod;
         return row;
       });
       for (let i = 0; i < rows.length; i += 500) {

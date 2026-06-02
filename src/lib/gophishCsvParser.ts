@@ -25,6 +25,42 @@ interface ParsedCampaignData {
   };
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Gophish reports a SINGLE furthest-reached status per recipient (e.g. a
+   recipient who clicked and then submitted credentials shows only
+   "Submitted Data"). A correct funnel must therefore be cumulative:
+     submitted ⊆ clicked ⊆ opened ⊆ sent
+   Counting each stage by its exact status string under-counts the earlier
+   stages and can make clicks < submits, which is impossible. classifyRecord
+   normalises every record into cumulative boolean flags so all callers agree.
+───────────────────────────────────────────────────────────────────────── */
+interface RecordFlags {
+  sent: boolean;
+  opened: boolean;
+  clicked: boolean;
+  submitted: boolean;
+  reported: boolean;
+}
+
+function classifyRecord(r: GophishRecord): RecordFlags {
+  const status = (r.status || '').trim().toLowerCase();
+  const submitted = status.includes('submitted');
+  const clicked = submitted || status.includes('clicked');
+  const opened = clicked || status.includes('opened');
+  // "Email Sent" and every later stage count as delivered. Pre-send states
+  // (scheduled / sending / queued / retrying / error) and empty rows do not.
+  const preSend =
+    status === '' ||
+    status.includes('scheduled') ||
+    status.includes('sending') ||
+    status.includes('queued') ||
+    status.includes('retrying') ||
+    status.includes('error');
+  const sent = opened || (!preSend && status.length > 0);
+  const reported = r.reported?.trim().toLowerCase() === 'true';
+  return { sent, opened, clicked, submitted, reported };
+}
+
 function parseCSV(csvContent: string): ParsedCampaignData {
   const lines = csvContent.trim().split('\n');
   if (lines.length < 2) {
@@ -58,47 +94,49 @@ function parseCSV(csvContent: string): ParsedCampaignData {
     }
   }
 
-  const stats = {
-    totalRecords: records.length,
-    emailsSent: records.filter(r => r.status).length,
-    emailsOpened: records.filter(r => r.status === 'Opened' || r.status.toLowerCase().includes('opened')).length,
-    linksClicked: records.filter(r => r.status === 'Clicked Link').length,
-    dataSubmitted: records.filter(r => r.status === 'Submitted Data').length,
-    emailsReported: records.filter(r => r.reported.toLowerCase() === 'true' || r.reported === 'TRUE').length
-  };
+  return { records, stats: toStats(records) };
+}
 
-  return { records, stats };
+function toStats(records: GophishRecord[]) {
+  const flags = records.map(classifyRecord);
+  return {
+    totalRecords:   records.length,
+    emailsSent:     flags.filter(f => f.sent).length,
+    emailsOpened:   flags.filter(f => f.opened).length,
+    linksClicked:   flags.filter(f => f.clicked).length,
+    dataSubmitted:  flags.filter(f => f.submitted).length,
+    emailsReported: flags.filter(f => f.reported).length,
+  };
 }
 
 function calculateCampaignStats(records: GophishRecord[]) {
+  const s = toStats(records);
   return {
-    total_targets: records.length,
-    emails_sent: records.filter(r => r.status && r.status.trim() !== '').length,
-    emails_opened: records.filter(r => r.modified_date && r.status !== 'Email Sent').length,
-    links_clicked: records.filter(r => r.status === 'Clicked Link').length,
-    data_submitted: records.filter(r => r.status === 'Submitted Data').length,
-    emails_reported: records.filter(r => r.reported.toLowerCase() === 'true' || r.reported === 'TRUE').length
+    total_targets:   s.totalRecords,
+    emails_sent:     s.emailsSent,
+    emails_opened:   s.emailsOpened,
+    links_clicked:   s.linksClicked,
+    data_submitted:  s.dataSubmitted,
+    emails_reported: s.emailsReported,
   };
 }
 
+/* Furthest funnel stage reached, for per-target display. Reporting is tracked
+   independently (a reported email can also have been clicked/submitted), so it
+   no longer overrides the funnel stage. */
 function getStatusFromRecord(record: GophishRecord): string {
-  if (record.reported.toLowerCase() === 'true' || record.reported === 'TRUE') {
-    return 'REPORTED';
-  }
-
-  const status = record.status?.trim().toLowerCase() || '';
-  if (status === 'submitted data') return 'SUBMITTED';
-  if (status === 'clicked link') return 'CLICKED';
-  if (status === 'opened') return 'OPENED';
-  if (status === 'email sent') return 'SENT';
-
-  return 'SENT';
+  const f = classifyRecord(record);
+  if (f.submitted) return 'SUBMITTED';
+  if (f.clicked)   return 'CLICKED';
+  if (f.opened)    return 'OPENED';
+  if (f.sent)      return 'SENT';
+  return 'PENDING';
 }
 
 export {
   parseCSV,
   calculateCampaignStats,
   getStatusFromRecord,
-  GophishRecord,
-  ParsedCampaignData
+  classifyRecord,
 };
+export type { GophishRecord, ParsedCampaignData, RecordFlags };

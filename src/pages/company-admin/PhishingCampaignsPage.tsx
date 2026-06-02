@@ -135,7 +135,7 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-pc-styles'))
 interface Campaign {
   id: string; name: string; status: string;
   emails_sent?: number; emails_opened?: number; links_clicked?: number; data_submitted?: number;
-  total_queue_size?: number; launched_at?: string; created_at?: string;
+  total_queue_size?: number; total_targets?: number; launched_at?: string; created_at?: string;
   company_id?: string;
 }
 interface Target { id: string; email: string; first_name?: string; last_name?: string; status?: string; sent_at?: string; opened_at?: string; clicked_at?: string; submitted_at?: string; recipient_id?: string; }
@@ -646,7 +646,9 @@ export const PhishingCampaignsPage: React.FC = () => {
               const sent = c.emails_sent || 0;
               const opened = c.emails_opened || 0;
               const clicked = c.links_clicked || 0;
-              const total = c.total_queue_size || 1;
+              // Denominator consistent with the Dashboard / Analytics: targeted
+              // recipients, not just delivered emails.
+              const total = c.total_queue_size || c.total_targets || 0;
               return (
                 <div key={c.id} className="aw-pc-row" onClick={() => openDetail(c)} style={{ borderRadius: 0, border: 'none', borderBottom: `1px solid ${T.borderFaint}` }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -661,7 +663,7 @@ export const PhishingCampaignsPage: React.FC = () => {
                       { label: 'Sent', value: sent, color: T.blue },
                       { label: 'Opened', value: opened, color: T.green },
                       { label: 'Clicked', value: clicked, color: T.orange },
-                      { label: 'Rate', value: sent > 0 ? `${Math.round((clicked/sent)*100)}%` : '0%', color: T.red },
+                      { label: 'Click Rate', value: total > 0 ? `${Math.round((clicked/total)*100)}%` : '0%', color: T.red },
                     ].map(m => (
                       <div key={m.label} style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 16, fontWeight: 800, color: m.color }}>{m.value}</div>
@@ -701,6 +703,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     const opened = selectedCampaign.emails_opened || 0;
     const clicked = selectedCampaign.links_clicked || 0;
     const submitted = selectedCampaign.data_submitted || 0;
+    const total = selectedCampaign.total_queue_size || selectedCampaign.total_targets || 0;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: "'Inter', sans-serif" }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -729,7 +732,7 @@ export const PhishingCampaignsPage: React.FC = () => {
                 <span style={{ fontSize: 22, fontWeight: 900, color }}>{value}</span>
               </div>
               <div style={{ fontSize: 12, color: T.textMuted }}>{label}</div>
-              <div style={{ fontSize: 11, color: T.textMuted }}>{sent > 0 ? `${Math.round((value / sent) * 100)}%` : '0%'} rate</div>
+              <div style={{ fontSize: 11, color: T.textMuted }}>{total > 0 ? `${Math.round((value / total) * 100)}%` : '0%'} rate</div>
             </div>
           ))}
         </div>

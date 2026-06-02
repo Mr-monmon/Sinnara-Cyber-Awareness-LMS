@@ -114,7 +114,7 @@ export const PhishingAlertsPage: React.FC = () => {
     { key: 'ALL', label: 'All', count: alerts.length },
     { key: 'UNREAD', label: 'Unread', count: unreadCount },
     { key: 'CRITICAL', label: 'Critical', count: alerts.filter(a => a.priority === 'CRITICAL').length },
-    { key: 'HIGH', label: 'High', count: alerts.filter(a => a.priority === 'HIGH').length },
+    { key: 'HIGH', label: 'High', count: alerts.filter(a => a.priority === 'HIGH' || a.priority === 'CRITICAL').length },
   ];
 
   return (

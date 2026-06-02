@@ -407,10 +407,17 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
 
   const completedCampaigns  = campaigns.filter(c => c.status === 'COMPLETED');
   const remainingQuota      = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-  const computeRate = (c: PhishingCampaign, count: number) => { const t = c.total_queue_size || c.total_targets || 0; return t > 0 ? (count / t) * 100 : 0; };
-  const avgClickRate        = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.links_clicked),        0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgReportRate       = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.emails_reported),       0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgCredRate         = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.credentials_entered),   0) / completedCampaigns.length).toFixed(1) : '0';
+  // Weighted aggregate: total events across all campaigns ÷ total recipients.
+  // (A simple mean of per-campaign percentages over-weights tiny campaigns.)
+  const campaignTargets = (c: PhishingCampaign) => c.total_queue_size || c.total_targets || 0;
+  const totalRecipients = completedCampaigns.reduce((s, c) => s + campaignTargets(c), 0);
+  const weightedRate = (sumField: (c: PhishingCampaign) => number) =>
+    totalRecipients > 0
+      ? ((completedCampaigns.reduce((s, c) => s + (sumField(c) || 0), 0) / totalRecipients) * 100).toFixed(1)
+      : '0';
+  const avgClickRate        = weightedRate(c => c.links_clicked);
+  const avgReportRate       = weightedRate(c => c.emails_reported);
+  const avgCredRate         = weightedRate(c => c.credentials_entered);
   const selectedData        = campaigns.find(c => c.id === selectedCampaign);
   const selTotal            = selectedData ? (selectedData.total_queue_size || selectedData.total_targets || 0) : 0;
   const selClickRate        = selTotal > 0 && selectedData ? Math.round((selectedData.links_clicked        / selTotal) * 100) : 0;
@@ -561,12 +568,13 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {deptStats.map((stat: any) => {
-                  const vc     = vulnConfig(stat.vulnerability_score);
-                  const score  = stat.vulnerability_score.toFixed(0);
+                  const vulnScore = Number(stat.vulnerability_score) || 0;
+                  const vc     = vulnConfig(vulnScore);
+                  const score  = vulnScore.toFixed(0);
                   const click  = stat.total_targets > 0 ? ((stat.links_clicked / stat.total_targets) * 100).toFixed(1) : '0';
                   const report = stat.total_targets > 0 ? ((stat.emails_reported / stat.total_targets) * 100).toFixed(1) : '0';
                   const cred   = stat.total_targets > 0 ? ((stat.credentials_entered / stat.total_targets) * 100).toFixed(1) : '0';
-                  const barPct = stat.vulnerability_score;
+                  const barPct = vulnScore;
 
                   return (
                     <div key={stat.id} style={{ padding: '14px 16px', background: vc.bg, border: `1px solid ${vc.border}`, borderRadius: 11 }}>
