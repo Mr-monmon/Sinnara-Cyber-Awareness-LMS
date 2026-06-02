@@ -279,12 +279,25 @@ export const PhishingCampaignResultsPage: React.FC = () => {
       //    employee_id is left NULL on purpose: the auto_link_target_to_employee
       //    trigger matches each row to the real employee by email within the
       //    company, so the result reflects on that employee's risk profile.
+      //    We resolve department_id up front from the company's employees so the
+      //    department vulnerability-stats trigger has a department to aggregate by
+      //    (it skips rows whose department_id is NULL).
+      const { data: employees } = await supabase
+        .from('users')
+        .select('email, department_id')
+        .eq('company_id', selectedCampaign.company_id)
+        .eq('role', 'EMPLOYEE');
+      const deptByEmail = new Map<string, string | null>();
+      (employees || []).forEach((e: { email: string; department_id: string | null }) =>
+        deptByEmail.set(e.email.toLowerCase(), e.department_id));
+
       const rows = targetData.map(target => {
         const rec = csvData.records.find(r => r.email === target.email);
         const mod = rec?.modified_date ? new Date(rec.modified_date).toISOString() : null;
         const row: Record<string, unknown> = {
           campaign_id: campaignId,
           employee_id: null,
+          department_id: deptByEmail.get(target.email.toLowerCase()) ?? null,
           email: target.email,
           first_name: target.first_name,
           last_name: target.last_name,
