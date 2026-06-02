@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
+import DOMPurify from "dompurify";
 import { supabase } from "../../lib/supabase";
 import { RequestWithCompany, User } from "../../lib/types";
 
@@ -23,10 +24,20 @@ const RequestPreview = ({
 }: Props) => {
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [users, setUsers] = useState<TargetUser[]>([]);
+  const [domainName, setDomainName] = useState<string>("");
+
+  const sanitizedEmailHtml = useMemo(
+    () =>
+      selectedRequest.email_html_body
+        ? DOMPurify.sanitize(selectedRequest.email_html_body)
+        : "",
+    [selectedRequest.email_html_body]
+  );
 
   const loadTargetData = useCallback(async () => {
     setDepartments([]);
     setUsers([]);
+    setDomainName("");
 
     const { data } = await supabase
       .from("departments")
@@ -42,6 +53,15 @@ const RequestPreview = ({
       .in("department_id", data?.map((d) => d.id) || []);
 
     if (users) setUsers(users as TargetUser[]);
+
+    if (selectedRequest.domain_id) {
+      const { data: domain } = await supabase
+        .from("phishing_domains")
+        .select("domain_name")
+        .eq("id", selectedRequest.domain_id)
+        .maybeSingle();
+      if (domain?.domain_name) setDomainName(domain.domain_name);
+    }
   }, [selectedRequest]);
 
   const escapeCsvValue = (value: string | number | null | undefined) => {
@@ -192,11 +212,21 @@ const RequestPreview = ({
               </div>
             </div>
             <div>
+              <div className="text-sm text-slate-600">Sending Domain</div>
+              <div className="font-semibold break-all">
+                {domainName || "Not specified"}
+              </div>
+            </div>
+            <div>
               <div className="text-sm text-slate-600">From</div>
-              <div className="font-semibold">
-                {selectedRequest.from_name} {"<"}
-                {selectedRequest.from_address}
-                {">"}
+              <div className="font-semibold break-all">
+                {selectedRequest.from_name || selectedRequest.from_address
+                  ? `${selectedRequest.from_name || ""}${
+                      selectedRequest.from_address
+                        ? ` <${selectedRequest.from_address}>`
+                        : ""
+                    }`.trim()
+                  : "Not specified"}
               </div>
             </div>
             <div>
@@ -234,6 +264,51 @@ const RequestPreview = ({
               </div>
             )}
           </div>
+
+          {/* Email body — needed to build the Gophish email template */}
+          {selectedRequest.email_html_body && (
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Email HTML Body</div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-white p-3 overflow-auto max-h-64">
+                  <div className="mb-1 text-xs font-medium text-slate-400">
+                    Preview
+                  </div>
+                  <div
+                    className="text-sm text-slate-900"
+                    dangerouslySetInnerHTML={{ __html: sanitizedEmailHtml }}
+                  />
+                </div>
+                <pre className="rounded-lg border border-slate-200 bg-slate-900 p-3 text-xs text-slate-200 overflow-auto max-h-64 whitespace-pre-wrap break-all">
+                  {selectedRequest.email_html_body}
+                </pre>
+              </div>
+            </div>
+          )}
+
+          {selectedRequest.email_text_body && (
+            <div>
+              <div className="text-sm text-slate-600 mb-1">
+                Email Plain-Text Body
+              </div>
+              <pre className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 whitespace-pre-wrap break-words">
+                {selectedRequest.email_text_body}
+              </pre>
+            </div>
+          )}
+
+          {/* Landing page — needed to build the Gophish landing page */}
+          {selectedRequest.landing_page_html && (
+            <div>
+              <div className="text-sm text-slate-600 mb-1">
+                Landing Page HTML
+              </div>
+              <pre className="rounded-lg border border-slate-200 bg-slate-900 p-3 text-xs text-slate-200 overflow-auto max-h-64 whitespace-pre-wrap break-all">
+                {selectedRequest.landing_page_html}
+              </pre>
+            </div>
+          )}
+
           {selectedRequest.notes && (
             <div>
               <div className="text-sm text-slate-600 mb-1">Notes</div>
