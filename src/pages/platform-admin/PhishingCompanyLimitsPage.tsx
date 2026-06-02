@@ -30,9 +30,12 @@ const STYLES = `
   .aw-cl-toggle.off::after { left:3px; }
 `;
 
+type PhishingMode = 'TICKET' | 'CUSTOM';
+
 interface CompanyLimit {
   id: string;
   company_id: string;
+  phishing_mode: PhishingMode;
   max_campaigns_per_year: number;
   max_emails_per_month: number;
   max_targets_per_campaign: number;
@@ -49,6 +52,7 @@ interface CompanyLimit {
 }
 
 interface EditForm {
+  phishing_mode: PhishingMode;
   max_campaigns_per_year: number;
   max_emails_per_month: number;
   max_targets_per_campaign: number;
@@ -99,6 +103,7 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
   const openEdit = (l: CompanyLimit) => {
     setEditTarget(l);
     setForm({
+      phishing_mode: l.phishing_mode ?? 'CUSTOM',
       max_campaigns_per_year: l.max_campaigns_per_year,
       max_emails_per_month: l.max_emails_per_month,
       max_targets_per_campaign: l.max_targets_per_campaign,
@@ -179,7 +184,7 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,.02)' }}>
-                {['Company','Campaigns/Year','Emails/Month','Targets/Campaign','Features',''].map(h => (
+                {['Company','Mode','Campaigns/Year','Emails/Month','Targets/Campaign','Features',''].map(h => (
                   <th key={h} style={{ padding: '12px 18px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: '0.6px', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -190,6 +195,17 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
                 return (
                   <tr key={l.id} className="aw-cl-row" style={{ borderTop: i > 0 ? `1px solid ${T.borderFaint}` : 'none' }}>
                     <td style={{ padding: '14px 18px', fontSize: 14, fontWeight: 600, color: T.white }}>{l.companies?.name || 'Unknown'}</td>
+                    <td style={{ padding: '14px 18px' }}>
+                      {(l.phishing_mode ?? 'CUSTOM') === 'TICKET' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: T.purpleBg, color: T.purple, border: `1px solid ${T.purpleBorder}` }}>
+                          Ticket
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: T.blueBg, color: T.blue, border: `1px solid ${T.blueBorder}` }}>
+                          Custom
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding: '14px 18px' }}>
                       <span style={{ fontSize: 14, color: T.white }}>{l.max_campaigns_per_year}</span>
                       <span style={{ fontSize: 12, color: T.textMuted }}>/year</span>
@@ -252,6 +268,28 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
               </h3>
               <button className="aw-cl-btn" onClick={() => { setEditTarget(null); setForm(null); }}
                 style={{ padding: 6, background: 'rgba(255,255,255,.06)', color: T.textMuted }}><X size={16} /></button>
+            </div>
+
+            {/* Phishing mode */}
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Phishing Mode</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {([
+                  { value: 'CUSTOM' as PhishingMode, label: 'Custom (Self-Service)', desc: 'Company builds & launches campaigns in-platform', color: T.blue, bg: T.blueBg, border: T.blueBorder },
+                  { value: 'TICKET' as PhishingMode, label: 'Ticket (Request-Based)', desc: 'Company requests; platform runs via Gophish', color: T.purple, bg: T.purpleBg, border: T.purpleBorder },
+                ]).map(opt => {
+                  const active = form.phishing_mode === opt.value;
+                  return (
+                    <button key={opt.value} className="aw-cl-btn" onClick={() => setForm(f => f ? { ...f, phishing_mode: opt.value } : f)}
+                      style={{ textAlign: 'left', padding: '12px 14px', background: active ? opt.bg : 'rgba(255,255,255,.03)', border: `1px solid ${active ? opt.border : T.border}`, color: active ? opt.color : T.textBody }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                        {active && <Check size={13} />} {opt.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textMuted, lineHeight: '15px' }}>{opt.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Numeric limits */}

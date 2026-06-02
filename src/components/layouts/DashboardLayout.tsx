@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
+import { supabase } from "../../lib/supabase";
 import { NotificationBell } from "../NotificationBell";
 import i18n from "../../i18n";
 
@@ -183,6 +184,26 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { t } = useTranslation("common");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
+  const [phishingMode, setPhishingMode] = useState<"TICKET" | "CUSTOM">("CUSTOM");
+
+  /* Load the company's phishing delivery mode (controls which phishing pages show) */
+  useEffect(() => {
+    const isCompanyRole =
+      user?.role === "COMPANY_ADMIN" ||
+      user?.role === "COMPANY_SUPER_ADMIN" ||
+      user?.role === "PHISHING_OPERATOR";
+    if (!isCompanyRole || !user?.company_id) return;
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("company_phishing_limits")
+        .select("phishing_mode")
+        .eq("company_id", user.company_id)
+        .maybeSingle();
+      if (active && data?.phishing_mode) setPhishingMode(data.phishing_mode);
+    })();
+    return () => { active = false; };
+  }, [user?.company_id, user?.role]);
   const [language, setLanguage] = useState(
     i18n.resolvedLanguage || i18n.language || "en"
   );
@@ -197,12 +218,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       exams: "content-management",
       certificates: "content-management",
       // Platform admin phishing pages
+      "phishing-requests":       "phishing-campaigns",
+      "phishing-results":        "phishing-campaigns",
       "phishing-domains":        "phishing-campaigns",
       "phishing-smtp-admin":     "phishing-campaigns",
       "phishing-scenarios":      "phishing-campaigns",
       "phishing-company-limits": "phishing-campaigns",
       // Company admin phishing pages
       "phishing-dashboard":        "phishing-campaigns",
+      "phishing-request":          "phishing-campaigns",
       "phishing-campaigns":        "phishing-campaigns",
       "phishing-smtp":             "phishing-campaigns",
       "phishing-groups":           "phishing-campaigns",
@@ -282,6 +306,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           icon: Shield,
           section: "Phishing",
           children: [
+            { id: "phishing-requests",       label: "Campaign Requests",      icon: Target  },
+            { id: "phishing-results",        label: "Campaign Results",       icon: Activity },
             { id: "phishing-domains",        label: "Phishing Domains",       icon: Globe   },
             { id: "phishing-smtp-admin",     label: "Platform SMTP Profiles", icon: Server  },
             { id: "phishing-scenarios",      label: "Phishing Scenarios",     icon: Zap     },
@@ -370,16 +396,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           label: "Phishing Simulation",
           icon: Shield,
           section: "Phishing",
-          children: [
-            { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
-            { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
-            { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
-            { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
-            { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
-            { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
-            { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
-            { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
-          ],
+          children: phishingMode === "TICKET"
+            ? [
+                { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
+                { id: "phishing-request",         label: "Request Campaign",  icon: Target     },
+              ]
+            : [
+                { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
+                { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
+                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
+                { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
+                { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
+                { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
+                { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
+                { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
+              ],
         },
         {
           id: "reports",
@@ -431,16 +462,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           label: "Phishing Simulation",
           icon: Shield,
           section: "Phishing",
-          children: [
-            { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
-            { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
-            { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
-            { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
-            { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
-            { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
-            { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
-            { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
-          ],
+          children: phishingMode === "TICKET"
+            ? [
+                { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
+                { id: "phishing-request",         label: "Request Campaign",  icon: Target     },
+              ]
+            : [
+                { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
+                { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
+                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
+                { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
+                { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
+                { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
+                { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
+                { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
+              ],
         },
         {
           id: "account",
