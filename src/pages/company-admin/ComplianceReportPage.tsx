@@ -180,8 +180,17 @@ export const ComplianceReportPage: React.FC = () => {
       const trainedEmployees = completedSet.size;
       const totalEmployees   = employeeIds.length;
       const completionRate   = totalEmployees ? Math.round((trainedEmployees / totalEmployees) * 100) : 0;
-      const scores = (examResults ?? []).map(r => r.percentage).filter((p): p is number => typeof p === "number");
-      const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      // Use each employee's best (highest) score rather than a raw attempt average.
+      // Raw attempt average over-weights employees who re-took the exam multiple times.
+      const bestByEmployee = new Map<string, number>();
+      (examResults ?? []).forEach(r => {
+        if (typeof r.percentage === "number") {
+          const cur = bestByEmployee.get(r.employee_id);
+          if (cur === undefined || r.percentage > cur) bestByEmployee.set(r.employee_id, r.percentage);
+        }
+      });
+      const empScores = Array.from(bestByEmployee.values());
+      const avgScore = empScores.length ? Math.round(empScores.reduce((a, b) => a + b, 0) / empScores.length) : 0;
 
       setCompanyName(company?.name ?? "Your Company");
       setStats({
