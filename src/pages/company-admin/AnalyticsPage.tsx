@@ -395,10 +395,17 @@ export const AnalyticsPage: React.FC = () => {
     </div>
   );
 
-  const avgImprovement = performance.length > 0
-    ? Math.round(performance.reduce((s, p) => s + p.improvement, 0) / performance.length) : 0;
-  const passedCount = performance.filter(p => p.status === 'Passed').length;
-  const passRate    = performance.length > 0 ? Math.round((passedCount / performance.length) * 100) : 0;
+  // Only average improvement for employees who have BOTH pre and post scores.
+  // Including zeros from employees with no assessments distorts the mean.
+  const empWithBothScores = performance.filter(p => p.preScore !== undefined && p.postScore !== undefined);
+  const avgImprovement = empWithBothScores.length > 0
+    ? Math.round(empWithBothScores.reduce((s, p) => s + p.improvement, 0) / empWithBothScores.length) : 0;
+
+  // Pass rate denominator = employees who actually sat the post-assessment, not total headcount.
+  // Using total headcount deflates the rate because employees who never took the test count as failed.
+  const empWithPost = performance.filter(p => p.postScore !== undefined);
+  const passedCount = empWithPost.filter(p => p.status === 'Passed').length;
+  const passRate    = empWithPost.length > 0 ? Math.round((passedCount / empWithPost.length) * 100) : 0;
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -417,8 +424,8 @@ export const AnalyticsPage: React.FC = () => {
       {/* ── Top Stat cards ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.04s', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <StatCard icon={Award}        color={T.green}  bg={T.greenBg}               label="Employees Passed"   value={passedCount}                         sub={`of ${performance.length} employees`} delay="0.04s" />
-        <StatCard icon={TrendingUp}   color={T.blue}   bg={T.blueBg}                label="Avg Improvement"    value={`${avgImprovement > 0 ? '+' : ''}${avgImprovement}%`} sub="Post vs Pre score"  delay="0.08s" />
-        <StatCard icon={Target}       color={T.accent} bg="rgba(200,255,0,0.08)"    label="Pass Rate"           value={`${passRate}%`}                      sub="Overall pass rate"                   delay="0.12s" />
+        <StatCard icon={TrendingUp}   color={T.blue}   bg={T.blueBg}                label="Avg Improvement"    value={`${avgImprovement > 0 ? '+' : ''}${avgImprovement}%`} sub={`${empWithBothScores.length} w/ both scores`} delay="0.08s" />
+        <StatCard icon={Target}       color={T.accent} bg="rgba(200,255,0,0.08)"    label="Pass Rate"           value={`${passRate}%`}                      sub={`Of ${empWithPost.length} assessed`}  delay="0.12s" />
         <StatCard icon={Users}        color={T.purple} bg={T.purpleBg}              label="Total Employees"    value={performance.length}                  sub="In this company"                      delay="0.16s" />
         {examStats && <>
           <StatCard icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label="Exam Attempts"      value={examStats.totalAttempts}              sub={`${examStats.uniqueEmployees} employees`} delay="0.20s" />
