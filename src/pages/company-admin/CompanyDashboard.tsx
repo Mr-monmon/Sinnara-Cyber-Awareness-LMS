@@ -127,7 +127,10 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-cd-styles'))
 /* ─────────────────────────────────────────
    DONUT CHART (SVG)
 ───────────────────────────────────────── */
-const DonutChart: React.FC<{ completed: number; pending: number; pct: number }> = ({ completed, pending, pct }) => {
+// notCompleted = totalEmployees - completedTraining (the true complement of the green arc).
+// The old version showed pendingAssessments (a different metric) whose count didn't match
+// the arc size, making the legend misleading.
+const DonutChart: React.FC<{ completed: number; notCompleted: number; pct: number }> = ({ completed, notCompleted, pct }) => {
   const R = 52; const cx = 70; const cy = 70;
   const circ = 2 * Math.PI * R;
   const dash = (pct / 100) * circ;
@@ -152,8 +155,8 @@ const DonutChart: React.FC<{ completed: number; pending: number; pct: number }> 
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
-          { label: 'Completed Training', value: completed, color: T.green, bg: T.greenBg },
-          { label: 'Pending Assessments', value: pending,  color: T.orange, bg: T.orangeBg },
+          { label: 'Completed Training',  value: completed,    color: T.green,  bg: T.greenBg  },
+          { label: 'Not Yet Completed',   value: notCompleted, color: T.orange, bg: T.orangeBg },
         ].map(s => (
           <div key={s.label} style={{ padding: '10px 14px', background: s.bg, border: `1px solid ${s.color}30`, borderRadius: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
@@ -375,7 +378,7 @@ export const CompanyDashboard = () => {
               <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>Live</span>
             </div>
             <div style={{ padding: '20px' }}>
-              <DonutChart completed={stats.completedTraining} pending={stats.pendingAssessments} pct={completionRate} />
+              <DonutChart completed={stats.completedTraining} notCompleted={stats.totalEmployees - stats.completedTraining} pct={completionRate} />
             </div>
           </div>
 
