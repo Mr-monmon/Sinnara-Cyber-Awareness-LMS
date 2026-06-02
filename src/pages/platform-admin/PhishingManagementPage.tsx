@@ -327,7 +327,13 @@ const QuotaTab: React.FC = () => {
     setLoading(true);
     try {
       const { data: companies } = await supabase.from('companies').select('id, name').order('name');
-      const { data: quotaData } = await supabase.from('phishing_campaign_quotas').select('company_id, annual_quota, used_campaigns');
+      // Scope to the current year. Without this filter, a company with quota rows
+      // for multiple years would have its display value overwritten arbitrarily by
+      // quotaMap.set (last row wins), showing a stale year's numbers.
+      const { data: quotaData } = await supabase
+        .from('phishing_campaign_quotas')
+        .select('company_id, annual_quota, used_campaigns')
+        .eq('quota_year', new Date().getFullYear());
 
       const quotaMap = new Map<string, { annual_quota: number; used_campaigns: number }>();
       (quotaData || []).forEach((q: any) => quotaMap.set(q.company_id, { annual_quota: q.annual_quota, used_campaigns: q.used_campaigns }));
