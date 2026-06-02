@@ -406,18 +406,27 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   );
 
   const completedCampaigns  = campaigns.filter(c => c.status === 'COMPLETED');
-  const remainingQuota      = (quota?.annual_quota || 0) - (quota?.used_campaigns || 0);
-  const computeRate = (c: PhishingCampaign, count: number) => { const t = c.total_queue_size || c.total_targets || 0; return t > 0 ? (count / t) * 100 : 0; };
-  const avgClickRate        = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.links_clicked),        0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgReportRate       = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.emails_reported),       0) / completedCampaigns.length).toFixed(1) : '0';
-  const avgCredRate         = completedCampaigns.length > 0 ? (completedCampaigns.reduce((s, c) => s + computeRate(c, c.credentials_entered),   0) / completedCampaigns.length).toFixed(1) : '0';
+  const remainingQuota      = Math.max(0, (quota?.annual_quota || 0) - (quota?.used_campaigns || 0));
+  // Aggregate rates must be WEIGHTED: Σ(count) / Σ(targets), not the mean of each
+  // campaign's individual rate. An unweighted mean lets a 2-target campaign at 100%
+  // outweigh a 1000-target campaign at 1%, badly distorting the company-wide figure.
+  const targetsOf = (c: PhishingCampaign) => c.total_queue_size || c.total_targets || 0;
+  const weightedRate = (sel: (c: PhishingCampaign) => number) => {
+    const den = completedCampaigns.reduce((s, c) => s + targetsOf(c), 0);
+    if (den <= 0) return '0';
+    const num = completedCampaigns.reduce((s, c) => s + (sel(c) || 0), 0);
+    return ((num / den) * 100).toFixed(1);
+  };
+  const avgClickRate        = weightedRate(c => c.links_clicked);
+  const avgReportRate       = weightedRate(c => c.emails_reported);
+  const avgCredRate         = weightedRate(c => c.credentials_entered);
   const selectedData        = campaigns.find(c => c.id === selectedCampaign);
   const selTotal            = selectedData ? (selectedData.total_queue_size || selectedData.total_targets || 0) : 0;
   const selClickRate        = selTotal > 0 && selectedData ? Math.round((selectedData.links_clicked        / selTotal) * 100) : 0;
   const selCredRate         = selTotal > 0 && selectedData ? Math.round((selectedData.credentials_entered  / selTotal) * 100) : 0;
   const selReportRate       = selTotal > 0 && selectedData ? Math.round((selectedData.emails_reported      / selTotal) * 100) : 0;
   const selOpenRate         = selTotal > 0 && selectedData ? Math.round((selectedData.emails_opened        / selTotal) * 100) : 0;
-  const radarData           = deptStats.map(d => ({ label: d.department?.name || 'Dept', score: d.vulnerability_score }));
+  const radarData           = deptStats.map(d => ({ label: d.department?.name || 'Dept', score: Number(d.vulnerability_score) || 0 }));
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -561,12 +570,15 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {deptStats.map((stat: any) => {
-                  const vc     = vulnConfig(stat.vulnerability_score);
-                  const score  = stat.vulnerability_score.toFixed(0);
+                  // vulnerability_score is populated by a DB trigger and is NULL until
+                  // it first runs (e.g. a freshly created department), so coerce safely.
+                  const scoreNum = Number(stat.vulnerability_score) || 0;
+                  const vc     = vulnConfig(scoreNum);
+                  const score  = scoreNum.toFixed(0);
                   const click  = stat.total_targets > 0 ? ((stat.links_clicked / stat.total_targets) * 100).toFixed(1) : '0';
                   const report = stat.total_targets > 0 ? ((stat.emails_reported / stat.total_targets) * 100).toFixed(1) : '0';
                   const cred   = stat.total_targets > 0 ? ((stat.credentials_entered / stat.total_targets) * 100).toFixed(1) : '0';
-                  const barPct = stat.vulnerability_score;
+                  const barPct = scoreNum;
 
                   return (
                     <div key={stat.id} style={{ padding: '14px 16px', background: vc.bg, border: `1px solid ${vc.border}`, borderRadius: 11 }}>
