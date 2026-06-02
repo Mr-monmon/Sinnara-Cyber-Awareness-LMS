@@ -22,6 +22,7 @@ import { PhishingDomainsPage }        from "./PhishingDomainsPage";
 import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
 import { PhishingScenariosPage }      from "./PhishingScenariosPage";
 import { PhishingCompanyLimitsPage }  from "./PhishingCompanyLimitsPage";
+import { PhishingManagementPage }     from "./PhishingManagementPage";
 import { DemoRequestsPage }           from "./DemoRequestsPage";
 import { PartnersManagementPage }     from "./PartnersManagementPage";
 import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
@@ -117,6 +118,7 @@ const ACTIONS = [
   { page: 'analytics',               icon: BarChart3, color: T.blue,    label: 'Analytics & Reports',    sub: 'Platform statistics'            },
   { page: 'courses',                 icon: BookOpen,  color: T.cyan,    label: 'Manage Courses',         sub: 'Training content'               },
   { page: 'exams',                   icon: FileText,  color: T.orange,  label: 'Manage Exams',           sub: 'Assessments & quizzes'          },
+  { page: 'phishing-requests',      icon: Target,    color: T.orange,  label: 'Campaign Requests',      sub: 'Review & track ticket requests' },
   { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
   { page: 'phishing-smtp-admin',    icon: Server,    color: T.cyan,    label: 'Platform SMTP Profiles', sub: 'Push SMTP to companies'         },
   { page: 'phishing-scenarios',     icon: Zap,       color: T.orange,  label: 'Phishing Scenarios',     sub: 'Predefined attack templates'    },
@@ -316,6 +318,7 @@ export const PlatformDashboard = () => {
       case "error-logs":               return <ErrorLogsPage />;
       case "certificates":             return <CertificateTemplatesPage />;
       case "phishing-templates":       return <PhishingTemplatesPage />;
+      case "phishing-requests":        return <PhishingManagementPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
       case "phishing-smtp-admin":      return <PhishingSmtpAdminPage />;
