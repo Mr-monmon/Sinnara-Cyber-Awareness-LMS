@@ -6,7 +6,7 @@ import {
   Building2, ChevronRight, Eye, Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { parseCSV, calculateCampaignStats, getStatusFromRecord } from "../../lib/gophishCsvParser";
+import { parseCSV, calculateCampaignStats, getStatusFromRecord, isReported, STAGE_RANK } from "../../lib/gophishCsvParser";
 import { RequestWithCompany } from "../../lib/types";
 
 /* ─────────────────────────────────────────
@@ -292,10 +292,17 @@ export const PhishingCampaignResultsPage: React.FC = () => {
           status: target.status,
           sent_at: rec?.send_date ? new Date(rec.send_date).toISOString() : null,
         };
-        if (target.status === 'OPENED')    row.opened_at    = mod;
-        if (target.status === 'CLICKED')   row.clicked_at   = mod;
-        if (target.status === 'SUBMITTED') { row.submitted_at = mod; row.credentials_entered = true; }
-        if (target.status === 'REPORTED')  row.reported_at  = mod;
+        // Funnel timestamps are cumulative: a SUBMITTED recipient also opened and
+        // clicked. Gophish only exports one modified_date per recipient (the last
+        // event), so we backfill every earlier stage with it to keep each target
+        // row funnel-consistent (no SUBMITTED row left with a NULL clicked_at).
+        const rank = STAGE_RANK[(target.status as keyof typeof STAGE_RANK)] ?? 0;
+        if (rank >= STAGE_RANK.OPENED)    row.opened_at  = mod;
+        if (rank >= STAGE_RANK.CLICKED)   row.clicked_at = mod;
+        if (rank >= STAGE_RANK.SUBMITTED) { row.submitted_at = mod; row.credentials_entered = true; }
+        // Reporting is independent of the funnel and driven by the `reported`
+        // column, so a recipient who clicked AND reported records both signals.
+        if (rec && isReported(rec)) row.reported_at = mod;
         return row;
       });
       for (let i = 0; i < rows.length; i += 500) {
