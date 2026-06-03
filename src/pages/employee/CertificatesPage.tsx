@@ -7,25 +7,9 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedDate, formatLocalizedNumber } from "../../i18n/utils";
 import { supabase } from "../../lib/supabase";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#94a3b8',
-  textLabel:   '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  gold:        '#fbbf24',
-  goldBg:      'rgba(251,191,36,0.08)',
-  goldBorder:  'rgba(251,191,36,0.22)',
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    CSS
@@ -268,6 +252,7 @@ const waitForRenderableContent = async (element: HTMLElement) => {
 export const CertificatesPage: React.FC = () => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
+  const { tokens: T } = useTheme();
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading]           = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -372,7 +357,7 @@ export const CertificatesPage: React.FC = () => {
   /* ── Loading ── */
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: `3px solid ${T.borderFaint}`, borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
       <p style={{ fontSize: 14, color: T.textBody }}>{t("certificates.loading", { ns: "employee" })}</p>
     </div>
   );
@@ -399,7 +384,7 @@ export const CertificatesPage: React.FC = () => {
       <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
         {[
           { icon: Award,    color: T.gold,    bg: T.goldBg,               border: T.goldBorder,             label: t("certificates.summary.total",  { ns: "employee" }), value: formatLocalizedNumber(certificates.length, currentLanguage) },
-          { icon: Calendar, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)',  label: t("labels.latestYear", { ns: "common" }),              value: certificates.length > 0 ? formatLocalizedNumber(new Date(certificates[0].issued_at).getFullYear(), currentLanguage) : '—' },
+          { icon: Calendar, color: T.blue,    bg: T.blueBg,               border: T.blueBorder,             label: t("labels.latestYear", { ns: "common" }),              value: certificates.length > 0 ? formatLocalizedNumber(new Date(certificates[0].issued_at).getFullYear(), currentLanguage) : '—' },
         ].map(({ icon: Icon, color, bg, border, label, value }) => (
           <div key={label} style={{ padding: '14px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, minWidth: 160 }}>
             <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -445,9 +430,9 @@ export const CertificatesPage: React.FC = () => {
             const courseName    = cert.course_name || cert.courses.title;
             return (
               <div key={cert.id} className={`aw-cert-card aw-fade-up`} style={{ animationDelay: `${idx * 0.06}s` }}>
-                <div style={{ height: 3, background: `linear-gradient(90deg, ${T.gold}, rgba(251,191,36,0.25))` }} />
+                <div style={{ height: 3, background: `linear-gradient(90deg, ${T.gold}, ${T.gold}40)` }} />
                 <div style={{ padding: '24px 22px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 60, height: 60, borderRadius: '50%', background: T.goldBg, border: `2px solid ${T.goldBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 20px rgba(251,191,36,0.12)` }}>
+                  <div style={{ width: 60, height: 60, borderRadius: '50%', background: T.goldBg, border: `2px solid ${T.goldBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 20px ${T.gold}1f` }}>
                     <Award size={26} style={{ color: T.gold }} />
                   </div>
                   <div style={{ textAlign: 'center' }}>
@@ -459,7 +444,7 @@ export const CertificatesPage: React.FC = () => {
                     )}
                   </div>
                 </div>
-                <div style={{ margin: '0 18px 16px', padding: '12px 14px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
+                <div style={{ margin: '0 18px 16px', padding: '12px 14px', background: T.borderFaint, border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
                   <div className="aw-cert-meta-row">
                     <span style={{ color: T.textMuted }}>{t("labels.certificateNumber", { ns: "common" })}</span>
                     <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: T.textLabel }}>{cert.certificate_number}</span>

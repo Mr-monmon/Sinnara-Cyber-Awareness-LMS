@@ -33,31 +33,17 @@ import {
   Variable,
   UserCog,
   Eye,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { NotificationBell } from "../NotificationBell";
 import i18n from "../../i18n";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   DESIGN TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg: "#12140a",
-  sidebar: "#0e100a" /* slightly darker than bg */,
-  sidebarHover: "rgba(255,255,255,0.05)",
-  sidebarActive: "rgba(200,255,0,0.10)",
-  accent: "#c8ff00",
-  accentDark: "#12140a",
-  topbar: "rgba(18,20,10,0.95)",
-  white: "#ffffff",
-  textBody: "#94a3b8",
-  textLabel: "#cbd5e1",
-  textMuted: "#64748b",
-  border: "rgba(255,255,255,0.08)",
-  borderFaint: "rgba(255,255,255,0.05)",
-} as const;
+/* tokens are injected per-render via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    GLOBAL CSS
@@ -182,6 +168,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const { user, logout } = useAuth();
   const { t } = useTranslation("common");
+  const { isDark, tokens: T, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const [phishingMode, setPhishingMode] = useState<"TICKET" | "CUSTOM">("CUSTOM");
@@ -681,6 +668,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         display: "flex",
         background: T.bg,
         fontFamily: "'Inter', sans-serif",
+        colorScheme: isDark ? "dark" : "light",
       }}
     >
       {/* ══════════════════════
@@ -691,6 +679,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           width: sidebarOpen ? 248 : 64,
           background: T.sidebar,
           borderRight: `1px solid ${T.border}`,
+          boxShadow: isDark ? "none" : "2px 0 12px rgba(0,0,0,0.06)",
           display: "flex",
           flexDirection: "column",
           transition: "width 0.25s ease",
@@ -756,7 +745,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(255,255,255,0.05)",
+              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)",
               border: `1px solid ${T.borderFaint}`,
               borderRadius: 6,
               cursor: "pointer",
@@ -765,13 +754,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               transition: "background 0.2s, color 0.2s",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background =
-                "rgba(255,255,255,0.10)";
+              (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
               (e.currentTarget as HTMLElement).style.color = T.white;
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background =
-                "rgba(255,255,255,0.05)";
+              (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)";
               (e.currentTarget as HTMLElement).style.color = T.textMuted;
             }}
           >
@@ -813,7 +800,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div
               style={{
                 padding: "10px 12px",
-                background: "rgba(255,255,255,0.03)",
+                background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)",
                 border: `1px solid ${T.borderFaint}`,
                 borderRadius: 8,
               }}
@@ -895,7 +882,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
-          background: "#12140a",
+          background: T.bg,
         }}
       >
         {/* Top bar */}
@@ -907,6 +894,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             backdropFilter: "blur(8px)",
             WebkitBackdropFilter: "blur(8px)",
             borderBottom: `1px solid ${T.border}`,
+            boxShadow: isDark ? "none" : "0 1px 8px rgba(0,0,0,0.07)",
             position: "sticky",
             top: 0,
             zIndex: 30,
@@ -953,49 +941,84 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {/* Right: actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {user?.role === "EMPLOYEE" && (
-              <button
-                type="button"
-                onClick={() => {
-                  void i18n.changeLanguage(language === "ar" ? "en" : "ar");
-                }}
-                title={
-                  language === "ar"
-                    ? "Switch to English"
-                    : "التبديل إلى العربية"
-                }
-                aria-label={
-                  language === "ar" ? "Switch to English" : "Switch to Arabic"
-                }
-                style={{
-                  minWidth: 56,
-                  height: 30,
-                  padding: "0 10px",
-                  borderRadius: 8,
-                  border: `1px solid ${T.border}`,
-                  background: "rgba(255,255,255,0.04)",
-                  color: T.textLabel,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: "0.2px",
-                  cursor: "pointer",
-                  transition: "background 0.2s, border-color 0.2s, color 0.2s",
-                  fontFamily: "inherit",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "rgba(255,255,255,0.10)";
-                  (e.currentTarget as HTMLElement).style.borderColor = T.accent;
-                  (e.currentTarget as HTMLElement).style.color = T.white;
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "rgba(255,255,255,0.04)";
-                  (e.currentTarget as HTMLElement).style.borderColor = T.border;
-                  (e.currentTarget as HTMLElement).style.color = T.textLabel;
-                }}
-              >
-                {language === "ar" ? "AR" : "EN"}
-              </button>
+              <>
+                {/* Theme toggle */}
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                  aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    border: `1px solid ${T.border}`,
+                    background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                    color: T.textLabel,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "background 0.2s, border-color 0.2s, color 0.2s",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
+                    (e.currentTarget as HTMLElement).style.borderColor = T.accent;
+                    (e.currentTarget as HTMLElement).style.color = T.accent;
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)";
+                    (e.currentTarget as HTMLElement).style.borderColor = T.border;
+                    (e.currentTarget as HTMLElement).style.color = T.textLabel;
+                  }}
+                >
+                  {isDark ? <Sun size={14} /> : <Moon size={14} />}
+                </button>
+
+                {/* Language toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void i18n.changeLanguage(language === "ar" ? "en" : "ar");
+                  }}
+                  title={
+                    language === "ar"
+                      ? "Switch to English"
+                      : "التبديل إلى العربية"
+                  }
+                  aria-label={
+                    language === "ar" ? "Switch to English" : "Switch to Arabic"
+                  }
+                  style={{
+                    minWidth: 56,
+                    height: 30,
+                    padding: "0 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${T.border}`,
+                    background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                    color: T.textLabel,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: "0.2px",
+                    cursor: "pointer",
+                    transition: "background 0.2s, border-color 0.2s, color 0.2s",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
+                    (e.currentTarget as HTMLElement).style.borderColor = T.accent;
+                    (e.currentTarget as HTMLElement).style.color = T.white;
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)";
+                    (e.currentTarget as HTMLElement).style.borderColor = T.border;
+                    (e.currentTarget as HTMLElement).style.color = T.textLabel;
+                  }}
+                >
+                  {language === "ar" ? "AR" : "EN"}
+                </button>
+              </>
             )}
 
             <NotificationBell onNavigate={onNavigate} />

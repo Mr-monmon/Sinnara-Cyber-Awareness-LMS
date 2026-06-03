@@ -19,29 +19,9 @@ import { formatLocalizedNumber } from "../../i18n/utils";
 import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import AccountSettings from "../company-admin/AccountSettings";
+import { ThemeProvider, useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  blue:        '#60a5fa',
-  orange:      '#fb923c',
-  orangeBg:    'rgba(251,146,60,0.08)',
-  purple:      '#a78bfa',
-  purpleBg:    'rgba(167,139,250,0.08)',
-  red:         '#f87171',
-} as const;
+/* tokens are consumed via useTheme() inside each component */
 
 /* ─────────────────────────────────────────
    GLOBAL STYLES
@@ -70,11 +50,14 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-d-styles')) 
    SECURITY TIPS
 ───────────────────────────────────────── */
 const TIP_ICONS = [Key, Globe, Shield, Wifi, Smartphone, UserX, Bell, AlertTriangle, CheckCircle];
-const TIP_COLORS = ['#c8ff00', '#60a5fa', '#34d399', '#a78bfa', '#fb923c', '#f87171', '#60a5fa', '#fb923c', '#34d399'];
+const TIP_COLORS_DARK  = ['#c8ff00', '#60a5fa', '#34d399', '#a78bfa', '#fb923c', '#f87171', '#60a5fa', '#fb923c', '#34d399'];
+const TIP_COLORS_LIGHT = ['#16a34a', '#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#2563eb', '#ea580c', '#16a34a'];
 
 /* ── Tip carousel ── */
 const TipCarousel: React.FC = () => {
   const { t } = useTranslation('employee');
+  const { isDark, tokens: T } = useTheme();
+  const tipColors = isDark ? TIP_COLORS_DARK : TIP_COLORS_LIGHT;
   const tips: { title: string; body: string }[] = t('dashboard.securityTip.tips', { returnObjects: true }) as any;
   const [idx, setIdx]     = useState(0);
   const [cls, setCls]     = useState('aw-d-tip-in');
@@ -97,7 +80,7 @@ const TipCarousel: React.FC = () => {
 
   const tip = tips[idx];
   const TipIcon = TIP_ICONS[idx];
-  const tipColor = TIP_COLORS[idx];
+  const tipColor = tipColors[idx];
 
   return (
     <div style={{
@@ -151,6 +134,7 @@ const TipCarousel: React.FC = () => {
 
 /* ── Bar chart ── */
 const BarChart: React.FC<{ completed: number; total: number; labels: { courseCompletion: string; completed: string; remaining: string } }> = ({ completed, total, labels }) => {
+  const { tokens: T } = useTheme();
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
     <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: '20px 22px' }}>
@@ -163,8 +147,8 @@ const BarChart: React.FC<{ completed: number; total: number; labels: { courseCom
         <span style={{ fontSize: 12, color: T.textMuted, marginBottom: 4 }}>{labels.completed}</span>
       </div>
       {[
-        { label: labels.completed, value: completed,         color: T.green,                  p: total > 0 ? (completed / total) * 100 : 0 },
-        { label: labels.remaining, value: total - completed, color: 'rgba(255,255,255,0.08)', p: total > 0 ? ((total - completed) / total) * 100 : 0 },
+        { label: labels.completed, value: completed,         color: T.green,  p: total > 0 ? (completed / total) * 100 : 0 },
+        { label: labels.remaining, value: total - completed, color: T.border, p: total > 0 ? ((total - completed) / total) * 100 : 0 },
       ].map(b => (
         <div key={b.label} style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textMuted, marginBottom: 5 }}>
@@ -172,10 +156,10 @@ const BarChart: React.FC<{ completed: number; total: number; labels: { courseCom
               <span style={{ width: 7, height: 7, borderRadius: 2, background: b.color, display: 'inline-block' }} />
               {b.label}
             </span>
-            <span style={{ color: '#94a3b8', fontWeight: 600 }}>{b.value}</span>
+            <span style={{ color: T.textMuted, fontWeight: 600 }}>{b.value}</span>
           </div>
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 9999, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: b.p + '%', background: b.color === T.green ? 'linear-gradient(90deg,#34d399,rgba(52,211,153,0.55))' : b.color, borderRadius: 9999, transition: 'width 0.8s ease' }} />
+          <div style={{ height: 6, background: T.borderFaint, borderRadius: 9999, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: b.p + '%', background: b.color === T.green ? `linear-gradient(90deg,${T.green},${T.green}8c)` : b.color, borderRadius: 9999, transition: 'width 0.8s ease' }} />
           </div>
         </div>
       ))}
@@ -185,11 +169,12 @@ const BarChart: React.FC<{ completed: number; total: number; labels: { courseCom
 
 /* ── Donut chart ── */
 const Donut: React.FC<{ completed: number; inProgress: number; notStarted: number; labels: { coursesBreakdown: string; completed: string; inProgress: string; notStarted: string; total: string } }> = ({ completed, inProgress, notStarted, labels }) => {
+  const { tokens: T } = useTheme();
   const total = Math.max(completed + inProgress + notStarted, 1);
   const slices = [
-    { v: completed,   c: T.green,                  label: labels.completed   },
-    { v: inProgress,  c: T.blue,                   label: labels.inProgress  },
-    { v: notStarted,  c: 'rgba(255,255,255,0.10)', label: labels.notStarted  },
+    { v: completed,   c: T.green,  label: labels.completed   },
+    { v: inProgress,  c: T.blue,   label: labels.inProgress  },
+    { v: notStarted,  c: T.border, label: labels.notStarted  },
   ].filter(s => s.v > 0);
   const R = 42; const cx = 58; const cy = 58;
   const toXY = (deg: number) => ({ x: cx + R * Math.cos((deg * Math.PI) / 180), y: cy + R * Math.sin((deg * Math.PI) / 180) });
@@ -216,9 +201,9 @@ const Donut: React.FC<{ completed: number; inProgress: number; notStarted: numbe
         </svg>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
           {[
-            { label: labels.completed,   value: completed,   color: T.green },
-            { label: labels.inProgress,  value: inProgress,  color: T.blue  },
-            { label: labels.notStarted,  value: notStarted,  color: 'rgba(255,255,255,0.20)' },
+            { label: labels.completed,   value: completed,   color: T.green  },
+            { label: labels.inProgress,  value: inProgress,  color: T.blue   },
+            { label: labels.notStarted,  value: notStarted,  color: T.border },
           ].map(s => (
             <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.textMuted }}>
@@ -235,7 +220,9 @@ const Donut: React.FC<{ completed: number; inProgress: number; notStarted: numbe
 };
 
 /* ── Stat card ── */
-const Stat: React.FC<{ Icon: React.ElementType; color: string; bg: string; label: string; value: string | number; delay: string }> = ({ Icon, color, bg, label, value, delay }) => (
+const Stat: React.FC<{ Icon: React.ElementType; color: string; bg: string; label: string; value: string | number; delay: string }> = ({ Icon, color, bg, label, value, delay }) => {
+  const { tokens: T } = useTheme();
+  return (
   <div className="aw-d-fade-up" style={{ animationDelay: delay, padding: '18px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
     <div style={{ width: 44, height: 44, borderRadius: 11, background: bg, border: '1px solid ' + color + '28', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
       <Icon size={20} style={{ color }} />
@@ -245,14 +232,16 @@ const Stat: React.FC<{ Icon: React.ElementType; color: string; bg: string; label
       <div style={{ fontSize: 12, color: T.textMuted }}>{label}</div>
     </div>
   </div>
-);
+  );
+};
 
 /* ═══════════════════════════════════════════
    MAIN
 ═══════════════════════════════════════════ */
-export const EmployeeDashboard: React.FC = () => {
+const EmployeeDashboardInner: React.FC = () => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation("employee");
+  const { tokens: T } = useTheme();
   const [activePage, setActivePage]       = useState("dashboard");
   const [isLoading, setIsLoading]         = useState(true);
   const [assignedExams, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
@@ -405,16 +394,16 @@ export const EmployeeDashboard: React.FC = () => {
         <div className="aw-d-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, margin: '0 0 5px', letterSpacing: '-0.3px' }}>{t("dashboard.title")} 👋</h1>
-            <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>{t("dashboard.subtitle")}</p>
+            <p style={{ fontSize: 14, color: T.textMuted, margin: 0 }}>{t("dashboard.subtitle")}</p>
           </div>
           {userRank !== null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', background: T.bgCard, border: '1px solid rgba(200,255,0,0.18)', borderRadius: 11 }}>
-              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(200,255,0,0.10)', border: '2px solid rgba(200,255,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', background: T.bgCard, border: `1px solid ${T.accent}2e`, borderRadius: 11 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: T.accent + '1a', border: `2px solid ${T.accent}47`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: 15, fontWeight: 900, color: T.accent }}>{formatLocalizedNumber(userRank, currentLanguage)}</span>
               </div>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{t("dashboard.rankLabel")}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t("dashboard.rankHint")}</div>
+                <div style={{ fontSize: 11, color: T.textMuted }}>{t("dashboard.rankHint")}</div>
               </div>
             </div>
           )}
@@ -422,7 +411,7 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 12 }}>
-          <Stat Icon={BookOpen}       color={T.accent} bg="rgba(200,255,0,0.08)" label={t("dashboard.stats.assignedCourses")}    value={formatLocalizedNumber(stats.assignedCourses,  currentLanguage)} delay="0.00s" />
+          <Stat Icon={BookOpen}       color={T.accent} bg={T.accent + '14'}       label={t("dashboard.stats.assignedCourses")}    value={formatLocalizedNumber(stats.assignedCourses,  currentLanguage)} delay="0.00s" />
           <Stat Icon={CheckCircle}    color={T.green}  bg={T.greenBg}            label={t("dashboard.stats.completedCourses")}   value={formatLocalizedNumber(stats.completedCourses, currentLanguage)} delay="0.05s" />
           <Stat Icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label={t("dashboard.stats.pendingAssessments")} value={formatLocalizedNumber(stats.pendingExams,     currentLanguage)} delay="0.10s" />
           <Stat Icon={Award}          color={T.purple} bg={T.purpleBg}           label={t("dashboard.stats.certificatesEarned")} value={formatLocalizedNumber(stats.certificates,     currentLanguage)} delay="0.15s" />
@@ -430,8 +419,8 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* All Done — employee has assigned courses and finished every one */}
         {!lastCourse && stats.assignedCourses > 0 && stats.completedCourses >= stats.assignedCourses && (
-          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: '1px solid rgba(52,211,153,0.22)', borderRadius: 14, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: `1px solid ${T.greenBorder}`, borderRadius: 14, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <CheckCircle size={24} style={{ color: T.green }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -447,8 +436,8 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Continue Learning — shown only when an in-progress course exists */}
         {lastCourse && (
-          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: '1px solid rgba(96,165,250,0.20)', borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ width: 42, height: 42, borderRadius: 11, background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="aw-d-fade-up" style={{ background: T.bgCard, border: `1px solid ${T.blueBorder}`, borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 11, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <BookOpen size={20} style={{ color: T.blue }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -458,8 +447,8 @@ export const EmployeeDashboard: React.FC = () => {
               <div style={{ fontSize: 14, fontWeight: 700, color: T.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
                 {lastCourse.title}
               </div>
-              <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden', maxWidth: 220 }}>
-                <div style={{ height: '100%', width: `${lastCourse.progress_percentage}%`, background: T.blue, borderRadius: 9999, boxShadow: '0 0 8px rgba(96,165,250,0.4)', transition: 'width 0.6s ease' }} />
+              <div style={{ height: 4, background: T.borderFaint, borderRadius: 9999, overflow: 'hidden', maxWidth: 220 }}>
+                <div style={{ height: '100%', width: `${lastCourse.progress_percentage}%`, background: T.blue, borderRadius: 9999, transition: 'width 0.6s ease' }} />
               </div>
               <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>
                 {Math.round(lastCourse.progress_percentage)}% {t('dashboard.charts.completed').toLowerCase()}
@@ -467,7 +456,7 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
             <button
               onClick={() => setActivePage('my-courses')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 9, border: '1px solid rgba(96,165,250,0.28)', background: 'rgba(96,165,250,0.10)', color: T.blue, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 9, border: `1px solid ${T.blueBorder}`, background: T.blueBg, color: T.blue, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
             >
               {t('actions.continue', { ns: 'common' })} <ChevronRight size={14} />
             </button>
@@ -532,17 +521,17 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ background: T.bgCard, border: '1px solid rgba(200,255,0,0.14)', borderRadius: 14, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}>
-            <div aria-hidden="true" style={{ position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle,rgba(200,255,0,0.07),transparent 70%)', pointerEvents: 'none' }} />
+          <div style={{ background: T.bgCard, border: `1px solid ${T.accent}24`, borderRadius: 14, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}>
+            <div aria-hidden="true" style={{ position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: '50%', background: `radial-gradient(circle,${T.accent}12,transparent 70%)`, pointerEvents: 'none' }} />
             <p style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '0 0 16px', position: 'relative' }}>{t("dashboard.progressCard.title")}</p>
             <div style={{ position: 'relative' }}>
               <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 7 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.textMuted, marginBottom: 7 }}>
                   <span>{t("dashboard.progressCard.courseCompletion")}</span>
                   <span style={{ color: T.accent, fontWeight: 700 }}>{pct}%</span>
                 </div>
-                <div style={{ height: 7, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: pct + '%', background: 'linear-gradient(90deg,#c8ff00,rgba(200,255,0,0.55))', borderRadius: 9999, boxShadow: '0 0 10px rgba(200,255,0,0.28)', transition: 'width 0.8s ease' }} />
+                <div style={{ height: 7, background: T.borderFaint, borderRadius: 9999, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: pct + '%', background: `linear-gradient(90deg,${T.accent},${T.accent}8c)`, borderRadius: 9999, transition: 'width 0.8s ease' }} />
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12, borderTop: `1px solid ${T.borderFaint}` }}>
@@ -551,7 +540,7 @@ export const EmployeeDashboard: React.FC = () => {
                   { label: t("dashboard.progressCard.certificates"),      value: stats.certificates,     color: T.purple },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, color: '#94a3b8' }}>{label}</span>
+                    <span style={{ fontSize: 13, color: T.textMuted }}>{label}</span>
                     <span style={{ fontSize: 16, fontWeight: 800, color }}>{formatLocalizedNumber(value, currentLanguage)}</span>
                   </div>
                 ))}
@@ -588,3 +577,9 @@ export const EmployeeDashboard: React.FC = () => {
     </>
   );
 };
+
+export const EmployeeDashboard: React.FC = () => (
+  <ThemeProvider>
+    <EmployeeDashboardInner />
+  </ThemeProvider>
+);

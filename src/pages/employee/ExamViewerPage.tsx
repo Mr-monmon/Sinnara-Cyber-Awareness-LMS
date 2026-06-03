@@ -12,26 +12,9 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedNumber } from "../../i18n/utils";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg: "#12140a",
-  bgCard: "#1a1e0e",
-  accent: "#c8ff00",
-  accentDark: "#12140a",
-  white: "#ffffff",
-  textBody: "#94a3b8",
-  textLabel: "#cbd5e1",
-  textMuted: "#64748b",
-  border: "rgba(255,255,255,0.09)",
-  borderFaint: "rgba(255,255,255,0.05)",
-  green: "#34d399",
-  greenBg: "rgba(52,211,153,0.08)",
-  greenBorder: "rgba(52,211,153,0.22)",
-  red: "#f87171",
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    CSS
@@ -148,6 +131,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
 }) => {
   const { user } = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
+  const { tokens: T } = useTheme();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -275,7 +259,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
     <div
       style={{
         padding: "16px",
-        background: "rgba(255,255,255,0.03)",
+        background: T.borderFaint,
         border: `1px solid ${T.borderFaint}`,
         borderRadius: 10,
         textAlign: "center",
@@ -307,7 +291,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             width: 36,
             height: 36,
             borderRadius: "50%",
-            border: "3px solid rgba(255,255,255,0.06)",
+            border: `3px solid ${T.borderFaint}`,
             borderTopColor: T.accent,
             animation: "aw-spin 0.8s linear infinite",
           }}
@@ -399,8 +383,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           <div
             style={{
               height: 3,
-              background:
-                "linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))",
+              background: `linear-gradient(90deg, ${T.accent}, ${T.accent}33)`,
             }}
           />
 
@@ -411,8 +394,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                 width: 56,
                 height: 56,
                 borderRadius: 14,
-                background: "rgba(200,255,0,0.08)",
-                border: "1px solid rgba(200,255,0,0.20)",
+                background: T.accent + '14',
+                border: `1px solid ${T.accent}33`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -501,8 +484,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             style={{
               margin: "0 36px 28px",
               padding: "20px",
-              background: "rgba(255,255,255,0.02)",
-              border: `1px solid ${T.borderFaint}`,
+              background: T.borderFaint,
+              border: `1px solid ${T.border}`,
               borderRadius: 12,
             }}
           >
@@ -591,8 +574,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           <div
             style={{
               height: 3,
-              background:
-                "linear-gradient(90deg, #34d399, rgba(52,211,153,0.20))",
+              background: `linear-gradient(90deg, ${T.green}, ${T.green}33)`,
             }}
           />
           <div style={{ padding: "40px 36px 32px" }}>
@@ -607,7 +589,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 20px",
-                boxShadow: "0 0 24px rgba(52,211,153,0.12)",
+                boxShadow: `0 0 24px ${T.green}1f`,
               }}
             >
               <Check size={28} style={{ color: T.green }} />
@@ -623,6 +605,110 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             >
               {t("examViewer.submittedTitle", { ns: "employee" })}
             </h1>
+
+
+            {/* ── Score / comprehension result ── */}
+            {!result ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  padding: "18px 20px",
+                  marginBottom: 20,
+                  fontSize: 13,
+                  color: T.textBody,
+                }}
+              >
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    border: `2px solid ${T.borderFaint}`,
+                    borderTopColor: T.accent,
+                    animation: "aw-spin 0.8s linear infinite",
+                  }}
+                />
+                {t("examViewer.calculatingScore", { ns: "employee" })}
+              </div>
+            ) : (() => {
+              // Pre/Post assessments are comprehension/awareness measures — no
+              // pass/fail. Any other exam type keeps the pass/fail badge.
+              const isComprehension =
+                examType === "PRE_ASSESSMENT" || examType === "POST_ASSESSMENT";
+              const accent = isComprehension
+                ? T.accent
+                : result.passed
+                ? T.green
+                : T.red;
+              return (
+                <div
+                  style={{
+                    padding: "22px 20px",
+                    background: "rgba(255,255,255,0.02)",
+                    border: `1px solid ${T.borderFaint}`,
+                    borderRadius: 12,
+                    marginBottom: 20,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: T.textMuted,
+                      letterSpacing: "1px",
+                      textTransform: "uppercase",
+                      marginBottom: 10,
+                    }}
+                  >
+                    {isComprehension
+                      ? t("examViewer.comprehensionLevel", { ns: "employee" })
+                      : t("examViewer.passingScore", { ns: "employee" })}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 44,
+                      fontWeight: 900,
+                      color: accent,
+                      lineHeight: 1,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {formatLocalizedNumber(result.percentage, currentLanguage)}%
+                  </div>
+                  <div style={{ fontSize: 13, color: T.textBody }}>
+                    {formatLocalizedNumber(result.score, currentLanguage)} /{" "}
+                    {formatLocalizedNumber(result.total, currentLanguage)}{" "}
+                    {t("examViewer.correctAnswers", { ns: "employee" })}
+                  </div>
+                  {!isComprehension && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 12,
+                        padding: "5px 14px",
+                        borderRadius: 9999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        letterSpacing: "0.5px",
+                        textTransform: "uppercase",
+                        background: result.passed ? T.greenBg : "rgba(248,113,113,0.10)",
+                        border: `1px solid ${result.passed ? T.greenBorder : "rgba(248,113,113,0.28)"}`,
+                        color: result.passed ? T.green : T.red,
+                      }}
+                    >
+                      {result.passed
+                        ? t("examViewer.passed", { ns: "employee" })
+                        : t("examViewer.failed", { ns: "employee" })}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div
               style={{
@@ -658,8 +744,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             <div
               style={{
                 padding: "18px 20px",
-                background: "rgba(255,255,255,0.02)",
-                border: `1px solid ${T.borderFaint}`,
+                background: T.borderFaint,
+                border: `1px solid ${T.border}`,
                 borderRadius: 12,
                 marginBottom: 24,
               }}
@@ -787,9 +873,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                 gap: 7,
                 padding: "6px 14px",
                 borderRadius: 8,
-                background: isLowTime
-                  ? "rgba(248,113,113,0.10)"
-                  : "rgba(255,255,255,0.04)",
+                background: isLowTime ? T.redBg : T.borderFaint,
                 border: `1px solid ${
                   isLowTime ? "rgba(248,113,113,0.30)" : T.borderFaint
                 }`,
@@ -812,7 +896,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
           <div
             style={{
               height: 4,
-              background: "rgba(255,255,255,0.06)",
+              background: T.borderFaint,
               borderRadius: 9999,
               overflow: "hidden",
             }}
@@ -823,7 +907,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                 width: `${progress}%`,
                 background: T.accent,
                 borderRadius: 9999,
-                boxShadow: "0 0 8px rgba(200,255,0,0.40)",
+                boxShadow: `0 0 8px ${T.accent}66`,
                 transition: "width 0.3s ease",
               }}
             />
@@ -850,8 +934,8 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               alignItems: "center",
               gap: 8,
               padding: "4px 12px",
-              background: "rgba(200,255,0,0.07)",
-              border: "1px solid rgba(200,255,0,0.18)",
+              background: T.accent + '12',
+              border: `1px solid ${T.accent}2e`,
               borderRadius: 9999,
               fontSize: 11,
               fontWeight: 700,
@@ -895,9 +979,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                       height: 20,
                       borderRadius: "50%",
                       flexShrink: 0,
-                      border: `2px solid ${
-                        isSelected ? T.accent : "rgba(255,255,255,0.20)"
-                      }`,
+                      border: `2px solid ${isSelected ? T.accent : T.border}`,
                       background: isSelected ? T.accent : "transparent",
                       display: "flex",
                       alignItems: "center",
@@ -1021,14 +1103,10 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             }}
           >
             {[
-              { label: "Current", color: T.accent, bg: T.accent },
-              { label: "Answered", color: T.green, bg: T.greenBg },
-              {
-                label: "Unanswered",
-                color: T.textMuted,
-                bg: "rgba(255,255,255,0.04)",
-              },
-            ].map(({ label, color, bg }) => (
+              { label: "Current", bg: T.accent },
+              { label: "Answered", bg: T.greenBg },
+              { label: "Unanswered", bg: T.borderFaint },
+            ].map(({ label, bg }) => (
               <div
                 key={label}
                 style={{

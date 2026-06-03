@@ -10,22 +10,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg: "#0f200a",
-  bgCard: "#1a1e0e",
-  accent: "#c8ff00",
-  accentDark: "#12140a",
-  white: "#ffffff",
-  textBody: "#94a3b8",
-  textLabel: "#cbd5e1",
-  textMuted: "#64748b",
-  border: "rgba(255,255,255,0.08)",
-  borderFaint: "rgba(255,255,255,0.05)",
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 const SEV = {
   HIGH: {
@@ -168,6 +155,7 @@ const SevBadge: React.FC<{ sev: SeverityKey }> = ({ sev }) => {
 export const FraudAlertsPage: React.FC = () => {
   const { user } = useAuth();
   const { t } = useTranslation(["common", "employee"]);
+  const { tokens: T } = useTheme();
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [acknowledging, setAcknowledging] = useState<string | null>(null);
@@ -246,7 +234,7 @@ export const FraudAlertsPage: React.FC = () => {
             width: 36,
             height: 36,
             borderRadius: "50%",
-            border: "3px solid rgba(255,255,255,0.06)",
+            border: `3px solid ${T.borderFaint}`,
             borderTopColor: T.accent,
             animation: "aw-spin 0.8s linear infinite",
           }}
@@ -355,8 +343,8 @@ export const FraudAlertsPage: React.FC = () => {
               width: 60,
               height: 60,
               borderRadius: "50%",
-              background: "rgba(200,255,0,0.08)",
-              border: "1px solid rgba(200,255,0,0.18)",
+              background: T.accent + '14',
+              border: `1px solid ${T.accent}2e`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -441,8 +429,8 @@ export const FraudAlertsPage: React.FC = () => {
                             alignItems: "center",
                             gap: 5,
                             padding: "3px 10px",
-                            background: "rgba(200,255,0,0.08)",
-                            border: "1px solid rgba(200,255,0,0.22)",
+                            background: T.accent + '14',
+                            border: `1px solid ${T.accent}38`,
                             borderRadius: 9999,
                             fontSize: 10,
                             fontWeight: 700,
@@ -563,20 +551,18 @@ export const FraudAlertsPage: React.FC = () => {
                         alignItems: "center",
                         justifyContent: "space-between",
                         padding: "12px 16px",
-                        background: "rgba(200,255,0,0.04)",
-                        border: "1px solid rgba(200,255,0,0.14)",
+                        background: T.accent + '0a',
+                        border: `1px solid ${T.accent}24`,
                         borderRadius: stepsOpen ? "10px 10px 0 0" : 10,
                         cursor: "pointer",
                         fontFamily: "inherit",
                         transition: "background 0.18s",
                       }}
                       onMouseEnter={(e) =>
-                        (e.currentTarget.style.background =
-                          "rgba(200,255,0,0.07)")
+                        (e.currentTarget.style.background = T.accent + '12')
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background =
-                          "rgba(200,255,0,0.04)")
+                        (e.currentTarget.style.background = T.accent + '0a')
                       }
                     >
                       <span
