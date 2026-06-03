@@ -6,36 +6,9 @@ import { formatLocalizedDate, formatLocalizedNumber } from "../../i18n/utils";
 import { supabase } from "../../lib/supabase";
 import { Course } from "../../lib/types";
 import { CourseViewerPage } from "./CourseViewerPage";
-
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#94a3b8',
-  textLabel:   '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
-  blueBorder:  'rgba(96,165,250,0.22)',
-} as const;
+import { useTheme } from "../../contexts/ThemeContext";
 
 type StatusKey = 'COMPLETED' | 'IN_PROGRESS' | 'ASSIGNED';
-
-const STATUS_CONFIG: Record<StatusKey, { color: string; bg: string; border: string }> = {
-  COMPLETED:   { color: T.green,     bg: T.greenBg, border: T.greenBorder },
-  IN_PROGRESS: { color: T.blue,      bg: T.blueBg,  border: T.blueBorder  },
-  ASSIGNED:    { color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint },
-};
 
 /* ─────────────────────────────────────────
    CSS
@@ -126,6 +99,12 @@ type Props = { navigateToCertificates: () => void };
 export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
+  const { tokens: T } = useTheme();
+  const STATUS_CONFIG: Record<StatusKey, { color: string; bg: string; border: string }> = {
+    COMPLETED:   { color: T.green,     bg: T.greenBg,   border: T.greenBorder },
+    IN_PROGRESS: { color: T.blue,      bg: T.blueBg,    border: T.blueBorder  },
+    ASSIGNED:    { color: T.textMuted, bg: T.borderFaint, border: T.borderFaint },
+  };
 
   const [courses, setCourses]               = useState<Course[]>([]);
   const [courseProgress, setCourseProgress] = useState<Record<string, CourseProgress>>({});
@@ -309,7 +288,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   /* ── Loading ── */
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: `3px solid ${T.borderFaint}`, borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
       <p style={{ fontSize: 14, color: T.textBody }}>{t("courses.loading", { ns: "employee" })}</p>
     </div>
   );
@@ -331,7 +310,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       {/* ── Page header ── */}
       <div className="aw-fade-up" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: T.accent + '14', border: `1px solid ${T.accent}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <BookOpen size={18} style={{ color: T.accent }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>
@@ -347,10 +326,10 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       {courses.length > 0 && (
         <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
           {[
-            { icon: BookOpen,    color: T.accent,    bg: 'rgba(200,255,0,0.08)',   border: 'rgba(200,255,0,0.20)',   label: t("courses.summary.total",      { ns: "employee" }), value: courses.length   },
-            { icon: CheckCircle, color: T.green,     bg: T.greenBg,               border: T.greenBorder,            label: t("courses.summary.completed",  { ns: "employee" }), value: completedCount   },
-            { icon: Clock,       color: '#fbbf24',   bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.22)',  label: t("courses.summary.inProgress", { ns: "employee" }), value: inProgressCount  },
-            { icon: PlayCircle,  color: T.textMuted, bg: 'rgba(255,255,255,0.04)', border: T.borderFaint,            label: t("courses.summary.notStarted", { ns: "employee" }), value: notStartedCount  },
+            { icon: BookOpen,    color: T.accent,    bg: T.accent + '14',  border: T.accent + '33',      label: t("courses.summary.total",      { ns: "employee" }), value: courses.length   },
+            { icon: CheckCircle, color: T.green,     bg: T.greenBg,        border: T.greenBorder,        label: t("courses.summary.completed",  { ns: "employee" }), value: completedCount   },
+            { icon: Clock,       color: T.gold,      bg: T.goldBg,         border: T.goldBorder,         label: t("courses.summary.inProgress", { ns: "employee" }), value: inProgressCount  },
+            { icon: PlayCircle,  color: T.textMuted, bg: T.borderFaint,    border: T.borderFaint,        label: t("courses.summary.notStarted", { ns: "employee" }), value: notStartedCount  },
           ].map(({ icon: Icon, color, bg, border, label, value }) => (
             <div key={label} style={{ padding: '14px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, minWidth: 150 }}>
               <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -370,7 +349,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
       {/* ── Empty state ── */}
       {courses.length === 0 ? (
         <div className="aw-fade-up" style={{ textAlign: 'center', padding: '64px 24px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
-          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+          <div style={{ width: 60, height: 60, borderRadius: '50%', background: T.accent + '14', border: `1px solid ${T.accent}2e`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <BookOpen size={26} style={{ color: T.accent }} />
           </div>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, marginBottom: 6 }}>
@@ -447,12 +426,11 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                           {formatLocalizedNumber(Math.round(progress), currentLanguage)}%
                         </span>
                       </div>
-                      <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: T.borderFaint, borderRadius: 9999, overflow: 'hidden' }}>
                         <div style={{
                           height: '100%', width: `${progress}%`,
-                          background: isInProgress ? T.blue : 'rgba(255,255,255,0.15)',
+                          background: isInProgress ? T.blue : T.border,
                           borderRadius: 9999,
-                          boxShadow: isInProgress ? '0 0 8px rgba(96,165,250,0.40)' : 'none',
                           transition: 'width 0.4s ease',
                         }} />
                       </div>

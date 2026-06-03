@@ -9,32 +9,9 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedNumber } from "../../i18n/utils";
 import ArticlePreview from "./ArticlePreview";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  bgDeep:      '#0e100a',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#ffffff',
-  textLabel:   '#ffffff',
-  textMuted:   '#ffffff',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  blue:        '#60a5fa',
-  blueBg:      'rgba(96,165,250,0.08)',
-  blueBorder:  'rgba(96,165,250,0.22)',
-  red:         '#f87171',
-  redBg:       'rgba(248,113,113,0.08)',
-  redBorder:   'rgba(248,113,113,0.22)',
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    CSS
@@ -183,6 +160,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 }) => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
+  const { tokens: T } = useTheme();
   const [sections, setSections]           = useState<CourseSection[]>([]);
   const [progress, setProgress]           = useState<Record<string, SectionProgress>>({});
   const [isLoading, setIsLoading]         = useState(true);
@@ -320,7 +298,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   /* ── Loading ── */
   if (!currentSection && isLoading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 14, fontFamily: 'Inter, sans-serif', flexDirection: 'column' }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: `3px solid ${T.borderFaint}`, borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
       <p style={{ fontSize: 14, color: T.textBody }}>{t("courseViewer.loading", { ns: "employee" })}</p>
     </div>
   );
@@ -364,8 +342,8 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
               <span style={{ fontSize: 12, color: T.textMuted, whiteSpace: 'nowrap' }}>
                 {formatLocalizedNumber(progressPercentage, currentLanguage)}%
               </span>
-              <div style={{ width: 120, height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${progressPercentage}%`, background: T.accent, borderRadius: 9999, boxShadow: '0 0 8px rgba(200,255,0,0.40)', transition: 'width 0.4s ease' }} />
+              <div style={{ width: 120, height: 5, background: T.borderFaint, borderRadius: 9999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${progressPercentage}%`, background: T.accent, borderRadius: 9999, transition: 'width 0.4s ease' }} />
               </div>
               <span style={{ fontSize: 12, color: T.textMuted, whiteSpace: 'nowrap' }}>
                 {completedSections}/{totalSections} {t("courseViewer.contentsTitle", { ns: "employee" })}
@@ -411,7 +389,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   style={{ textAlign: isRtl ? 'right' : 'left' }}
                 >
                   {/* Type icon */}
-                  <div className="aw-type-icon" style={{ background: isCurrent ? scfg.bg : 'rgba(255,255,255,0.03)', border: `1px solid ${isCurrent ? scfg.border : T.borderFaint}` }}>
+                  <div className="aw-type-icon" style={{ background: isCurrent ? scfg.bg : T.borderFaint, border: `1px solid ${isCurrent ? scfg.border : T.borderFaint}` }}>
                     <scfg.Icon size={14} style={{ color: isCurrent ? scfg.color : completed ? T.green : T.textMuted }} />
                   </div>
 
@@ -499,7 +477,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
             {/* ── ARTICLE ── */}
             {currentSection.section_type === "ARTICLE" && (
               <div style={{ padding: '24px' }}>
-                <div dir={isRtl ? "rtl" : "ltr"} style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20, color: '#ffffff', textAlign: isRtl ? 'right' : 'left' }}>
+                <div dir={isRtl ? "rtl" : "ltr"} style={{ padding: '20px', background: T.borderFaint, border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 20, color: T.white, textAlign: isRtl ? 'right' : 'left' }}>
                   <ArticlePreview html={currentSectionContent} />
                 </div>
                 {!isSectionCompleted(currentSection.id) && (
@@ -518,7 +496,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
                       {currentSectionQuestions.map((q, qIdx) => (
-                        <div key={qIdx} style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 12 }}>
+                        <div key={qIdx} style={{ padding: '20px', background: T.borderFaint, border: `1px solid ${T.border}`, borderRadius: 12 }}>
                           {/* Question */}
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.22)', fontSize: 11, fontWeight: 800, color: '#fbbf24', flexShrink: 0 }}>
@@ -537,7 +515,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                                   onClick={() => setQuizAnswers({ ...quizAnswers, [qIdx]: opt })}
                                   style={{ textAlign: isRtl ? 'right' : 'left' }}
                                 >
-                                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${isSelected ? T.accent : 'rgba(255,255,255,0.20)'}`, background: isSelected ? T.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s' }}>
+                                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${isSelected ? T.accent : T.border}`, background: isSelected ? T.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s' }}>
                                     {isSelected && <Check size={10} style={{ color: T.accentDark }} />}
                                   </div>
                                   {opt}
@@ -553,7 +531,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                       className="aw-btn-accent"
                       disabled={Object.keys(quizAnswers).length !== currentSectionQuestions.length || quizSubmitting}
                       onClick={handleSubmitQuiz}
-                      style={(Object.keys(quizAnswers).length !== currentSectionQuestions.length || quizSubmitting) ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)', boxShadow: 'none', cursor: 'not-allowed' } : {}}
+                      style={(Object.keys(quizAnswers).length !== currentSectionQuestions.length || quizSubmitting) ? { background: T.border, color: T.textMuted, boxShadow: 'none', cursor: 'not-allowed' } : {}}
                     >
                       <ClipboardCheck size={16} />
                       {t("courseViewer.submitAnswers", { ns: "employee" })}

@@ -6,22 +6,9 @@ import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { checkPassword } from "../../lib/passwordPolicy";
 import { PasswordStrengthMeter } from "../../components/PasswordStrengthMeter";
 import { TwoFactorSetupModal } from "../../components/auth/TwoFactorSetupModal";
+import { useTheme } from "../../contexts/ThemeContext";
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#94a3b8',
-  textLabel:   '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    CSS
@@ -143,6 +130,7 @@ const PasswordField: React.FC<{
 ═══════════════════════════════════════════ */
 const AccountSettings = () => {
   const { user, logout } = useAuth();
+  const { tokens: T } = useTheme();
   const [formData, setFormData]     = useState(initialForm);
   const [showPassword, setShowPassword] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
   const [error, setError]           = useState("");
@@ -237,7 +225,7 @@ const AccountSettings = () => {
       {/* ── Page header ── */}
       <div className="aw-fade-up">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: T.accent + '14', border: `1px solid ${T.accent}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ShieldCheck size={18} style={{ color: T.accent }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>
@@ -251,7 +239,7 @@ const AccountSettings = () => {
 
       {/* ── User info card ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.05s', padding: '18px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', background: T.accent + '14', border: `1px solid ${T.accent}2e`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.accent }}>
             {user?.full_name?.charAt(0)?.toUpperCase() || 'U'}
           </span>
@@ -263,7 +251,7 @@ const AccountSettings = () => {
           <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>{user?.email || '—'}</p>
         </div>
         <div style={{ marginLeft: 'auto' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', background: 'rgba(200,255,0,0.07)', border: '1px solid rgba(200,255,0,0.18)', borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', background: T.accent + '12', border: `1px solid ${T.accent}2e`, borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
             {user?.role?.replace('_', ' ')}
           </span>
         </div>
@@ -274,7 +262,7 @@ const AccountSettings = () => {
 
         {/* Form header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: T.borderFaint, border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <KeyRound size={16} style={{ color: T.textLabel }} />
           </div>
           <div>
@@ -298,7 +286,7 @@ const AccountSettings = () => {
             />
 
             {/* Tip */}
-            <div style={{ padding: '14px 16px', background: 'rgba(200,255,0,0.04)', border: '1px solid rgba(200,255,0,0.12)', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ padding: '14px 16px', background: T.accent + '0a', border: `1px solid ${T.accent}1f`, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <CheckCircle size={15} style={{ color: T.accent, flexShrink: 0, marginTop: 1 }} />
               <p style={{ fontSize: 13, color: T.textBody, lineHeight: '20px', margin: 0 }}>
                 Use at least 10 characters with upper, lower, number, and symbol.
@@ -355,7 +343,7 @@ const AccountSettings = () => {
       {/* ── Two-Factor Authentication ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.15s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: T.borderFaint, border: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ShieldCheck size={16} style={{ color: T.textLabel }} />
           </div>
           <div style={{ flex: 1 }}>

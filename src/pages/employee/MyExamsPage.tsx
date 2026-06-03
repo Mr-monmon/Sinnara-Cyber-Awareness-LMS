@@ -5,31 +5,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatLocalizedDate, formatLocalizedNumber } from '../../i18n/utils';
 import { supabase } from '../../lib/supabase';
 import { ExamViewerPage } from './ExamViewerPage';
+import { useTheme } from '../../contexts/ThemeContext';
 
-/* ─────────────────────────────────────────
-   TOKENS
-───────────────────────────────────────── */
-const T = {
-  bg:          '#12140a',
-  bgCard:      '#1a1e0e',
-  accent:      '#c8ff00',
-  accentDark:  '#12140a',
-  white:       '#ffffff',
-  textBody:    '#94a3b8',
-  textLabel:   '#cbd5e1',
-  textMuted:   '#64748b',
-  border:      'rgba(255,255,255,0.09)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  green:       '#34d399',
-  greenBg:     'rgba(52,211,153,0.08)',
-  greenBorder: 'rgba(52,211,153,0.22)',
-  yellow:      '#fbbf24',
-  yellowBg:    'rgba(251,191,36,0.08)',
-  yellowBorder:'rgba(251,191,36,0.22)',
-  red:         '#f87171',
-  redBg:       'rgba(248,113,113,0.08)',
-  redBorder:   'rgba(248,113,113,0.22)',
-} as const;
+/* tokens injected via useTheme() inside the component */
 
 /* ─────────────────────────────────────────
    CSS
@@ -107,6 +85,7 @@ type Props = { onExamCompleted: () => void; };
 export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(['common', 'employee']);
+  const { tokens: T } = useTheme();
   const [exams, setExams]           = useState<ExamWithStatus[]>([]);
   const [loading, setLoading]       = useState(true);
   const [viewingExam, setViewingExam] = useState<ExamWithStatus | null>(null);
@@ -141,7 +120,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   /* Loading */
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: `3px solid ${T.borderFaint}`, borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
       <p style={{ fontSize: 14, color: T.textBody }}>{t("exams.loading", { ns: "employee" })}</p>
     </div>
   );
@@ -160,7 +139,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
       {/* ── Page header ── */}
       <div className="aw-fade-up" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: T.accent + '14', border: `1px solid ${T.accent}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ClipboardCheck size={18} style={{ color: T.accent }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>
@@ -186,7 +165,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
       {totalExams > 0 && (
         <div className="aw-fade-up" style={{ animationDelay: '0.05s', display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
           {[
-            { icon: ClipboardCheck, color: T.accent,   bg: 'rgba(200,255,0,0.08)',   border: 'rgba(200,255,0,0.20)',   label: t('exams.summary.total',            { ns: 'employee' }), value: totalExams        },
+            { icon: ClipboardCheck, color: T.accent,   bg: T.accent + '14',          border: T.accent + '33',          label: t('exams.summary.total',            { ns: 'employee' }), value: totalExams        },
             { icon: Clock,          color: T.green,    bg: T.greenBg,               border: T.greenBorder,            label: t('exams.summary.inProgress',       { ns: 'employee' }), value: examsWithAttempts  },
             { icon: TrendingUp,     color: '#60a5fa',  bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)', label: t('exams.summary.available',        { ns: 'employee' }), value: availableToTake    },
           ].map(({ icon: Icon, color, bg, border, label, value }) => (
@@ -208,7 +187,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
       {/* ── Empty state ── */}
       {exams.length === 0 ? (
         <div className="aw-fade-up" style={{ textAlign: 'center', padding: '64px 24px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
-          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+          <div style={{ width: 60, height: 60, borderRadius: '50%', background: T.accent + '14', border: `1px solid ${T.accent}2e`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <ClipboardCheck size={26} style={{ color: T.accent }} />
           </div>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, marginBottom: 6 }}>
@@ -233,13 +212,13 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
                 style={{ animationDelay: `${idx * 0.05}s` }}
               >
                 {/* Top accent */}
-                <div style={{ height: 3, background: canTake ? 'linear-gradient(90deg, #c8ff00, rgba(200,255,0,0.20))' : 'rgba(255,255,255,0.06)' }} />
+                <div style={{ height: 3, background: canTake ? `linear-gradient(90deg, ${T.accent}, ${T.accent}33)` : T.borderFaint }} />
 
                 <div style={{ padding: '20px 22px 22px' }}>
 
                   {/* Card header */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: canTake ? 'rgba(200,255,0,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canTake ? 'rgba(200,255,0,0.20)' : T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: canTake ? T.accent + '14' : T.borderFaint, border: `1px solid ${canTake ? T.accent + '33' : T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {canTake
                         ? <ClipboardCheck size={18} style={{ color: T.accent }} />
                         : <Lock size={18} style={{ color: T.textMuted }} />
@@ -278,7 +257,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
 
                   {/* Attempts detail */}
                   {hasAttempted && (
-                    <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 12 }}>
+                    <div style={{ padding: '12px 14px', background: T.borderFaint, border: `1px solid ${T.borderFaint}`, borderRadius: 10, marginBottom: 12 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>
                         {t('exams.attempts.title', { ns: 'employee' })}
                       </p>
