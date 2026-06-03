@@ -117,6 +117,13 @@ interface ExamAccessResponse {
   has_passed: boolean;
   max_attempts: number;
 }
+interface ExamResult {
+  score: number;        // raw count of correct answers
+  total: number;        // total questions
+  percentage: number;   // 0–100
+  passed: boolean;
+  passing_score: number;
+}
 
 /* ═══════════════════════════════════════════
    COMPONENT
@@ -141,6 +148,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [attemptsRemaining, setAttemptsRemaining] = useState(0);
+  const [result, setResult] = useState<ExamResult | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
 
@@ -223,12 +231,16 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
       Date.now() - (timeLimit * 60 - timeRemaining) * 1000
     ).toISOString();
     try {
-      const { error } = await supabase.functions.invoke("submit-exam", {
+      const { data, error } = await supabase.functions.invoke("submit-exam", {
         body: { examId, answers, startedAt },
       });
       if (error) {
         console.error("Error submitting exam:", error);
         alert(t("examViewer.submitError", { ns: "employee" }));
+      } else if (data) {
+        // submit-exam returns { score, total, percentage, passed, passing_score }.
+        // Surface it so the employee sees their comprehension result immediately.
+        setResult(data as ExamResult);
       }
     } catch (err) {
       console.error("Error submitting exam:", err);

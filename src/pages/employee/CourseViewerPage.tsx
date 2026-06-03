@@ -146,12 +146,6 @@ interface CourseViewerProps {
 /* ─────────────────────────────────────────
    TYPE ICON CONFIG
 ───────────────────────────────────────── */
-const typeConfig = {
-  VIDEO:   { Icon: PlayCircle,     color: T.blue,   bg: T.blueBg,   border: T.blueBorder  },
-  ARTICLE: { Icon: FileText,       color: T.accent, bg: 'rgba(200,255,0,0.08)', border: 'rgba(200,255,0,0.20)' },
-  QUIZ:    { Icon: ClipboardCheck, color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.20)' },
-} as const;
-
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
@@ -161,6 +155,13 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
   const { tokens: T } = useTheme();
+
+  const typeConfig = {
+    VIDEO:   { Icon: PlayCircle,     color: T.blue,   bg: T.blueBg,   border: T.blueBorder  },
+    ARTICLE: { Icon: FileText,       color: T.accent, bg: 'rgba(200,255,0,0.08)', border: 'rgba(200,255,0,0.20)' },
+    QUIZ:    { Icon: ClipboardCheck, color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.20)' },
+  } as const;
+
   const [sections, setSections]           = useState<CourseSection[]>([]);
   const [progress, setProgress]           = useState<Record<string, SectionProgress>>({});
   const [isLoading, setIsLoading]         = useState(true);
