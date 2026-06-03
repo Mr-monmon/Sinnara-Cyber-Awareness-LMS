@@ -489,10 +489,8 @@ export const PhishingRequestPage: React.FC = () => {
       </div>
     );
 
-  const remainingQuota = Math.max(
-    0,
-    (quota?.annual_quota || 0) - (quota?.used_campaigns || 0)
-  );
+  const remainingQuota =
+    Math.max(0, (quota?.annual_quota || 0) - (quota?.used_campaigns || 0));
   const selectedTpl = templates.find((t) => t.id === form.template_id);
   const annualQuotaIsZero = quota !== null && quota.annual_quota === 0;
 

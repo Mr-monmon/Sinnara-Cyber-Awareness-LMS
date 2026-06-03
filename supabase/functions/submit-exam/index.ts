@@ -9,7 +9,40 @@
  * not already passed) so a tampered client cannot bypass the gate.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { captureException } from "./sentry.ts";
+
+/* Inlined Sentry reporter (kept in-file so the function deploys as a single module). */
+async function captureException(
+  error: unknown,
+  context: { function: string; [key: string]: unknown } = { function: "unknown" },
+): Promise<void> {
+  const dsn = Deno.env.get("SENTRY_DSN");
+  if (!dsn) return;
+  const m = dsn.match(/^https?:\/\/([^@]+)@([^/]+)\/(.+)$/);
+  if (!m) return;
+  const [, key, host, projectId] = m;
+  const err = error instanceof Error ? error : new Error(String(error));
+  try {
+    await fetch(`https://${host}/api/${projectId}/store/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sentry-Auth": `Sentry sentry_version=7, sentry_key=${key}`,
+      },
+      body: JSON.stringify({
+        event_id: crypto.randomUUID().replace(/-/g, ""),
+        timestamp: new Date().toISOString(),
+        platform: "node",
+        level: "error",
+        server_name: "supabase-edge",
+        tags: { function: context.function },
+        extra: context,
+        exception: { values: [{ type: err.name, value: err.message }] },
+      }),
+    });
+  } catch {
+    // Never let Sentry reporting break the function
+  }
+}
 
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!;

@@ -6,7 +6,7 @@ import {
   Building2, ChevronRight, Eye, Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { parseCSV, calculateCampaignStats, getStatusFromRecord, classifyRecord } from "../../lib/gophishCsvParser";
+import { parseCSV, calculateCampaignStats, getStatusFromRecord, isReported, STAGE_RANK } from "../../lib/gophishCsvParser";
 import { RequestWithCompany } from "../../lib/types";
 
 /* ─────────────────────────────────────────
@@ -279,13 +279,25 @@ export const PhishingCampaignResultsPage: React.FC = () => {
       //    employee_id is left NULL on purpose: the auto_link_target_to_employee
       //    trigger matches each row to the real employee by email within the
       //    company, so the result reflects on that employee's risk profile.
+      //    We resolve department_id up front from the company's employees so the
+      //    department vulnerability-stats trigger has a department to aggregate by
+      //    (it skips rows whose department_id is NULL).
+      const { data: employees } = await supabase
+        .from('users')
+        .select('email, department_id')
+        .eq('company_id', selectedCampaign.company_id)
+        .eq('role', 'EMPLOYEE');
+      const deptByEmail = new Map<string, string | null>();
+      (employees || []).forEach((e: { email: string; department_id: string | null }) =>
+        deptByEmail.set(e.email.toLowerCase(), e.department_id));
+
       const rows = targetData.map(target => {
         const rec = csvData.records.find(r => r.email === target.email);
         const mod = rec?.modified_date ? new Date(rec.modified_date).toISOString() : null;
-        const f = rec ? classifyRecord(rec) : null;
         const row: Record<string, unknown> = {
           campaign_id: campaignId,
           employee_id: null,
+          department_id: deptByEmail.get(target.email.toLowerCase()) ?? null,
           email: target.email,
           first_name: target.first_name,
           last_name: target.last_name,
@@ -293,13 +305,17 @@ export const PhishingCampaignResultsPage: React.FC = () => {
           status: target.status,
           sent_at: rec?.send_date ? new Date(rec.send_date).toISOString() : null,
         };
-        // Cumulative timestamps — a click implies an open, a submit implies a
-        // click, so every stage reached is recorded (not just the furthest).
-        if (f?.opened)    row.opened_at = mod;
-        if (f?.clicked)   row.clicked_at = mod;
-        if (f?.submitted) { row.submitted_at = mod; row.credentials_entered = true; }
-        // Reporting is independent of the funnel stage.
-        if (f?.reported)  row.reported_at = mod;
+        // Funnel timestamps are cumulative: a SUBMITTED recipient also opened and
+        // clicked. Gophish only exports one modified_date per recipient (the last
+        // event), so we backfill every earlier stage with it to keep each target
+        // row funnel-consistent (no SUBMITTED row left with a NULL clicked_at).
+        const rank = STAGE_RANK[(target.status as keyof typeof STAGE_RANK)] ?? 0;
+        if (rank >= STAGE_RANK.OPENED)    row.opened_at  = mod;
+        if (rank >= STAGE_RANK.CLICKED)   row.clicked_at = mod;
+        if (rank >= STAGE_RANK.SUBMITTED) { row.submitted_at = mod; row.credentials_entered = true; }
+        // Reporting is independent of the funnel and driven by the `reported`
+        // column, so a recipient who clicked AND reported records both signals.
+        if (rec && isReported(rec)) row.reported_at = mod;
         return row;
       });
       for (let i = 0; i < rows.length; i += 500) {

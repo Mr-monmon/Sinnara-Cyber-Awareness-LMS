@@ -93,7 +93,8 @@
     "summary": {
       "total": "إجمالي التقييمات",
       "inProgress": "قيد التنفيذ",
-      "attemptsRemaining": "المحاولات المتبقية"
+      "attemptsRemaining": "المحاولات المتبقية",
+      "available": "متاح للأداء"
     },
     "types": {
       "pre": "تقييم قبلي",
@@ -214,7 +215,12 @@
     "questionOf": "السؤال {{current}} من {{total}}",
     "answered": "تمت الإجابة: {{answered}} / {{total}}",
     "submitAssessment": "إرسال التقييم",
-    "quickNavigation": "تنقل سريع:"
+    "quickNavigation": "تنقل سريع:",
+    "comprehensionLevel": "مستوى الفهم",
+    "passed": "ناجح",
+    "failed": "راسب",
+    "correctAnswers": "إجابة صحيحة",
+    "calculatingScore": "جارٍ حساب نتيجتك…"
   },
   "widget": {
     "title": "تنبيهات الاحتيال",

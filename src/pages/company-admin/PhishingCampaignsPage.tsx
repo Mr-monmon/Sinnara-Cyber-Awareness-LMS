@@ -646,8 +646,8 @@ export const PhishingCampaignsPage: React.FC = () => {
               const sent = c.emails_sent || 0;
               const opened = c.emails_opened || 0;
               const clicked = c.links_clicked || 0;
-              // Denominator consistent with the Dashboard / Analytics: targeted
-              // recipients, not just delivered emails.
+              // Rates are measured against targeted recipients, not emails_sent.
+              // Falling back to 1 would inflate a no-queue campaign's rate to clicked×100%.
               const total = c.total_queue_size || c.total_targets || 0;
               return (
                 <div key={c.id} className="aw-pc-row" onClick={() => openDetail(c)} style={{ borderRadius: 0, border: 'none', borderBottom: `1px solid ${T.borderFaint}` }}>
@@ -703,6 +703,9 @@ export const PhishingCampaignsPage: React.FC = () => {
     const opened = selectedCampaign.emails_opened || 0;
     const clicked = selectedCampaign.links_clicked || 0;
     const submitted = selectedCampaign.data_submitted || 0;
+    // All funnel rates are a fraction of targeted recipients. Using emails_sent
+    // as the denominator made the "Emails Sent" card always read 100% and
+    // inflated every other rate whenever some emails failed to send.
     const total = selectedCampaign.total_queue_size || selectedCampaign.total_targets || 0;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: "'Inter', sans-serif" }}>

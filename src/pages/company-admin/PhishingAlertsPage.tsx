@@ -114,6 +114,8 @@ export const PhishingAlertsPage: React.FC = () => {
     { key: 'ALL', label: 'All', count: alerts.length },
     { key: 'UNREAD', label: 'Unread', count: unreadCount },
     { key: 'CRITICAL', label: 'Critical', count: alerts.filter(a => a.priority === 'CRITICAL').length },
+    // The High tab lists HIGH and CRITICAL alerts (see filter above), so its
+    // badge must count both — otherwise the count is lower than the rows shown.
     { key: 'HIGH', label: 'High', count: alerts.filter(a => a.priority === 'HIGH' || a.priority === 'CRITICAL').length },
   ];
 

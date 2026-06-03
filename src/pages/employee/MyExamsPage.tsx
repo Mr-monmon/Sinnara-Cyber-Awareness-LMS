@@ -128,7 +128,10 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   /* Stats */
   const totalExams        = exams.length;
   const examsWithAttempts = exams.filter(e => e.attempts_used > 0).length;
-  const attemptsRemaining = exams.reduce((sum, e) => sum + (e.max_attempts - e.attempts_used), 0);
+  // "Available to take" = assessments the employee can still sit (attempts left).
+  // Previously this summed remaining attempts across ALL exams, which produced a
+  // confusing aggregate (e.g. "8") that didn't map to anything the employee acts on.
+  const availableToTake   = exams.filter(e => e.attempts_used < e.max_attempts).length;
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -164,7 +167,7 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
           {[
             { icon: ClipboardCheck, color: T.accent,   bg: T.accent + '14',          border: T.accent + '33',          label: t('exams.summary.total',            { ns: 'employee' }), value: totalExams        },
             { icon: Clock,          color: T.green,    bg: T.greenBg,               border: T.greenBorder,            label: t('exams.summary.inProgress',       { ns: 'employee' }), value: examsWithAttempts  },
-            { icon: TrendingUp,     color: '#60a5fa',  bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)', label: t('exams.summary.attemptsRemaining',{ ns: 'employee' }), value: attemptsRemaining  },
+            { icon: TrendingUp,     color: '#60a5fa',  bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)', label: t('exams.summary.available',        { ns: 'employee' }), value: availableToTake    },
           ].map(({ icon: Icon, color, bg, border, label, value }) => (
             <div key={label} style={{ padding: '14px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 14, minWidth: 160 }}>
               <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

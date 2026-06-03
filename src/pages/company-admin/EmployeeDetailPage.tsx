@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   ArrowLeft, Award, BookOpen, ClipboardCheck,
   TrendingUp, Download, Calendar, CheckCircle,
+  Shield, AlertTriangle, Mail,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -285,6 +286,8 @@ interface EmployeeData { id: string; full_name: string; email: string; phone: st
 interface CourseProgress { course_id: string; course_name: string; progress_percentage: number; status: string; assigned_at: string; completed_at: string | null; last_accessed_at: string | null; completed_sections: number; total_sections: number; }
 interface ExamAttempt { exam_name: string; attempt_number: number; score: number; passed: boolean; completed_at: string; }
 interface Certificate { id: string; course_name: string | null; certificate_number: string; issued_at: string; }
+interface PhishingTarget { campaign_name: string; campaign_date: string; status: string; clicked: boolean; creds_entered: boolean; reported: boolean; }
+interface RiskSummary { risk_score: number; risk_level: string; course_risk: number; exam_risk: number; phishing_risk: number; phishing_total: number; phishing_clicked: number; phishing_creds_entered: number; }
 
 const STATUS_COLOR: Record<string, string> = { COMPLETED: T.green, IN_PROGRESS: T.blue, NOT_STARTED: 'rgba(255,255,255,0.15)' };
 const STATUS_LABEL: Record<string, string> = { COMPLETED: 'Completed', IN_PROGRESS: 'In Progress', NOT_STARTED: 'Not Started' };
@@ -297,13 +300,15 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
   const [courses, setCourses]         = useState<CourseProgress[]>([]);
   const [exams, setExams]             = useState<ExamAttempt[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [phishingTargets, setPhishingTargets] = useState<PhishingTarget[]>([]);
+  const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
   const [loading, setLoading]         = useState(true);
 
   useEffect(() => { loadAllData(); }, [employeeId]);
 
   const loadAllData = async () => {
     setLoading(true);
-    try { await Promise.all([loadEmployee(), loadCourses(), loadExams(), loadCerts()]); }
+    try { await Promise.all([loadEmployee(), loadCourses(), loadExams(), loadCerts(), loadPhishingAndRisk()]); }
     catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -351,12 +356,39 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
     if (data) setCertificates(data.map((c: any) => ({ id: c.id, course_name: c.courses?.title || null, certificate_number: c.certificate_number, issued_at: c.issued_at })));
   };
 
+  const loadPhishingAndRisk = async () => {
+    // Risk summary from the pre-computed view (covers course, exam, phishing risk scores)
+    const { data: riskRow } = await supabase
+      .from("employee_risk_scores")
+      .select("risk_score, risk_level, course_risk, exam_risk, phishing_risk, phishing_total, phishing_clicked, phishing_creds_entered")
+      .eq("employee_id", employeeId)
+      .maybeSingle();
+    if (riskRow) setRiskSummary(riskRow as RiskSummary);
+
+    // Per-campaign phishing history
+    const { data: targets } = await supabase
+      .from("phishing_campaign_targets")
+      .select("status, clicked_at, submitted_at, reported_at, credentials_entered, phishing_campaigns(name, created_at)")
+      .eq("employee_id", employeeId)
+      .order("created_at", { ascending: false });
+    if (targets) {
+      setPhishingTargets(targets.map((t: any) => ({
+        campaign_name: t.phishing_campaigns?.name ?? "Unknown Campaign",
+        campaign_date: t.phishing_campaigns?.created_at ?? "",
+        status: t.status ?? "SENT",
+        clicked: !!t.clicked_at,
+        creds_entered: !!t.credentials_entered,
+        reported: !!t.reported_at,
+      })));
+    }
+  };
+
   const generateReport = () => {
     if (!employee) return;
-    const improvement = employee.pre_assessment_score && employee.post_assessment_score
-      ? (((employee.post_assessment_score - employee.pre_assessment_score) / employee.pre_assessment_score) * 100).toFixed(1)
+    const improvement = employee.pre_assessment_score !== null && employee.post_assessment_score !== null
+      ? (employee.post_assessment_score - employee.pre_assessment_score).toFixed(1)
       : "N/A";
-    const content = `=== Employee Progress Report ===\nName: ${employee.full_name}\nEmail: ${employee.email}\nPhone: ${employee.phone || "N/A"}\nEmployee ID: ${employee.employee_id || "N/A"}\n\n=== Assessments ===\nPre: ${employee.pre_assessment_score?.toFixed(1) || "N/A"}%\nPost: ${employee.post_assessment_score?.toFixed(1) || "N/A"}%\nImprovement: ${improvement}%\n\n=== Courses ===\n${courses.map(c => `- ${c.course_name}: ${c.progress_percentage}% (${c.status})`).join("\n")}\n\n=== Exams ===\n${exams.map(e => `- ${e.exam_name} #${e.attempt_number}: ${e.score.toFixed(1)}% ${e.passed ? "PASSED" : "FAILED"}`).join("\n")}\n\n=== Certificates ===\n${certificates.map(c => `- ${c.course_name || "Certificate"}: ${c.certificate_number}`).join("\n")}`;
+    const content = `=== Employee Progress Report ===\nName: ${employee.full_name}\nEmail: ${employee.email}\nPhone: ${employee.phone || "N/A"}\nEmployee ID: ${employee.employee_id || "N/A"}\n\n=== Assessments ===\nPre: ${employee.pre_assessment_score?.toFixed(1) || "N/A"}%\nPost: ${employee.post_assessment_score?.toFixed(1) || "N/A"}%\nImprovement: ${improvement} pts\n\n=== Courses ===\n${courses.map(c => `- ${c.course_name}: ${c.progress_percentage}% (${c.status})`).join("\n")}\n\n=== Exams ===\n${exams.map(e => `- ${e.exam_name} #${e.attempt_number}: ${e.score.toFixed(1)}% ${e.passed ? "PASSED" : "FAILED"}`).join("\n")}\n\n=== Certificates ===\n${certificates.map(c => `- ${c.course_name || "Certificate"}: ${c.certificate_number}`).join("\n")}`;
     const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
@@ -378,8 +410,11 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
     </div>
   );
 
-  const improvement = employee.pre_assessment_score && employee.post_assessment_score
-    ? ((employee.post_assessment_score - employee.pre_assessment_score) / employee.pre_assessment_score) * 100
+  // Absolute difference (post - pre) kept consistent with AnalyticsPage.
+  // The old formula used relative change ((post-pre)/pre*100) which gave a different
+  // number to what the Analytics table shows for the same employee.
+  const improvement = employee.pre_assessment_score !== null && employee.post_assessment_score !== null
+    ? employee.post_assessment_score - employee.pre_assessment_score
     : 0;
 
   const completedCourses  = courses.filter(c => c.status === "COMPLETED").length;
@@ -433,6 +468,11 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
         <StatCard icon={BookOpen}      color={T.accent}  bg="rgba(200,255,0,0.08)" label="Courses" value={`${completedCourses}/${courses.length}`} delay="0.09s" />
         <StatCard icon={ClipboardCheck} color={T.purple} bg={T.purpleBg}           label="Exam Attempts" value={exams.length} delay="0.13s" />
         <StatCard icon={Award}          color={T.gold}   bg={T.goldBg}             label="Certificates" value={certificates.length} delay="0.17s" />
+        {riskSummary && (() => {
+          const riskColor = riskSummary.risk_level === 'CRITICAL' ? '#f87171' : riskSummary.risk_level === 'HIGH' ? T.orange : riskSummary.risk_level === 'MEDIUM' ? '#fbbf24' : T.green;
+          const riskBg = riskSummary.risk_level === 'CRITICAL' ? T.redBg : riskSummary.risk_level === 'HIGH' ? T.orangeBg : riskSummary.risk_level === 'MEDIUM' ? T.goldBg : T.greenBg;
+          return <StatCard icon={AlertTriangle} color={riskColor} bg={riskBg} label={`Risk Score — ${riskSummary.risk_level}`} value={riskSummary.risk_score} delay="0.21s" />;
+        })()}
       </div>
 
       {/* ── Charts row ── */}
@@ -626,6 +666,95 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Phishing Simulation History ── */}
+      {(phishingTargets.length > 0 || riskSummary) && (
+        <div className="aw-detail-section aw-fade-up" style={{ animationDelay: '0.34s' }}>
+          <div className="aw-detail-section-header">
+            <Mail size={15} style={{ color: T.orange }} /> Phishing Simulation History
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: T.textMuted, fontWeight: 400 }}>
+              {phishingTargets.length} campaign{phishingTargets.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* Summary pills */}
+          {phishingTargets.length > 0 && (() => {
+            const total = phishingTargets.length;
+            const clicked = phishingTargets.filter(t => t.clicked).length;
+            const creds = phishingTargets.filter(t => t.creds_entered).length;
+            const reported = phishingTargets.filter(t => t.reported).length;
+            const clickRate = total > 0 ? Math.round((clicked / total) * 100) : 0;
+            return (
+              <div style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: 10, borderBottom: `1px solid ${T.border}` }}>
+                {[
+                  { label: 'Campaigns Targeted', value: total, color: T.blue, bg: T.blueBg },
+                  { label: 'Clicked Link', value: clicked, color: T.orange, bg: T.orangeBg },
+                  { label: 'Credentials Submitted', value: creds, color: T.red, bg: T.redBg },
+                  { label: 'Reported Phish', value: reported, color: T.green, bg: T.greenBg },
+                  { label: 'Click Rate', value: `${clickRate}%`, color: clickRate === 0 ? T.green : clickRate < 30 ? T.gold : T.red, bg: clickRate === 0 ? T.greenBg : clickRate < 30 ? T.goldBg : T.redBg },
+                ].map(pill => (
+                  <div key={pill.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: pill.bg, border: `1px solid ${pill.color}33`, borderRadius: 9999 }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: pill.color }}>{pill.value}</span>
+                    <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 500 }}>{pill.label}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Per-campaign table */}
+          {phishingTargets.length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="aw-exam-table">
+                <thead>
+                  <tr>
+                    <th>Campaign</th>
+                    <th style={{ textAlign: 'center' }}>Date</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                    <th style={{ textAlign: 'center' }}>Clicked</th>
+                    <th style={{ textAlign: 'center' }}>Credentials</th>
+                    <th style={{ textAlign: 'center' }}>Reported</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {phishingTargets.map((t, idx) => (
+                    <tr key={idx}>
+                      <td style={{ color: T.white, fontWeight: 600 }}>{t.campaign_name}</td>
+                      <td style={{ textAlign: 'center', color: T.textMuted }}>{t.campaign_date ? fmt(t.campaign_date) : '—'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-flex', padding: '3px 10px', borderRadius: 9999, fontSize: 10,
+                          fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase',
+                          background: t.status === 'REPORTED' ? T.greenBg : t.creds_entered ? T.redBg : t.clicked ? T.orangeBg : T.blueBg,
+                          border: `1px solid ${t.status === 'REPORTED' ? T.greenBorder : t.creds_entered ? T.redBorder : t.clicked ? T.orange + '55' : T.blue + '55'}`,
+                          color: t.status === 'REPORTED' ? T.green : t.creds_entered ? T.red : t.clicked ? T.orange : T.blue,
+                        }}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', color: t.clicked ? T.orange : T.textMuted, fontWeight: t.clicked ? 700 : 400 }}>
+                        {t.clicked ? '✓' : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center', color: t.creds_entered ? T.red : T.textMuted, fontWeight: t.creds_entered ? 700 : 400 }}>
+                        {t.creds_entered ? '✓' : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center', color: t.reported ? T.green : T.textMuted, fontWeight: t.reported ? 700 : 400 }}>
+                        {t.reported ? '✓' : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {phishingTargets.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: T.textMuted, fontSize: 13 }}>
+              No phishing simulation campaigns yet
+            </div>
+          )}
         </div>
       )}
     </div>

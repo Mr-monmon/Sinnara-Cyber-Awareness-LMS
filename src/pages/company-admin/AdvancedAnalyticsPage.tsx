@@ -49,8 +49,14 @@ interface RiskDist {
 interface PhishingTrend {
   campaign_name: string;
   total_targets: number;
+  opened: number;
   clicked: number;
+  creds: number;
+  reported: number;
   click_rate: number;
+  open_rate: number;
+  cred_rate: number;
+  report_rate: number;
 }
 
 interface Overview {
@@ -229,7 +235,7 @@ export function AdvancedAnalyticsPage() {
     // 3. Phishing campaigns for this company
     const { data: campaigns } = await supabase
       .from("phishing_campaigns")
-      .select("id, name, total_queue_size, total_targets, emails_opened, links_clicked")
+      .select("id, name, total_queue_size, total_targets, emails_opened, links_clicked, credentials_entered, emails_reported")
       .eq("company_id", cid)
       .order("created_at", { ascending: false })
       .limit(8);
@@ -317,12 +323,24 @@ export function AdvancedAnalyticsPage() {
     // ── Process phishing campaigns ─────────────────
     if (campaigns) {
       setPhishingTrends(campaigns.map((c: any) => {
-        const total = c.total_queue_size || c.total_targets || 0;
+        // TICKET campaigns have no queue, so fall back to total_targets; otherwise
+        // the denominator is 0 and the click rate is forced to 0% regardless of clicks.
+        const targets = c.total_queue_size || c.total_targets || 0;
+        const opened  = c.emails_opened ?? 0;
+        const clicked = c.links_clicked ?? 0;
+        const creds   = c.credentials_entered ?? 0;
+        const reported = c.emails_reported ?? 0;
         return {
           campaign_name: c.name,
-          total_targets: total,
-          clicked: c.links_clicked ?? 0,
-          click_rate: total > 0 ? Math.round(((c.links_clicked ?? 0) / total) * 100) : 0,
+          total_targets: targets,
+          opened,
+          clicked,
+          creds,
+          reported,
+          open_rate:   targets > 0 ? Math.round((opened   / targets) * 100) : 0,
+          click_rate:  targets > 0 ? Math.round((clicked  / targets) * 100) : 0,
+          cred_rate:   targets > 0 ? Math.round((creds    / targets) * 100) : 0,
+          report_rate: targets > 0 ? Math.round((reported / targets) * 100) : 0,
         };
       }));
     }
@@ -360,8 +378,14 @@ export function AdvancedAnalyticsPage() {
     downloadCSV("phishing_analytics.csv", phishingTrends.map(p => ({
       Campaign: p.campaign_name,
       "Total Targets": p.total_targets,
+      "Emails Opened": p.opened,
+      "Open Rate %": p.open_rate,
       "Clicked Link": p.clicked,
       "Click Rate %": p.click_rate,
+      "Credentials Submitted": p.creds,
+      "Credential Rate %": p.cred_rate,
+      "Emails Reported": p.reported,
+      "Report Rate %": p.report_rate,
     })));
   }
 
@@ -555,23 +579,31 @@ export function AdvancedAnalyticsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {["Campaign", "Targets", "Clicked", "Click Rate"].map(h => (
-                    <th key={h} style={{ padding: "6px 10px", textAlign: h === "Campaign" ? "left" : "right", color: T.textMuted, fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
+                  {["Campaign", "Targets", "Opened", "Open%", "Clicked", "Click%", "Credentials", "Cred%", "Reported", "Report%"].map(h => (
+                    <th key={h} style={{ padding: "6px 10px", textAlign: h === "Campaign" ? "left" : "right", color: T.textMuted, fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {phishingTrends.map((p, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                    <td style={{ padding: "10px 10px", color: T.text, fontWeight: 600 }}>{p.campaign_name}</td>
+                    <td style={{ padding: "10px 10px", color: T.text, fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.campaign_name}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.textSub }}>{p.total_targets}</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.blue }}>{p.opened}</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right" }}>
+                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueBg }}>{p.open_rate}%</span>
+                    </td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.orange, fontWeight: 600 }}>{p.clicked}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                      <span style={{
-                        padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
-                        color: p.click_rate > 30 ? T.red : p.click_rate > 15 ? T.orange : T.green,
-                        background: p.click_rate > 30 ? T.redBg : p.click_rate > 15 ? T.orangeBg : T.greenBg,
-                      }}>{p.click_rate}%</span>
+                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.click_rate > 30 ? T.red : p.click_rate > 15 ? T.orange : T.green, background: p.click_rate > 30 ? T.redBg : p.click_rate > 15 ? T.orangeBg : T.greenBg }}>{p.click_rate}%</span>
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.red, fontWeight: 600 }}>{p.creds}</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right" }}>
+                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.cred_rate > 20 ? T.red : p.cred_rate > 5 ? T.orange : T.green, background: p.cred_rate > 20 ? T.redBg : p.cred_rate > 5 ? T.orangeBg : T.greenBg }}>{p.cred_rate}%</span>
+                    </td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.green }}>{p.reported}</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right" }}>
+                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.green, background: T.greenBg }}>{p.report_rate}%</span>
                     </td>
                   </tr>
                 ))}

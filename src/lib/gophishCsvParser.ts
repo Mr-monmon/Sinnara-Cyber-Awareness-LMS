@@ -25,40 +25,38 @@ interface ParsedCampaignData {
   };
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Gophish reports a SINGLE furthest-reached status per recipient (e.g. a
-   recipient who clicked and then submitted credentials shows only
-   "Submitted Data"). A correct funnel must therefore be cumulative:
-     submitted ⊆ clicked ⊆ opened ⊆ sent
-   Counting each stage by its exact status string under-counts the earlier
-   stages and can make clicks < submits, which is impossible. classifyRecord
-   normalises every record into cumulative boolean flags so all callers agree.
-───────────────────────────────────────────────────────────────────────── */
-interface RecordFlags {
-  sent: boolean;
-  opened: boolean;
-  clicked: boolean;
-  submitted: boolean;
-  reported: boolean;
+// The phishing funnel is cumulative: a recipient who reached a later stage
+// necessarily passed through every earlier one. Gophish, however, records only
+// the LAST stage each recipient reached as a single terminal status string.
+// We therefore map each status to a rank and count cumulatively so the invariant
+// sent ≥ opened ≥ clicked ≥ submitted always holds.
+type FunnelStage = 'NONE' | 'SENT' | 'OPENED' | 'CLICKED' | 'SUBMITTED';
+
+const STAGE_RANK: Record<FunnelStage, number> = {
+  NONE: 0,
+  SENT: 1,
+  OPENED: 2,
+  CLICKED: 3,
+  SUBMITTED: 4,
+};
+
+// Maps a raw Gophish status string to its funnel stage. Non-delivery statuses
+// (Scheduled, Sending, Campaign Created, Error/Retrying, …) are NOT counted as
+// sent — only a genuinely delivered email advances the funnel.
+function funnelStage(rawStatus: string): FunnelStage {
+  const s = (rawStatus || '').trim().toLowerCase();
+  if (s === 'submitted data') return 'SUBMITTED';
+  if (s === 'clicked link') return 'CLICKED';
+  if (s === 'email opened' || s === 'opened') return 'OPENED';
+  if (s === 'email sent') return 'SENT';
+  return 'NONE';
 }
 
-function classifyRecord(r: GophishRecord): RecordFlags {
-  const status = (r.status || '').trim().toLowerCase();
-  const submitted = status.includes('submitted');
-  const clicked = submitted || status.includes('clicked');
-  const opened = clicked || status.includes('opened');
-  // "Email Sent" and every later stage count as delivered. Pre-send states
-  // (scheduled / sending / queued / retrying / error) and empty rows do not.
-  const preSend =
-    status === '' ||
-    status.includes('scheduled') ||
-    status.includes('sending') ||
-    status.includes('queued') ||
-    status.includes('retrying') ||
-    status.includes('error');
-  const sent = opened || (!preSend && status.length > 0);
-  const reported = r.reported?.trim().toLowerCase() === 'true';
-  return { sent, opened, clicked, submitted, reported };
+// Reporting is independent of the open→click→submit funnel: a recipient can
+// report a phishing email whether or not they clicked it. Driven by the
+// dedicated `reported` column, never by the funnel status.
+function isReported(record: GophishRecord): boolean {
+  return (record.reported || '').trim().toLowerCase() === 'true';
 }
 
 function parseCSV(csvContent: string): ParsedCampaignData {
@@ -94,49 +92,67 @@ function parseCSV(csvContent: string): ParsedCampaignData {
     }
   }
 
-  return { records, stats: toStats(records) };
+  const counts = aggregateFunnel(records);
+  const stats = {
+    totalRecords: records.length,
+    emailsSent: counts.emails_sent,
+    emailsOpened: counts.emails_opened,
+    linksClicked: counts.links_clicked,
+    dataSubmitted: counts.data_submitted,
+    emailsReported: counts.emails_reported,
+  };
+
+  return { records, stats };
 }
 
-function toStats(records: GophishRecord[]) {
-  const flags = records.map(classifyRecord);
-  return {
-    totalRecords:   records.length,
-    emailsSent:     flags.filter(f => f.sent).length,
-    emailsOpened:   flags.filter(f => f.opened).length,
-    linksClicked:   flags.filter(f => f.clicked).length,
-    dataSubmitted:  flags.filter(f => f.submitted).length,
-    emailsReported: flags.filter(f => f.reported).length,
-  };
+// Single source of truth for cumulative funnel aggregation.
+function aggregateFunnel(records: GophishRecord[]) {
+  let emails_sent = 0;
+  let emails_opened = 0;
+  let links_clicked = 0;
+  let data_submitted = 0;
+  let emails_reported = 0;
+
+  for (const r of records) {
+    const rank = STAGE_RANK[funnelStage(r.status)];
+    if (rank >= STAGE_RANK.SENT) emails_sent++;
+    if (rank >= STAGE_RANK.OPENED) emails_opened++;
+    if (rank >= STAGE_RANK.CLICKED) links_clicked++;
+    if (rank >= STAGE_RANK.SUBMITTED) data_submitted++;
+    if (isReported(r)) emails_reported++;
+  }
+
+  return { emails_sent, emails_opened, links_clicked, data_submitted, emails_reported };
 }
 
 function calculateCampaignStats(records: GophishRecord[]) {
-  const s = toStats(records);
   return {
-    total_targets:   s.totalRecords,
-    emails_sent:     s.emailsSent,
-    emails_opened:   s.emailsOpened,
-    links_clicked:   s.linksClicked,
-    data_submitted:  s.dataSubmitted,
-    emails_reported: s.emailsReported,
+    total_targets: records.length,
+    ...aggregateFunnel(records),
   };
 }
 
-/* Furthest funnel stage reached, for per-target display. Reporting is tracked
-   independently (a reported email can also have been clicked/submitted), so it
-   no longer overrides the funnel stage. */
+// Returns the per-target funnel status. Independent of `reported` so that a
+// recipient who both submitted AND reported is still recorded as SUBMITTED
+// (with reporting tracked separately via reported_at). Use isReported() for
+// the reporting signal.
 function getStatusFromRecord(record: GophishRecord): string {
-  const f = classifyRecord(record);
-  if (f.submitted) return 'SUBMITTED';
-  if (f.clicked)   return 'CLICKED';
-  if (f.opened)    return 'OPENED';
-  if (f.sent)      return 'SENT';
-  return 'PENDING';
+  const stage = funnelStage(record.status);
+  switch (stage) {
+    case 'SUBMITTED': return 'SUBMITTED';
+    case 'CLICKED':   return 'CLICKED';
+    case 'OPENED':    return 'OPENED';
+    case 'SENT':      return 'SENT';
+    default:          return 'SENT';
+  }
 }
 
 export {
   parseCSV,
   calculateCampaignStats,
   getStatusFromRecord,
-  classifyRecord,
+  funnelStage,
+  isReported,
+  STAGE_RANK,
 };
-export type { GophishRecord, ParsedCampaignData, RecordFlags };
+export type { GophishRecord, ParsedCampaignData, FunnelStage };
