@@ -155,7 +155,7 @@ const SevBadge: React.FC<{ sev: SeverityKey }> = ({ sev }) => {
 export const FraudAlertsPage: React.FC = () => {
   const { user } = useAuth();
   const { t } = useTranslation(["common", "employee"]);
-  const { tokens: T } = useTheme();
+  const { tokens: T, isDark } = useTheme();
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [acknowledging, setAcknowledging] = useState<string | null>(null);
@@ -580,7 +580,7 @@ export const FraudAlertsPage: React.FC = () => {
                         <span
                           style={{
                             padding: "1px 8px",
-                            background: "rgba(200,255,0,0.12)",
+                            background: isDark ? "rgba(200,255,0,0.12)" : "rgba(22,163,74,0.12)",
                             borderRadius: 9999,
                             fontSize: 11,
                           }}
@@ -599,8 +599,8 @@ export const FraudAlertsPage: React.FC = () => {
                       <div
                         style={{
                           padding: "16px",
-                          background: "rgba(255,255,255,0.02)",
-                          border: "1px solid rgba(200,255,0,0.12)",
+                          background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+                          border: `1px solid ${isDark ? "rgba(200,255,0,0.12)" : "rgba(22,163,74,0.12)"}`,
                           borderTop: "none",
                           borderRadius: "0 0 10px 10px",
                           display: "flex",

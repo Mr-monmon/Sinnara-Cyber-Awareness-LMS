@@ -154,11 +154,13 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
 }) => {
   const { user }    = useAuth();
   const { t, i18n } = useTranslation(["common", "employee"]);
-  const { tokens: T } = useTheme();
+  const { tokens: T, isDark } = useTheme();
 
   const typeConfig = {
     VIDEO:   { Icon: PlayCircle,     color: T.blue,   bg: T.blueBg,   border: T.blueBorder  },
-    ARTICLE: { Icon: FileText,       color: T.accent, bg: 'rgba(200,255,0,0.08)', border: 'rgba(200,255,0,0.20)' },
+    ARTICLE: { Icon: FileText,       color: T.accent,
+               bg: isDark ? 'rgba(200,255,0,0.08)' : 'rgba(22,163,74,0.08)',
+               border: isDark ? 'rgba(200,255,0,0.20)' : 'rgba(22,163,74,0.20)' },
     QUIZ:    { Icon: ClipboardCheck, color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.20)' },
   } as const;
 
