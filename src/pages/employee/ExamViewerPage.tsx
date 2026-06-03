@@ -134,6 +134,13 @@ interface ExamAccessResponse {
   has_passed: boolean;
   max_attempts: number;
 }
+interface ExamResult {
+  score: number;        // raw count of correct answers
+  total: number;        // total questions
+  percentage: number;   // 0–100
+  passed: boolean;
+  passing_score: number;
+}
 
 /* ═══════════════════════════════════════════
    COMPONENT
@@ -157,6 +164,7 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [attemptsRemaining, setAttemptsRemaining] = useState(0);
+  const [result, setResult] = useState<ExamResult | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
 
@@ -239,12 +247,16 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
       Date.now() - (timeLimit * 60 - timeRemaining) * 1000
     ).toISOString();
     try {
-      const { error } = await supabase.functions.invoke("submit-exam", {
+      const { data, error } = await supabase.functions.invoke("submit-exam", {
         body: { examId, answers, startedAt },
       });
       if (error) {
         console.error("Error submitting exam:", error);
         alert(t("examViewer.submitError", { ns: "employee" }));
+      } else if (data) {
+        // submit-exam returns { score, total, percentage, passed, passing_score }.
+        // Surface it so the employee sees their comprehension result immediately.
+        setResult(data as ExamResult);
       }
     } catch (err) {
       console.error("Error submitting exam:", err);
@@ -623,6 +635,109 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             >
               {t("examViewer.submittedTitle", { ns: "employee" })}
             </h1>
+
+            {/* ── Score / comprehension result ── */}
+            {!result ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  padding: "18px 20px",
+                  marginBottom: 20,
+                  fontSize: 13,
+                  color: T.textBody,
+                }}
+              >
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(255,255,255,0.10)",
+                    borderTopColor: T.accent,
+                    animation: "aw-spin 0.8s linear infinite",
+                  }}
+                />
+                {t("examViewer.calculatingScore", { ns: "employee" })}
+              </div>
+            ) : (() => {
+              // Pre/Post assessments are comprehension/awareness measures — no
+              // pass/fail. Any other exam type keeps the pass/fail badge.
+              const isComprehension =
+                examType === "PRE_ASSESSMENT" || examType === "POST_ASSESSMENT";
+              const accent = isComprehension
+                ? T.accent
+                : result.passed
+                ? T.green
+                : T.red;
+              return (
+                <div
+                  style={{
+                    padding: "22px 20px",
+                    background: "rgba(255,255,255,0.02)",
+                    border: `1px solid ${T.borderFaint}`,
+                    borderRadius: 12,
+                    marginBottom: 20,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: T.textMuted,
+                      letterSpacing: "1px",
+                      textTransform: "uppercase",
+                      marginBottom: 10,
+                    }}
+                  >
+                    {isComprehension
+                      ? t("examViewer.comprehensionLevel", { ns: "employee" })
+                      : t("examViewer.passingScore", { ns: "employee" })}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 44,
+                      fontWeight: 900,
+                      color: accent,
+                      lineHeight: 1,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {formatLocalizedNumber(result.percentage, currentLanguage)}%
+                  </div>
+                  <div style={{ fontSize: 13, color: T.textBody }}>
+                    {formatLocalizedNumber(result.score, currentLanguage)} /{" "}
+                    {formatLocalizedNumber(result.total, currentLanguage)}{" "}
+                    {t("examViewer.correctAnswers", { ns: "employee" })}
+                  </div>
+                  {!isComprehension && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 12,
+                        padding: "5px 14px",
+                        borderRadius: 9999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        letterSpacing: "0.5px",
+                        textTransform: "uppercase",
+                        background: result.passed ? T.greenBg : "rgba(248,113,113,0.10)",
+                        border: `1px solid ${result.passed ? T.greenBorder : "rgba(248,113,113,0.28)"}`,
+                        color: result.passed ? T.green : T.red,
+                      }}
+                    >
+                      {result.passed
+                        ? t("examViewer.passed", { ns: "employee" })
+                        : t("examViewer.failed", { ns: "employee" })}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div
               style={{
@@ -1021,14 +1136,13 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
             }}
           >
             {[
-              { label: "Current", color: T.accent, bg: T.accent },
-              { label: "Answered", color: T.green, bg: T.greenBg },
+              { label: "Current", bg: T.accent },
+              { label: "Answered", bg: T.greenBg },
               {
                 label: "Unanswered",
-                color: T.textMuted,
                 bg: "rgba(255,255,255,0.04)",
               },
-            ].map(({ label, color, bg }) => (
+            ].map(({ label, bg }) => (
               <div
                 key={label}
                 style={{
