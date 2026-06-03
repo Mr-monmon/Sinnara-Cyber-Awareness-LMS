@@ -84,7 +84,7 @@ const TipCarousel: React.FC = () => {
 
   return (
     <div style={{
-      background: `linear-gradient(135deg, ${T.bgCard} 0%, rgba(200,255,0,0.04) 100%)`,
+      background: `linear-gradient(135deg, ${T.bgCard} 0%, ${isDark ? 'rgba(200,255,0,0.04)' : 'rgba(22,163,74,0.04)'} 100%)`,
       border: `1px solid ${tipColor}33`,
       borderRadius: 16, padding: '28px 32px', position: 'relative', overflow: 'hidden',
     }}>
@@ -115,7 +115,7 @@ const TipCarousel: React.FC = () => {
         </div>
         <div style={{ flex: 1 }}>
           <p style={{ fontSize: 20, fontWeight: 800, color: T.white, margin: '0 0 8px', lineHeight: 1.25 }}>{tip.title}</p>
-          <p style={{ fontSize: 14, color: '#cbd5e1', lineHeight: '22px', margin: 0 }}>{tip.body}</p>
+          <p style={{ fontSize: 14, color: T.textBody, lineHeight: '22px', margin: 0 }}>{tip.body}</p>
         </div>
       </div>
 
@@ -123,7 +123,7 @@ const TipCarousel: React.FC = () => {
         {tips.map((_, i) => (
           <button key={i} onClick={() => { reset(i); go(i); }} style={{
             width: i === idx ? 28 : 8, height: 8, borderRadius: 9999, border: 'none', cursor: 'pointer', padding: 0,
-            background: i === idx ? T.accent : 'rgba(255,255,255,0.18)',
+            background: i === idx ? T.accent : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)'),
             transition: 'width 0.3s, background 0.3s',
           }} />
         ))}

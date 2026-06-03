@@ -180,6 +180,14 @@ const LIGHT_CSS_OVERRIDES = `
   [data-theme="light"] .aw-acc-input:-webkit-autofill,
   [data-theme="light"] .aw-acc-input:-webkit-autofill:hover,
   [data-theme="light"] .aw-acc-input:-webkit-autofill:focus { -webkit-text-fill-color: #0f172a; }
+
+  /* ── FraudAlerts cards ── */
+  [data-theme="light"] .aw-fa-card { background: #ffffff; border-color: rgba(0,0,0,0.08); }
+  [data-theme="light"] .aw-fa-card:hover { border-color: rgba(0,0,0,0.14); }
+  [data-theme="light"] .aw-fa-step { color: #475569; }
+  [data-theme="light"] .aw-fa-step-num { background: rgba(22,163,74,0.10); border-color: rgba(22,163,74,0.22); color: #16a34a; }
+  [data-theme="light"] .aw-ack-btn { background: #16a34a; color: #ffffff; box-shadow: 0 0 16px rgba(22,163,74,0.20); }
+  [data-theme="light"] .aw-channel-tag { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.10); color: #64748b; }
 `;
 
 /* ─────────────────────────────────────────
