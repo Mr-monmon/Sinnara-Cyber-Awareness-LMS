@@ -76,7 +76,7 @@ const SEEDS: Partial<Scenario>[] = [
 <p style="color:#444;">To protect your account, please verify your identity immediately.</p>
 <a href="{{.URL}}" style="display:inline-block;padding:12px 28px;background:#0078d4;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;">Verify My Account</a>
 <p style="color:#888;font-size:12px;margin-top:24px;">If you did not initiate this request, you can ignore this email. Microsoft will never ask for your password via email.</p>
-<img src="{{.TrackingURL}}" width="1" height="1" style="display:none;" />
+<img src="{{.TrackingPixel}}" width="1" height="1" style="display:none;" />
 </div>`,
     landing_page_html: `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Microsoft Sign In</title>
 <style>body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f2f2f2;display:flex;align-items:center;justify-content:center;min-height:100vh;}
@@ -115,7 +115,7 @@ setTimeout(function(){window.location.href='https://www.microsoft.com';},800);})
 <p style="color:#666;font-size:13px;">If you have questions, contact <a href="mailto:hr@{{.CompanyDomain}}">hr@{{.CompanyDomain}}</a>.</p>
 <p style="color:#666;font-size:13px;">Regards,<br/>HR Department<br/>{{.Company}}</p>
 </div>
-<img src="{{.TrackingURL}}" width="1" height="1" style="display:none;" /></div>`,
+<img src="{{.TrackingPixel}}" width="1" height="1" style="display:none;" /></div>`,
     landing_page_html: `<!DOCTYPE html><html><head><title>HR Portal</title><style>body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
 .card{background:#fff;padding:40px;border-radius:8px;width:380px;box-shadow:0 2px 10px rgba(0,0,0,.1);}
 h2{color:#1e3a5f;margin-bottom:4px;}p{color:#666;font-size:14px;margin-bottom:20px;}
@@ -145,7 +145,7 @@ setTimeout(function(){window.location.href='https://www.google.com';},600);});</
 <a href="{{.URL}}" style="display:inline-block;padding:12px 24px;background:#2d7d46;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;">Reset My Password Now</a>
 <p style="margin-top:20px;color:#666;font-size:13px;">If you've already reset your password, you can disregard this email.</p>
 <p style="color:#666;font-size:13px;">IT Help Desk | {{.Company}}</p>
-<img src="{{.TrackingURL}}" width="1" height="1" style="display:none;" /></div>`,
+<img src="{{.TrackingPixel}}" width="1" height="1" style="display:none;" /></div>`,
     landing_page_html: `<!DOCTYPE html><html><head><title>Password Reset</title><style>body{font-family:Arial,sans-serif;background:#f0f0f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
 .box{background:#fff;padding:36px;border-radius:8px;width:360px;box-shadow:0 2px 8px rgba(0,0,0,.12);}
 .hdr{background:#2d7d46;color:#fff;padding:12px 16px;border-radius:6px;margin-bottom:20px;font-weight:bold;}
@@ -176,7 +176,7 @@ setTimeout(function(){window.location.href='https://www.google.com';},700);});</
 <a href="{{.URL}}" style="display:inline-block;padding:10px 22px;background:#c00;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;margin:12px 0;">Review Document Now</a>
 <p>Do not discuss this with anyone else in the office. I'll explain everything after the meeting.</p>
 <p>Sent from my iPhone</p>
-<img src="{{.TrackingURL}}" width="1" height="1" style="display:none;" /></div>`,
+<img src="{{.TrackingPixel}}" width="1" height="1" style="display:none;" /></div>`,
     landing_page_html: `<!DOCTYPE html><html><head><title>Secure Document Portal</title><style>body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
 .box{background:#fff;padding:36px;border-radius:6px;width:360px;box-shadow:0 2px 8px rgba(0,0,0,.1);}
 h2{margin-bottom:4px;font-size:20px;}p{color:#666;font-size:14px;}
@@ -205,7 +205,7 @@ setTimeout(function(){window.location.href='https://www.google.com';},600);});</
 <p>We attempted to deliver your package today but were unable to complete the delivery to your address. To reschedule your delivery, please verify your address and pay the small redelivery fee of <strong>SAR 5.00</strong>.</p>
 <a href="{{.URL}}" style="display:inline-block;padding:12px 24px;background:#f5a623;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;margin:12px 0;">Reschedule My Delivery</a>
 <p style="color:#888;font-size:12px;">Package ID: {{.RId}} | This link expires in 24 hours.</p>
-<img src="{{.TrackingURL}}" width="1" height="1" style="display:none;" /></div>`,
+<img src="{{.TrackingPixel}}" width="1" height="1" style="display:none;" /></div>`,
     landing_page_html: `<!DOCTYPE html><html><head><title>Reschedule Delivery</title><style>body{font-family:Arial,sans-serif;background:#f9f9f9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
 .box{background:#fff;padding:36px;border-radius:8px;width:380px;box-shadow:0 2px 10px rgba(0,0,0,.1);}
 h2{color:#f5a623;}p{color:#555;font-size:14px;}

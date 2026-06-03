@@ -155,6 +155,8 @@ const PREVIEW_VARS: Record<string, string> = {
   '{{.FirstName}}': 'John', '{{.LastName}}': 'Smith', '{{.Email}}': 'john.smith@company.com',
   '{{.Department}}': 'Finance', '{{.Position}}': 'Senior Analyst', '{{.Company}}': 'Acme Corp',
   '{{.From}}': 'IT Support', '{{.TrackingURL}}': '#', '{{.URL}}': '#',
+  '{{.LandingURL}}': '#', '{{.ReportURL}}': '#',
+  '{{.TrackingPixel}}': 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
 };
 const applyPreview = (html: string) => Object.entries(PREVIEW_VARS).reduce((s, [k, v]) => s.split(k).join(v), html);
 
@@ -188,7 +190,7 @@ const eventIcon: Record<string, { icon: React.ElementType; color: string }> = {
 };
 
 const TIMEZONES = ['Asia/Riyadh', 'Asia/Dubai', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
-const VARIABLE_CHIPS = ['{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Department}}', '{{.Position}}', '{{.Company}}', '{{.TrackingURL}}'];
+const VARIABLE_CHIPS = ['{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Department}}', '{{.Position}}', '{{.Company}}', '{{.TrackingURL}}', '{{.TrackingPixel}}'];
 
 /* ─────────────────────────────────────────
    LABEL COMPONENT

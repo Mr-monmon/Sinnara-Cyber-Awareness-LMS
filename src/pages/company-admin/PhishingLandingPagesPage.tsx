@@ -120,7 +120,7 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
       <input type="password" name="password" placeholder="Enter your password" />
       <button type="submit">Sign In</button>
     </form>
-    <img src="{{.TrackingURL}}" class="track" />
+    <img src="{{.TrackingPixel}}" class="track" />
   </div>
 </body>
 </html>`;
@@ -128,7 +128,7 @@ const TEMPLATE_HTML = `<!DOCTYPE html>
 const VARIABLES = [
   '{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Position}}',
   '{{.Department}}', '{{.Company}}', '{{.URL}}', '{{.TrackingURL}}',
-  '{{.Date}}', '{{.RId}}',
+  '{{.TrackingPixel}}', '{{.Date}}', '{{.RId}}',
 ];
 
 export const PhishingLandingPagesPage: React.FC = () => {

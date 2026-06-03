@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
+import { validateEmailTemplate } from "../../lib/phishingTemplate";
 import { useAuth } from "../../contexts/AuthContext";
 
 const T = {
@@ -109,7 +110,7 @@ interface EmailTemplate {
 const VARIABLES = [
   '{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Position}}',
   '{{.Department}}', '{{.Company}}', '{{.URL}}', '{{.TrackingURL}}',
-  '{{.Date}}', '{{.RId}}',
+  '{{.LandingURL}}', '{{.TrackingPixel}}', '{{.ReportURL}}', '{{.Date}}', '{{.RId}}',
 ];
 
 const TEMPLATE_HTML = `<html>
@@ -135,7 +136,7 @@ const TEMPLATE_HTML = `<html>
       This email was sent to {{.Email}}. If you believe this is an error, please contact support.
     </p>
   </div>
-  <img src="{{.TrackingURL}}" width="1" height="1" style="display:none" />
+  <img src="{{.TrackingPixel}}" width="1" height="1" style="display:none" />
 </body>
 </html>`;
 
@@ -200,11 +201,16 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
     } catch (err) { console.error('Quill init error:', err); }
   };
 
-  const syncFromQuill = () => {
+  // Returns the current editor HTML (and syncs it into state). Callers that
+  // need the value immediately (e.g. save) must use the returned string rather
+  // than reading form.html_content, since setForm is asynchronous.
+  const syncFromQuill = (): string | null => {
     if (quillRef.current) {
       const html = quillRef.current.root.innerHTML;
       setForm(f => ({ ...f, html_content: html }));
+      return html;
     }
+    return null;
   };
 
   const handleTabSwitch = (tab: EditorTab) => {
@@ -249,11 +255,17 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
   };
 
   const save = async () => {
-    if (editorTab === 'visual') syncFromQuill();
+    // Read the editor HTML synchronously — don't rely on the async setForm.
+    const htmlContent = (editorTab === 'visual' ? syncFromQuill() : null) ?? form.html_content;
     if (!form.name.trim() || !form.subject.trim()) { alert('Name and Subject are required'); return; }
+    const warnings = validateEmailTemplate(htmlContent);
+    if (warnings.length > 0 &&
+        !confirm(`This template has potential tracking issues:\n\n• ${warnings.join('\n\n• ')}\n\nSave anyway?`)) {
+      return;
+    }
     setSaving(true);
     try {
-      const payload = { ...form, company_id: user?.company_id, updated_at: new Date().toISOString() };
+      const payload = { ...form, html_content: htmlContent, company_id: user?.company_id, updated_at: new Date().toISOString() };
       const { error } = editTemplate
         ? await supabase.from('phishing_company_email_templates').update(payload).eq('id', editTemplate.id)
         : await supabase.from('phishing_company_email_templates').insert(payload);
