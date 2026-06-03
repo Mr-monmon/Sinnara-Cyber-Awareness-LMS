@@ -439,9 +439,16 @@ Deno.serve(async (req) => {
         ".Position":     position,
         ".Department":   department,
         ".From":         job.from_address,
+        // Click/landing links → click endpoint (records LINK_CLICKED, then redirects).
         ".URL":          trackingUrl,
         ".TrackingURL":  trackingUrl,
+        ".LandingURL":   trackingUrl,
+        // Open-tracking pixel URL → open endpoint (records EMAIL_OPENED). Use in
+        // an <img src="{{.TrackingPixel}}">. `.Tracker` is the full <img> tag.
+        ".TrackingPixel": pixelUrlEarly,
         ".Tracker":      `<img src="${pixelUrlEarly}" width="1" height="1" style="display:none" alt="" />`,
+        // Report-phishing simulation link.
+        ".ReportURL":    unsubscribeUrl,
         ".RId":          job.recipient_id,
       };
 

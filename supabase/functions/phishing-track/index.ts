@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabase = createClient(
@@ -12,6 +11,31 @@ const TRANSPARENT_GIF = new Uint8Array([
   0xff,0xff,0xff,0x00,0x00,0x00,0x21,0xf9,0x04,0x00,0x00,0x00,0x00,0x00,
   0x2c,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0x02,0x02,0x44,0x01,0x00,0x3b
 ]);
+
+// Privacy guard — mirrors src/lib/redaction.ts (kept in sync; unit-tested there).
+// Submitted form payloads are reduced to field NAMES only; secret values
+// (passwords, OTPs, tokens, …) are never persisted.
+const SENSITIVE_PATTERNS = [
+  "password", "pass", "pwd", "token", "secret", "otp", "mfa", "code", "pin", "credential",
+];
+function redactSubmittedFields(body: Record<string, unknown> | null | undefined) {
+  const field_names = body ? Object.keys(body) : [];
+  const redacted_fields = field_names.filter((n) =>
+    SENSITIVE_PATTERNS.some((p) => n.toLowerCase().includes(p))
+  );
+  return { submitted: true, field_names, redacted_fields };
+}
+
+// Heuristic: is this request an <img> load rather than a real navigation?
+// Legacy templates put {{.TrackingURL}} (the click URL) inside an <img src>,
+// so an open would otherwise be miscounted as a click. Browsers send
+// Sec-Fetch-Dest: image and an image/* Accept for pixel loads.
+function looksLikeImageRequest(req: Request): boolean {
+  const dest = (req.headers.get("sec-fetch-dest") ?? "").toLowerCase();
+  if (dest === "image") return true;
+  const accept = (req.headers.get("accept") ?? "").toLowerCase();
+  return accept.startsWith("image/");
+}
 
 function parseUserAgent(ua: string) {
   let browser = "Unknown";
@@ -222,6 +246,16 @@ Deno.serve(async (req) => {
   }
 
   if (t === "click") {
+    // Backward compatibility: legacy templates embed the click URL in an
+    // <img src="{{.TrackingURL}}">. Such an image load must be recorded as an
+    // OPEN, not a click, otherwise every open inflates the click count.
+    if (looksLikeImageRequest(req)) {
+      logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
+      return new Response(TRANSPARENT_GIF, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
+      });
+    }
     const encodedUrl = url.searchParams.get("url") ?? "";
     let redirectUrl = "https://www.google.com";
     try { redirectUrl = atob(encodedUrl); } catch {
@@ -243,7 +277,9 @@ Deno.serve(async (req) => {
       } catch { /* ignore */ }
     }
     try {
-      await logEvent({ campaign_id, recipient_id, event_type: "FORM_SUBMITTED", ip, ua, metadata: { submitted_data: body } });
+      // SECURITY: never persist raw submitted values (passwords/OTPs/tokens).
+      // Store only the field names and which of them were sensitive.
+      await logEvent({ campaign_id, recipient_id, event_type: "FORM_SUBMITTED", ip, ua, metadata: redactSubmittedFields(body) });
     } catch {
       // Non-fatal: log failure silently, still redirect
     }
