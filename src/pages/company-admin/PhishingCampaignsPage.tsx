@@ -582,7 +582,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setTestEmailResult({ ok: true, msg: `Test email sent to ${testEmailTo.trim()}.` });
+      setTestEmailResult({ ok: true, msg: `Test email sent to ${testEmailTo.trim()}${data?.from_used ? ` (sender: ${data.from_used})` : ''}.` });
     } catch (err: unknown) {
       setTestEmailResult({ ok: false, msg: getErrorMessage(err) });
     } finally {

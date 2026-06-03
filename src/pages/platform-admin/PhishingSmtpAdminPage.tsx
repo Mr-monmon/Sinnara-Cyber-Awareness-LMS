@@ -146,7 +146,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
+      setTestResult({ ok: true, msg: `Test email sent to ${testEmail}${data?.from_used ? ` (sender: ${data.from_used})` : ''}.` });
     } catch (err: unknown) {
       setTestResult({ ok: false, msg: getErrorMessage(err) });
     } finally { setTestSending(false); }
