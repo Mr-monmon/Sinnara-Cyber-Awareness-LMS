@@ -180,10 +180,17 @@ Deno.serve(async (req) => {
     payload.company_id          = targetIsPlatform ? null : callerRow.company_id;
   }
 
-  // Encrypt password if a new one is provided
+  // Encrypt password if a new one is provided. Fail CLOSED: if the server has
+  // no valid SMTP_ENCRYPTION_KEY we refuse to store the password rather than
+  // silently persisting it in plaintext. Local dev can opt in explicitly.
   const newPassword = typeof password === "string" ? password.trim() : "";
   if (newPassword) {
     const { ciphertext, encrypted } = await encryptPassword(newPassword);
+    const allowPlaintext = (Deno.env.get("ALLOW_PLAINTEXT_SMTP") ?? "").toLowerCase() === "true";
+    if (!encrypted && !allowPlaintext) {
+      console.error("[save-smtp-profile] refusing to store plaintext password: SMTP_ENCRYPTION_KEY missing or invalid");
+      return new Response(JSON.stringify({ error: "SMTP encryption is not configured on the server (SMTP_ENCRYPTION_KEY missing or invalid). The SMTP password was not saved. Contact your platform administrator." }), { status: 500, headers: corsHeaders });
+    }
     payload.password           = ciphertext;
     payload.password_encrypted = encrypted;
   }

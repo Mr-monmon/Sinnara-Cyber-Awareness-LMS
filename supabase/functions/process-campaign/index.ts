@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /* Inlined Sentry reporter (kept in-file so the function deploys as a single module). */
@@ -113,29 +112,65 @@ function decodeKey(keyStr: string): Uint8Array {
   return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
-/* ── Decrypt password if stored encrypted ── */
+/* ── Decrypt an encrypted SMTP password ──
+ * Fails CLOSED: only called for profiles whose password_encrypted = true, so a
+ * missing/invalid key or a decryption failure must throw rather than fall back
+ * to using the ciphertext as the password (which would leak it to the SMTP
+ * server and always fail auth). */
 async function decryptPassword(encrypted: string): Promise<string> {
   const keyStr = Deno.env.get("SMTP_ENCRYPTION_KEY");
-  if (!keyStr) return encrypted; // no key = stored plaintext
+  if (!keyStr) {
+    throw new Error("SMTP_ENCRYPTION_KEY is not configured on the server; cannot decrypt the SMTP password.");
+  }
+  const keyBytes = decodeKey(keyStr);
+  if (keyBytes.length !== 32) {
+    throw new Error("SMTP_ENCRYPTION_KEY is invalid (must decode to 32 bytes).");
+  }
+  const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
 
+  // Encrypted format: base64url(iv[12] + ciphertext)
   try {
-    const keyBytes = decodeKey(keyStr);
-    if (keyBytes.length !== 32) {
-      console.error("[decryptPassword] Invalid key length:", keyBytes.length, "expected 32");
-      return encrypted;
-    }
-    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
-
-    // Encrypted format: base64url(iv[12] + ciphertext)
     const combined = Uint8Array.from(atob(encrypted.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0));
     const iv = combined.slice(0, 12);
     const data = combined.slice(12);
     const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, data);
     return new TextDecoder().decode(decrypted);
-  } catch (e) {
-    console.error("[decryptPassword] Failed:", e instanceof Error ? e.message : e);
-    return encrypted; // decryption failed, return as-is
+  } catch {
+    throw new Error("Failed to decrypt the stored SMTP password (key mismatch or corrupted value).");
   }
+}
+
+/* ── Turn raw nodemailer/SMTP errors into actionable, secret-free messages ── */
+function normalizeSmtpError(e: unknown): string {
+  const err = e as { code?: string; responseCode?: number; message?: string };
+  const code = (err?.code ?? "").toUpperCase();
+  const resp = err?.responseCode ?? 0;
+  const msg  = err?.message ?? "";
+  const m = msg.toLowerCase();
+
+  if (code === "EAUTH" || resp === 535 || resp === 534 || /invalid login|authentication failed|auth/i.test(m)) {
+    return "SMTP authentication failed — check the username and password.";
+  }
+  if (code === "ETIMEDOUT" || code === "ETIMEOUT" || /timed? ?out|greeting never received/i.test(m)) {
+    return "Connection to the SMTP server timed out — check the host and port.";
+  }
+  if (code === "ECONNECTION" || code === "ECONNREFUSED" || code === "ESOCKET" || /connection refused|econnreset/i.test(m)) {
+    return "Could not connect to the SMTP server — check the host and port.";
+  }
+  if (code === "ENOTFOUND" || code === "EDNS" || /getaddrinfo|dns/i.test(m)) {
+    return "The SMTP server hostname could not be resolved — check the host.";
+  }
+  if (/self.signed|certificate|tls|ssl|wrong version number/i.test(m)) {
+    return "TLS/SSL negotiation with the SMTP server failed — check the TLS/STARTTLS settings.";
+  }
+  if (resp === 530) return "The SMTP server requires authentication (530).";
+  if (resp === 550 || /recipient|mailbox unavailable|user unknown/i.test(m)) {
+    return "The recipient address was rejected by the SMTP server (550).";
+  }
+  if (resp === 553 || resp === 554 || /relay|sender|not permitted/i.test(m)) {
+    return "The sender address was rejected or relaying is not allowed by the SMTP server.";
+  }
+  return msg ? `SMTP error: ${msg}` : "SMTP send failed for an unknown reason.";
 }
 
 /* ── Send via custom SMTP using nodemailer ── */
@@ -143,13 +178,21 @@ async function sendViaSmtp(params: {
   to: string; subject: string; html: string;
   from_address: string; from_name: string;
   profile: SmtpProfile;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; from_used?: string }> {
+  const fromUsed = `"${params.from_name}" <${params.from_address}>`;
+  // Decrypt outside the send try/catch so a key/decryption problem produces a
+  // clear, non-SMTP error and we NEVER authenticate with ciphertext.
+  let password: string;
+  try {
+    password = params.profile.password_encrypted
+      ? await decryptPassword(params.profile.password)
+      : params.profile.password;
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Could not decrypt SMTP password.", from_used: fromUsed };
+  }
   try {
     // deno-lint-ignore no-explicit-any
     const nodemailer = await import("npm:nodemailer@6") as any;
-    const password = params.profile.password_encrypted
-      ? await decryptPassword(params.profile.password)
-      : params.profile.password;
 
     const transport = nodemailer.createTransport({
       host: params.profile.host,
@@ -168,16 +211,16 @@ async function sendViaSmtp(params: {
     }
 
     await transport.sendMail({
-      from: `"${params.from_name}" <${params.from_address}>`,
+      from: fromUsed,
       to: params.to,
       subject: params.subject,
       html: params.html,
       headers: extraHeaders,
     });
 
-    return { success: true };
+    return { success: true, from_used: fromUsed };
   } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "SMTP error" };
+    return { success: false, error: normalizeSmtpError(e), from_used: fromUsed };
   }
 }
 
@@ -185,7 +228,14 @@ async function sendViaSmtp(params: {
 async function sendViaZepto(params: {
   to: string; subject: string; html: string;
   from_address: string; from_name: string;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; from_used?: string }> {
+  const fromUsed = `"${params.from_name}" <${params.from_address}>`;
+  if (!ZEPTO_TOKEN) {
+    return { success: false, error: "Platform email sender is not configured (ZEPTOMAIL_TOKEN is missing).", from_used: fromUsed };
+  }
+  if (!params.from_address) {
+    return { success: false, error: "No sender address configured for the platform default sender.", from_used: fromUsed };
+  }
   try {
     const res = await fetch("https://api.zeptomail.com/v1.1/email", {
       method: "POST",
@@ -202,11 +252,11 @@ async function sendViaZepto(params: {
     });
     if (!res.ok) {
       const err = await res.text();
-      return { success: false, error: err };
+      return { success: false, error: `Platform sender rejected the message: ${err}`, from_used: fromUsed };
     }
-    return { success: true };
+    return { success: true, from_used: fromUsed };
   } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "ZeptoMail error" };
+    return { success: false, error: e instanceof Error ? e.message : "Platform sender (ZeptoMail) error", from_used: fromUsed };
   }
 }
 
@@ -215,29 +265,33 @@ async function sendEmail(params: {
   to: string; subject: string; html: string;
   from_address: string; from_name: string;
   smtp_profile_id?: string | null;
-}): Promise<{ success: boolean; error?: string }> {
-  // Fetch SMTP profile if specified
+}): Promise<{ success: boolean; error?: string; from_used?: string }> {
+  // When an SMTP profile is specified it is MANDATORY — never silently fall
+  // back to the platform sender, which would send from the wrong domain.
   if (params.smtp_profile_id) {
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from("smtp_profiles")
       .select("*")
       .eq("id", params.smtp_profile_id)
       .eq("is_active", true)
       .single();
 
-    if (profile) {
-      return sendViaSmtp({
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
-        from_address: params.from_address || profile.from_address,
-        from_name: params.from_name || profile.from_name,
-        profile: profile as SmtpProfile,
-      });
+    if (error || !profile) {
+      return { success: false, error: "The selected SMTP profile was not found, is inactive, or is inaccessible. The email was not sent." };
     }
+
+    return sendViaSmtp({
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      // Prefer the profile's own verified sender; allow an explicit override.
+      from_address: params.from_address || profile.from_address,
+      from_name: params.from_name || profile.from_name,
+      profile: profile as SmtpProfile,
+    });
   }
 
-  // Fall back to ZeptoMail
+  // No profile selected → platform default sender (ZeptoMail).
   return sendViaZepto(params);
 }
 
@@ -275,22 +329,24 @@ Deno.serve(async (req) => {
     if (body.test_smtp_profile_id && body.test_to) {
       try {
         const isCampaignTest = !!(body.test_subject || body.test_html);
+        const isPlatformDefault = body.test_smtp_profile_id === "platform_default";
+        // For a real SMTP profile, default to the PROFILE's own sender (empty
+        // here → sendEmail uses profile.from_address/from_name). Only the
+        // platform-default path falls back to the platform sender.
         const result = await sendEmail({
           to:              String(body.test_to),
           subject:         body.test_subject ? String(body.test_subject) : "Awareone SMTP Test",
           html:            body.test_html
             ? String(body.test_html)
             : "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
-          from_address:    body.test_from_address ? String(body.test_from_address) : "noreply@awareone.io",
-          from_name:       body.test_from_name ? String(body.test_from_name) : "Awareone Security",
-          smtp_profile_id: body.test_smtp_profile_id === "platform_default"
-            ? null
-            : String(body.test_smtp_profile_id),
+          from_address:    body.test_from_address ? String(body.test_from_address) : (isPlatformDefault ? "noreply@awareone.io" : ""),
+          from_name:       body.test_from_name ? String(body.test_from_name) : (isPlatformDefault ? "Awareone Security" : ""),
+          smtp_profile_id: isPlatformDefault ? null : String(body.test_smtp_profile_id),
         });
         if (!result.success) {
-          return new Response(JSON.stringify({ success: false, error: result.error ?? "Send failed" }), { status: 200, headers: corsHeaders });
+          return new Response(JSON.stringify({ success: false, error: result.error ?? "Send failed", from_used: result.from_used }), { status: 200, headers: corsHeaders });
         }
-        return new Response(JSON.stringify({ success: true, sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test" }), { status: 200, headers: corsHeaders });
+        return new Response(JSON.stringify({ success: true, sent: true, type: isCampaignTest ? "campaign_test" : "smtp_test", from_used: result.from_used }), { status: 200, headers: corsHeaders });
       } catch (testErr) {
         const msg = testErr instanceof Error ? testErr.message : "Unexpected error during test send";
         console.error("[process-campaign] test-send error:", msg);
