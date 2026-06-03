@@ -93,7 +93,8 @@
     "summary": {
       "total": "Total Assessments",
       "inProgress": "In Progress",
-      "attemptsRemaining": "Attempts Remaining"
+      "attemptsRemaining": "Attempts Remaining",
+      "available": "Available to Take"
     },
     "types": {
       "pre": "Pre-Assessment",
@@ -214,7 +215,12 @@
     "questionOf": "Question {{current}} of {{total}}",
     "answered": "Answered: {{answered}} / {{total}}",
     "submitAssessment": "Submit Assessment",
-    "quickNavigation": "Quick Navigation:"
+    "quickNavigation": "Quick Navigation:",
+    "comprehensionLevel": "Comprehension Level",
+    "passed": "Passed",
+    "failed": "Failed",
+    "correctAnswers": "correct answers",
+    "calculatingScore": "Calculating your score…"
   },
   "widget": {
     "title": "Fraud Alerts",
