@@ -4,6 +4,7 @@ import {
   Copy, Code, Eye, Type
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../contexts/AuthContext";
 
 const T = {
@@ -218,9 +219,10 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
-      const { data } = await supabase.from('phishing_company_email_templates').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('phishing_company_email_templates').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false });
+      if (error) throw error;
       setTemplates(data || []);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('[EmailTemplates] load', err); }
     finally { setLoading(false); }
   };
 
@@ -252,14 +254,13 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
     setSaving(true);
     try {
       const payload = { ...form, company_id: user?.company_id, updated_at: new Date().toISOString() };
-      if (editTemplate) {
-        await supabase.from('phishing_company_email_templates').update(payload).eq('id', editTemplate.id);
-      } else {
-        await supabase.from('phishing_company_email_templates').insert(payload);
-      }
+      const { error } = editTemplate
+        ? await supabase.from('phishing_company_email_templates').update(payload).eq('id', editTemplate.id)
+        : await supabase.from('phishing_company_email_templates').insert(payload);
+      if (error) throw error;
       closeModal();
       loadTemplates();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
+    } catch (err) { console.error('[EmailTemplates] save', err); alert('Failed to save template: ' + getErrorMessage(err)); }
     finally { setSaving(false); }
   };
 
@@ -267,10 +268,11 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      await supabase.from('phishing_company_email_templates').delete().eq('id', deleteId);
+      const { error } = await supabase.from('phishing_company_email_templates').delete().eq('id', deleteId);
+      if (error) throw error;
       setDeleteId(null);
       loadTemplates();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err) { console.error('[EmailTemplates] delete', err); alert('Failed to delete template: ' + getErrorMessage(err)); }
     finally { setDeleting(false); }
   };
 

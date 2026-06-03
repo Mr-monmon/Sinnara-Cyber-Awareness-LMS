@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
-  ChevronRight, Shield, Send, Medal, Activity, FileCheck,
+  ChevronRight, Shield, Medal, Activity, FileCheck,
   Server, Globe, Mail, Target, Bell, Variable,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
@@ -213,7 +213,7 @@ export const CompanyDashboard = () => {
       const ids = employees?.map(e => e.id) || [];
       if (ids.length === 0) { setStats({ totalEmployees: 0, completedTraining: 0, averageScore: 0, pendingAssessments: 0 }); return; }
 
-      const [resultsRes, courseRes, examsRes] = await Promise.all([
+      const [, courseRes, examsRes] = await Promise.all([
         supabase.from("exam_results").select("employee_id, percentage, passed").in("employee_id", ids),
         supabase.from("employee_courses").select("employee_id, completed_at").in("employee_id", ids).not("completed_at", "is", null),
         supabase.from("employee_available_exams").select("employee_id").in("employee_id", ids),

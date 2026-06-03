@@ -174,7 +174,7 @@ interface CompanyWithQuota extends Company {
   used_campaigns?: number;
 }
 
-const fmt = (d?: string | null) =>
+const fmt = (d?: string | Date | null) =>
   d
     ? new Date(d).toLocaleDateString("en-SA", {
         year: "numeric",

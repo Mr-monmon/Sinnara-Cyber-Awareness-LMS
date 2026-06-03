@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Shield, Target, TrendingUp, AlertCircle, Plus, Download,
   Calendar, Users, MousePointerClick, Flag, KeyRound,
-  BarChart3, Building2, ArrowUpRight, ArrowDownRight, ChevronDown,
+  BarChart3, Building2,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';

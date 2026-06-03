@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface HeroProps {

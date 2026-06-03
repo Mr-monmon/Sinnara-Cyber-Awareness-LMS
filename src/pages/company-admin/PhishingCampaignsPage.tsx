@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, Plus, Target, Mail, Users, Play, Pause, Trash2,
+  Shield, Plus, Target, Play, Pause, Trash2,
   ChevronRight, ChevronLeft, X, Check, Clock, AlertTriangle,
-  BarChart3, MousePointerClick, Key, Eye, Send, Globe,
-  RefreshCw, Copy, CheckCircle, Filter,
+  BarChart3, MousePointerClick, Key, Eye, Send,
+  RefreshCw, CheckCircle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { getErrorMessage } from '../../lib/errors';
 import { getRuntimeEnv } from '../../lib/runtimeEnv';
 
 /* ─────────────────────────────────────────
@@ -70,7 +71,7 @@ function resolveVariables(
   const allVars = { ...built_in, ...custom };
   let result = html;
   for (const [token, value] of Object.entries(allVars)) {
-    result = result.replaceAll(token, value);
+    result = result.split(token).join(value);
   }
   return result;
 }
@@ -155,7 +156,7 @@ const PREVIEW_VARS: Record<string, string> = {
   '{{.Department}}': 'Finance', '{{.Position}}': 'Senior Analyst', '{{.Company}}': 'Acme Corp',
   '{{.From}}': 'IT Support', '{{.TrackingURL}}': '#', '{{.URL}}': '#',
 };
-const applyPreview = (html: string) => Object.entries(PREVIEW_VARS).reduce((s, [k, v]) => s.replaceAll(k, v), html);
+const applyPreview = (html: string) => Object.entries(PREVIEW_VARS).reduce((s, [k, v]) => s.split(k).join(v), html);
 
 const statusColor = (s: string) => {
   if (s === 'RUNNING') return { color: T.green, bg: T.greenBg, border: T.greenBorder };
@@ -539,7 +540,7 @@ export const PhishingCampaignsPage: React.FC = () => {
           });
           if (invokeErr) {
             console.error('[launchCampaign] invoke error:', invokeErr);
-            alert(`Campaign saved but email sending failed to start: ${invokeErr.message}. Check your SMTP settings and try relaunching.`);
+            alert(`Campaign saved but email sending failed to start: ${getErrorMessage(invokeErr)}. Check your SMTP settings and try relaunching.`);
           }
         }
 
@@ -558,7 +559,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       loadCampaigns();
     } catch (err) {
       console.error('[launchCampaign]', err);
-      alert('Failed to launch campaign: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      alert('Failed to launch campaign: ' + getErrorMessage(err));
     } finally { setSaving(false); }
   };
 
@@ -577,11 +578,11 @@ export const PhishingCampaignsPage: React.FC = () => {
           test_from_address:    form.fromAddress || 'security@awareone.io',
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setTestEmailResult({ ok: true, msg: `Test email sent to ${testEmailTo.trim()}.` });
     } catch (err: unknown) {
-      setTestEmailResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+      setTestEmailResult({ ok: false, msg: getErrorMessage(err) });
     } finally {
       setTestEmailSending(false);
     }

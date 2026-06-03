@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, CheckCircle, Shield, TrendingDown,
-  Users, ChevronDown, ChevronUp, RefreshCw, Search,
+  ChevronDown, ChevronUp, RefreshCw, Search,
   BookOpen, ClipboardCheck, Mail,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";

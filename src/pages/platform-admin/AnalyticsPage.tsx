@@ -102,7 +102,6 @@ const PieChart: React.FC<{ active: number; total: number }> = ({ active, total }
   const activeFrac = total > 0 ? active / total : 0;
   const inactiveFrac = 1 - activeFrac;
   const activeDash   = activeFrac   * circ;
-  const inactiveDash = inactiveFrac * circ;
 
   // segments start at 12-o'clock (-90°)
   const segments = [

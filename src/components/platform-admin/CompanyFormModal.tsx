@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Calendar, Building2, User, CreditCard,
-  Save, Loader2, AlertCircle, CheckCircle,
+  Save, Loader2, AlertCircle,
 } from 'lucide-react';
 import { Company } from '../../lib/types';
 
@@ -146,7 +146,7 @@ interface CompanyFormModalProps {
 const Sec: React.FC<{
   icon: React.ElementType; color: string; bg: string; border: string;
   title: string; children: React.ReactNode;
-}> = ({ icon: Icon, color, bg, border, title, children }) => (
+}> = ({ icon: Icon, color, bg, title, children }) => (
   <div className="aw-cfm-section" style={{ background: 'rgba(255,255,255,0.01)' }}>
     <div className="aw-cfm-section-header" style={{ background: bg, color }}>
       <div style={{ width: 26, height: 26, borderRadius: 7, background: `${color}18`, border: `1px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

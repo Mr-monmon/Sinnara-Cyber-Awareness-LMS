@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle, BarChart2, Edit2, Check, Activity, RefreshCw, Pause, Play } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { RequestWithCompany } from "../../lib/types";
 import RequestPreview from "./RequestPreview";
 
@@ -144,7 +145,7 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-pmp-styles')
   document.head.appendChild(tag);
 }
 
-const fmt = (d: string) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: 'numeric' });
+const fmt = (d: string | Date) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: 'numeric' });
 
 const FILTER_TABS = ['ALL', 'SUBMITTED', 'APPROVED', 'RUNNING', 'COMPLETED', 'REJECTED'] as const;
 type FilterTab = typeof FILTER_TABS[number];
@@ -354,18 +355,20 @@ const QuotaTab: React.FC = () => {
     if (isNaN(val) || val < 0) { alert('Please enter a valid number'); return; }
     setSaving(true);
     try {
-      await supabase.from('phishing_campaign_quotas').upsert(
+      const { error: quotaErr } = await supabase.from('phishing_campaign_quotas').upsert(
         { company_id: companyId, annual_quota: val, quota_year: new Date().getFullYear(), updated_at: new Date().toISOString() },
         { onConflict: 'company_id,quota_year' }
       );
+      if (quotaErr) throw quotaErr;
       // Keep the per-company limit in sync — both represent "campaigns / year",
       // so editing the annual quota here also updates Company Phishing Limits.
-      await supabase.from('company_phishing_limits')
+      const { error: limitErr } = await supabase.from('company_phishing_limits')
         .update({ max_campaigns_per_year: val, updated_at: new Date().toISOString() })
         .eq('company_id', companyId);
+      if (limitErr) throw limitErr;
       setEditId(null);
       loadQuotas();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
+    } catch (err) { console.error('[PhishingMgmt] saveQuota', err); alert('Failed to save quota: ' + getErrorMessage(err)); }
     finally { setSaving(false); }
   };
 

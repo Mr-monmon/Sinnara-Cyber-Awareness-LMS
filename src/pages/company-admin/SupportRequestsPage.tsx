@@ -291,7 +291,7 @@ export const SupportRequestsPage: React.FC = () => {
                   </td>
                 </tr>
               ) : sorted.length > 0 ? (
-                sorted.map((ticket, idx) => {
+                sorted.map((ticket) => {
                   const cfg  = STATUS_CFG[ticket.status] ?? STATUS_CFG.open;
                   const Icon = cfg.icon;
                   return (

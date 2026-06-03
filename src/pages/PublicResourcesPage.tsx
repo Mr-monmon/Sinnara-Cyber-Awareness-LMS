@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   BookOpen,
   Clock,
@@ -21,7 +21,6 @@ import {
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { RequestDemoModal } from "../components/landing/RequestDemoModal";
-import { PartnersCarousel } from "../components/landing/PartnersCarousel";
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS

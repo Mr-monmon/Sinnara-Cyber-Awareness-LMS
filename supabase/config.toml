@@ -39,3 +39,14 @@ entrypoint = "./functions/send-email/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/serve-landing-page/index.ts"
+
+# Public tracking endpoint for phishing recipients (open pixel, click redirect,
+# report, form submit). Recipients are unauthenticated, so JWT verification is
+# intentionally disabled. The function validates the campaign/recipient tokens
+# itself and never exposes campaign data. Admin functions (process-campaign,
+# save-smtp-profile, clone-landing-page) are NOT listed here and therefore keep
+# Supabase's default verify_jwt = true.
+[functions.phishing-track]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/phishing-track/index.ts"

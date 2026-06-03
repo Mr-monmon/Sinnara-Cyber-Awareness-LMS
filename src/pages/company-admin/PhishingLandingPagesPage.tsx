@@ -4,6 +4,7 @@ import {
   Copy, Eye, Code, Download, Link
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../contexts/AuthContext";
 
 const T = {
@@ -172,9 +173,10 @@ export const PhishingLandingPagesPage: React.FC = () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
-      const { data } = await supabase.from('phishing_company_landing_pages').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('phishing_company_landing_pages').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false });
+      if (error) throw error;
       setPages(data || []);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('[LandingPages] load', err); }
     finally { setLoading(false); }
   };
 
@@ -197,14 +199,13 @@ export const PhishingLandingPagesPage: React.FC = () => {
     setSaving(true);
     try {
       const payload = { ...form, company_id: user?.company_id, updated_at: new Date().toISOString() };
-      if (editPage) {
-        await supabase.from('phishing_company_landing_pages').update(payload).eq('id', editPage.id);
-      } else {
-        await supabase.from('phishing_company_landing_pages').insert(payload);
-      }
+      const { error } = editPage
+        ? await supabase.from('phishing_company_landing_pages').update(payload).eq('id', editPage.id)
+        : await supabase.from('phishing_company_landing_pages').insert(payload);
+      if (error) throw error;
       setBuilderOpen(false);
       loadPages();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
+    } catch (err) { console.error('[LandingPages] save', err); alert('Failed to save landing page: ' + getErrorMessage(err)); }
     finally { setSaving(false); }
   };
 
@@ -212,10 +213,11 @@ export const PhishingLandingPagesPage: React.FC = () => {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      await supabase.from('phishing_company_landing_pages').delete().eq('id', deleteId);
+      const { error } = await supabase.from('phishing_company_landing_pages').delete().eq('id', deleteId);
+      if (error) throw error;
       setDeleteId(null);
       loadPages();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err) { console.error('[LandingPages] delete', err); alert('Failed to delete landing page: ' + getErrorMessage(err)); }
     finally { setDeleting(false); }
   };
 
@@ -233,7 +235,7 @@ export const PhishingLandingPagesPage: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('clone-landing-page', {
         body: { url: importUrl.trim() },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       if (data?.html) {
         setForm(f => ({ ...f, html_content: data.html }));
@@ -254,7 +256,8 @@ export const PhishingLandingPagesPage: React.FC = () => {
         }
       }
     } catch (e) {
-      alert('Clone failed: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      console.error('[LandingPages] clone', e);
+      alert('Clone failed: ' + getErrorMessage(e));
     } finally {
       setImporting(false);
     }

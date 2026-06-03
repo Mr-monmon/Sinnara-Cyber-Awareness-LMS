@@ -244,7 +244,7 @@ const EmployeeDashboardInner: React.FC = () => {
   const { tokens: T } = useTheme();
   const [activePage, setActivePage]       = useState("dashboard");
   const [isLoading, setIsLoading]         = useState(true);
-  const [assignedExams, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
+  const [, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
   const [company, setCompany]             = useState<Company | null>(null);
   const [stats, setStats] = useState({ assignedCourses: 0, completedCourses: 0, inProgressCourses: 0, pendingExams: 0, certificates: 0 });
   const [userRank, setUserRank] = useState<number | null>(null);
@@ -268,7 +268,7 @@ const EmployeeDashboardInner: React.FC = () => {
     if (!user?.company_id) return;
     setIsLoading(true);
     try {
-      const { data } = await supabase.from("companies").select("id, name, is_active").eq("id", user.company_id).single();
+      const { data } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).single();
       setCompany(data);
     } catch {
       setIsLoading(false);

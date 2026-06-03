@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   Server, Plus, Edit2, Trash2, Send, X, Check, Loader2,
-  AlertCircle, Eye, EyeOff, Building2, ChevronDown, ChevronUp, Users
+  AlertCircle, Eye, EyeOff, ChevronDown, ChevronUp, Users
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 
 const T = {
   bg:          '#12140a',
@@ -143,11 +144,11 @@ export const PhishingSmtpAdminPage: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('process-campaign', {
         body: { test_smtp_profile_id: testModal.profileId, test_to: testEmail.trim() },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
     } catch (err: unknown) {
-      setTestResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+      setTestResult({ ok: false, msg: getErrorMessage(err) });
     } finally { setTestSending(false); }
   };
 
@@ -167,7 +168,8 @@ export const PhishingSmtpAdminPage: React.FC = () => {
       });
       loadAll();
     } catch (err: unknown) {
-      alert((err instanceof Error ? err.message : null) || 'Revoke failed');
+      console.error('[SmtpAdmin] revoke', err);
+      alert('Revoke failed: ' + getErrorMessage(err));
     }
   };
 
@@ -259,12 +261,13 @@ export const PhishingSmtpAdminPage: React.FC = () => {
           is_platform_profile: true,
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setShowModal(false);
       loadAll();
     } catch (err: unknown) {
-      alert((err instanceof Error ? err.message : null) || 'Failed to save');
+      console.error('[SmtpAdmin] save', err);
+      alert('Failed to save SMTP profile: ' + getErrorMessage(err));
     } finally { setSaving(false); }
   };
 
@@ -272,10 +275,11 @@ export const PhishingSmtpAdminPage: React.FC = () => {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      await supabase.from('smtp_profiles').delete().eq('id', deleteId);
+      const { error } = await supabase.from('smtp_profiles').delete().eq('id', deleteId);
+      if (error) throw error;
       setDeleteId(null);
       loadAll();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err) { console.error('[SmtpAdmin] delete', err); alert('Failed to delete SMTP profile: ' + getErrorMessage(err)); }
     finally { setDeleting(false); }
   };
 
@@ -296,7 +300,8 @@ export const PhishingSmtpAdminPage: React.FC = () => {
         company_id,
       }));
       // Upsert to handle already-pushed
-      await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
+      const { error } = await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
+      if (error) throw error;
       loadAll();
       // Refresh push status
       const { data: access } = await supabase.from('smtp_profile_company_access').select('company_id, pushed_at').eq('smtp_profile_id', pushModal.profile!.id);
@@ -304,7 +309,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
       (access || []).forEach(r => { status[r.company_id] = r.pushed_at; });
       setPushStatus(status);
       setSelectedCompanies(new Set());
-    } catch (err: any) { alert(err.message || 'Push failed'); }
+    } catch (err) { console.error('[SmtpAdmin] push', err); alert('Push failed: ' + getErrorMessage(err)); }
     finally { setPushing(false); }
   };
 
@@ -315,13 +320,14 @@ export const PhishingSmtpAdminPage: React.FC = () => {
     setPushing(true);
     try {
       const rows = companies.map(c => ({ smtp_profile_id: pushModal.profile!.id, company_id: c.id }));
-      await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
+      const { error } = await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
+      if (error) throw error;
       loadAll();
       const { data: access } = await supabase.from('smtp_profile_company_access').select('company_id, pushed_at').eq('smtp_profile_id', pushModal.profile!.id);
       const status: Record<string, string> = {};
       (access || []).forEach(r => { status[r.company_id] = r.pushed_at; });
       setPushStatus(status);
-    } catch (err: any) { alert(err.message || 'Push failed'); }
+    } catch (err) { console.error('[SmtpAdmin] pushAll', err); alert('Push failed: ' + getErrorMessage(err)); }
     finally { setPushing(false); }
   };
 
