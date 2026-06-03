@@ -1092,7 +1092,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                 </td>
                 <td style={{ color: T.textMuted }}>{emp.email}</td>
                 <td>
-                  {emp.department?.name ? (
+                  {(emp.department as unknown as { name?: string } | null | undefined)?.name ? (
                     <span
                       style={{
                         display: "inline-flex",
@@ -1105,7 +1105,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                         color: T.accent,
                       }}
                     >
-                      {emp.department.name}
+                      {(emp.department as unknown as { name: string }).name}
                     </span>
                   ) : (
                     <span style={{ color: T.textMuted }}>—</span>

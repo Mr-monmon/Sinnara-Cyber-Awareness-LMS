@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FolderTree, X, Loader2, Save, ChevronDown } from "lucide-react";
+import { FolderTree, X, Loader2, Save } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { Department } from "../../lib/types";
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Key, MousePointerClick, CheckCircle, Play, AlertTriangle, Filter, Check, X } from 'lucide-react';
+import { Bell, Key, MousePointerClick, CheckCircle, Play, AlertTriangle, Check, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -31,7 +31,7 @@ const PRIORITY_CFG: Record<string, { color: string; bg: string; border: string; 
   LOW:      { color: '#64748b', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.10)', label: 'LOW' },
 };
 
-const TYPE_CFG: Record<string, { Icon: React.ComponentType<{ size?: number; color?: string }>; color: string }> = {
+const TYPE_CFG: Record<string, { Icon: React.ComponentType<{ size?: string | number; color?: string }>; color: string }> = {
   CREDENTIALS_SUBMITTED: { Icon: Key, color: '#f87171' },
   LINK_CLICKED:          { Icon: MousePointerClick, color: '#fb923c' },
   CAMPAIGN_COMPLETE:     { Icon: CheckCircle, color: '#34d399' },

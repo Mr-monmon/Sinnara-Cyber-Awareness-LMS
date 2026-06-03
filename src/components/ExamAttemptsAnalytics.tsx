@@ -193,7 +193,6 @@ const LineChart: React.FC<{ data: Array<{ date: string; avgScore: number; count:
 
   const yTicks = [minS, minS + range * 0.5, maxS];
   const xStep = Math.ceil(data.length / 5);
-  const xTicks = data.filter((_, i) => i % xStep === 0 || i === data.length - 1).map((d, _, arr) => d);
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
@@ -250,7 +249,6 @@ const BarChart: React.FC<{ data: Array<{ label: string; passed: number; failed: 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
       {data.map((d, i) => {
-        const total   = d.passed + d.failed;
         const passH   = (d.passed / maxVal) * chartH;
         const failH   = (d.failed / maxVal) * chartH;
         const cx      = PAD.l + i * gap + gap / 2;

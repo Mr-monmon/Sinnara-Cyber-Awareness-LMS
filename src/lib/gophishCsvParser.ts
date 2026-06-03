@@ -59,37 +59,143 @@ function isReported(record: GophishRecord): boolean {
   return (record.reported || '').trim().toLowerCase() === 'true';
 }
 
-function parseCSV(csvContent: string): ParsedCampaignData {
-  const lines = csvContent.trim().split('\n');
-  if (lines.length < 2) {
-    throw new Error('CSV file must contain headers and at least one data row');
+// Tokenizes a single delimited-text document into a matrix of cells, honouring
+// RFC-4180-style double-quote quoting: quoted fields may contain the delimiter,
+// CR/LF newlines, and escaped quotes ("" → "). Works for both comma- and
+// tab-separated input — the delimiter is passed in by the caller.
+function tokenizeDelimited(content: string, delimiter: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < content.length) {
+    const ch = content[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (content[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (ch === delimiter) {
+      row.push(field);
+      field = '';
+      i++;
+      continue;
+    }
+    if (ch === '\n' || ch === '\r') {
+      // Consume a CRLF pair as a single line break.
+      if (ch === '\r' && content[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i++;
+      continue;
+    }
+    field += ch;
+    i++;
   }
 
-  const headers = lines[0].split('\t');
-  const records: GophishRecord[] = [];
+  // Flush the trailing field/row (file may not end with a newline).
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split('\t');
-    if (values.length !== headers.length) continue;
+// Detects whether the header line is tab- or comma-delimited. Gophish exports
+// are TSV, but hand-edited or re-exported files are often CSV, so we pick the
+// delimiter that yields more columns on the header line.
+function detectDelimiter(headerLine: string): string {
+  const tabs = (headerLine.match(/\t/g) || []).length;
+  const commas = (headerLine.match(/,/g) || []).length;
+  return tabs >= commas ? '\t' : ',';
+}
+
+// Parses a Gophish campaign export. Accepts both CSV and TSV, with quoted
+// fields. Columns are matched by header NAME (falling back to Gophish's known
+// column order) so re-ordered or partial exports still parse correctly.
+function parseCSV(csvContent: string): ParsedCampaignData {
+  const content = csvContent.replace(/^\uFEFF/, '').trim();
+  if (!content) {
+    throw new Error('File is empty.');
+  }
+
+  const firstBreak = content.search(/\r\n|\r|\n/);
+  const headerLine = firstBreak === -1 ? content : content.slice(0, firstBreak);
+  const delimiter = detectDelimiter(headerLine);
+
+  const matrix = tokenizeDelimited(content, delimiter);
+  if (matrix.length < 2) {
+    throw new Error('File must contain a header row and at least one data row.');
+  }
+
+  const headers = matrix[0].map((h) => h.trim().toLowerCase());
+  // Map each logical field to its column index by header name, falling back to
+  // Gophish's canonical column order when a header is absent.
+  const FIELD_ORDER: (keyof GophishRecord)[] = [
+    'id', 'status', 'ip', 'latitude', 'longitude', 'send_date',
+    'reported', 'modified_date', 'email', 'first_name', 'last_name', 'position',
+  ];
+  const colIndex = (field: keyof GophishRecord, fallback: number): number => {
+    const named = headers.indexOf(field);
+    return named === -1 ? fallback : named;
+  };
+  const indices = FIELD_ORDER.reduce<Record<string, number>>((acc, field, idx) => {
+    acc[field] = colIndex(field, idx);
+    return acc;
+  }, {});
+
+  const cell = (values: string[], field: keyof GophishRecord) =>
+    (values[indices[field]] ?? '').trim();
+
+  const records: GophishRecord[] = [];
+  for (let i = 1; i < matrix.length; i++) {
+    const values = matrix[i];
+    // Skip blank lines produced by trailing newlines.
+    if (values.length === 1 && values[0].trim() === '') continue;
 
     const record: GophishRecord = {
-      id: values[0]?.trim() || '',
-      status: values[1]?.trim() || '',
-      ip: values[2]?.trim() || '',
-      latitude: values[3]?.trim() || '',
-      longitude: values[4]?.trim() || '',
-      send_date: values[5]?.trim() || '',
-      reported: values[6]?.trim() || '',
-      modified_date: values[7]?.trim() || '',
-      email: values[8]?.trim() || '',
-      first_name: values[9]?.trim() || '',
-      last_name: values[10]?.trim() || '',
-      position: values[11]?.trim() || ''
+      id: cell(values, 'id'),
+      status: cell(values, 'status'),
+      ip: cell(values, 'ip'),
+      latitude: cell(values, 'latitude'),
+      longitude: cell(values, 'longitude'),
+      send_date: cell(values, 'send_date'),
+      reported: cell(values, 'reported'),
+      modified_date: cell(values, 'modified_date'),
+      email: cell(values, 'email'),
+      first_name: cell(values, 'first_name'),
+      last_name: cell(values, 'last_name'),
+      position: cell(values, 'position'),
     };
 
     if (record.id && record.email) {
       records.push(record);
     }
+  }
+
+  if (records.length === 0) {
+    throw new Error('No valid rows found. Each row must include an id and an email.');
   }
 
   const counts = aggregateFunnel(records);

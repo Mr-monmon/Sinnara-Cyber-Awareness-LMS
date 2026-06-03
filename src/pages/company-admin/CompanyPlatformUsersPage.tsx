@@ -428,7 +428,6 @@ export const CompanyPlatformUsersPage: React.FC = () => {
         await handleAction("resetPassword", target.id, { password: newPw });
         try {
           const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
-          const copy = ROLE_EMAIL_COPY[target.role as PlatformRole] ?? ROLE_EMAIL_COPY.COMPANY_ADMIN;
           await sendNotificationEmail(
             target.email,
             target.full_name,
@@ -469,11 +468,6 @@ export const CompanyPlatformUsersPage: React.FC = () => {
       danger: false,
       onConfirm: () => handleAction("setMfaEnforced", target.id, { enforced: newVal }),
     });
-  };
-
-  const canEditUser = (target: PlatformUser) => {
-    if (target.role === "COMPANY_SUPER_ADMIN") return false;
-    return canManage;
   };
 
   const canDeleteUser = (target: PlatformUser) => {

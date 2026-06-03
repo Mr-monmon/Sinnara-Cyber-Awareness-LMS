@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Edit2, Check, X, RotateCcw, ShieldOff, Shield, RefreshCw } from 'lucide-react';
+import { Sliders, Edit2, Check, X, RotateCcw, Shield, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const T = {

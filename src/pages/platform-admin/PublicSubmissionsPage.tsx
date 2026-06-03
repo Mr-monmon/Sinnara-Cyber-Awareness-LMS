@@ -101,7 +101,7 @@ const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color })
 /* ─────────────────────────────────────────
    SCORE DISTRIBUTION BAR
 ───────────────────────────────────────── */
-const DistBar: React.FC<{ pct: number; color: string; label: string; count: number; total: number }> = ({ pct, color, label, count, total }) => {
+const DistBar: React.FC<{ pct: number; color: string; label: string; count: number; total: number }> = ({ color, label, count, total }) => {
   const width = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>

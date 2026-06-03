@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 export interface EmailCredentials {
   email: string;
   password: string;
-  role: string;
+  role?: string;
 }
 
 export interface SendEmailOpts {
@@ -39,7 +39,7 @@ function renderCredentials(credentials: EmailCredentials): string {
       </p>
       <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Email:</strong> ${credentials.email}</p>
       <p style="margin:0 0 10px; font-size:15px; color:#ffffff;"><strong>Password:</strong> ${credentials.password}</p>
-      <p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> ${credentials.role}</p>
+      ${credentials.role ? `<p style="margin:0; font-size:15px; color:#ffffff;"><strong>Role:</strong> ${credentials.role}</p>` : ""}
     </div>
   `;
 }

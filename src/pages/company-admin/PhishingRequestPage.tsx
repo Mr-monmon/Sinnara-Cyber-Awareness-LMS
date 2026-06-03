@@ -17,6 +17,7 @@ import {
 import DOMPurify from "dompurify";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { PhishingTemplate, PhishingCampaignQuota, PhishingDomain } from "../../lib/types";
 
 /* ─────────────────────────────────────────
@@ -433,7 +434,7 @@ export const PhishingRequestPage: React.FC = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error submitting request:", error);
-      alert("Failed to submit request. Please try again.");
+      alert("Failed to submit request: " + getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }

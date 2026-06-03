@@ -208,7 +208,7 @@ export const EmailQueuePage: React.FC = () => {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-        {statsCards.map(({ key, label, color, bg }) => (
+        {statsCards.map(({ key, label, color }) => (
           <div key={key} onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)}
             style={{ background: T.bgCard, border: `1px solid ${statusFilter === key ? color : T.border}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.2s', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${color}, ${color}40)` }} />

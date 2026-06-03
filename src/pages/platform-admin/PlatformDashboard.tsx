@@ -63,6 +63,9 @@ const T = {
   cyan:        '#22d3ee',
   cyanBg:      'rgba(34,211,238,0.08)',
   cyanBorder:  'rgba(34,211,238,0.22)',
+  gold:        '#fbbf24',
+  goldBg:      'rgba(251,191,36,0.08)',
+  goldBorder:  'rgba(251,191,36,0.22)',
 } as const;
 
 /* ─────────────────────────────────────────
@@ -132,24 +135,6 @@ const ACTIONS = [
   { page: 'email-queue',             icon: Clock,     color: T.purple,  label: 'Email Queue',            sub: 'Monitor outbound email delivery' },
   { page: 'support-requests',        icon: Zap,       color: T.gold,    label: 'Support Requests',       sub: 'Customer support tickets'       },
 ] as const;
-
-/* ─────────────────────────────────────────
-   STAT CARD
-───────────────────────────────────────── */
-const StatCard: React.FC<{ icon: React.ElementType; color: string; bg: string; label: string; value: number; delay?: string }> = ({
-  icon: Icon, color, bg, label, value, delay = '0s',
-}) => (
-  <div className={`aw-pd-stat aw-fade-up`} style={{ animationDelay: delay }}>
-    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${color}, ${color}40)` }} />
-    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-      <div style={{ width: 40, height: 40, borderRadius: 10, background: bg, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Icon size={18} style={{ color }} />
-      </div>
-      <span style={{ fontSize: 28, fontWeight: 900, color: T.white }}>{value.toLocaleString()}</span>
-    </div>
-    <div style={{ fontSize: 13, fontWeight: 600, color: T.textBody }}>{label}</div>
-  </div>
-);
 
 /* ═══════════════════════════════════════════
    COMPONENT
@@ -282,7 +267,9 @@ export const PlatformDashboard = () => {
       setMonthlyRevenue(rev);
 
       // Phishing
-      const campaigns = (campaignsRes.data ?? []) as PhishingCampaignRow[];
+      // Supabase types the joined `companies` relation as an array; our row
+      // shape models it as a single object, so cast through unknown.
+      const campaigns = (campaignsRes.data ?? []) as unknown as PhishingCampaignRow[];
       setRecentCampaigns(campaigns);
 
       setStats({

@@ -5,6 +5,7 @@ export interface ExamQuestion {
   options: string[];
   correct_answer: string;
   order_index: number;
+  explanation?: string;
 }
 
 export interface Exam {
@@ -26,6 +27,8 @@ export interface User {
   role: "PLATFORM_ADMIN" | "COMPANY_ADMIN" | "COMPANY_SUPER_ADMIN" | "PHISHING_OPERATOR" | "REVIEWER" | "EMPLOYEE";
   company_id?: string;
   department?: string;
+  job_title?: string;
+  is_active?: boolean;
   policy_accepted?: boolean;
   policy_accepted_at?: string;
   created_at: string;

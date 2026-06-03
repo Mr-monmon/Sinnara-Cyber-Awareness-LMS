@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from "react";
+import { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronRight } from "lucide-react";
 import { logErrorToSupabase } from "../lib/errorLogger";
 import { captureException } from "../lib/sentry";

@@ -4,6 +4,7 @@ import {
   Send, X, Check, Loader2, AlertCircle, ChevronDown, ChevronUp
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../contexts/AuthContext";
 
 const T = {
@@ -249,12 +250,13 @@ export const PhishingSmtpPage: React.FC = () => {
           is_platform_profile: false,
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setShowModal(false);
       loadProfiles();
     } catch (err: unknown) {
-      alert((err instanceof Error ? err.message : null) || 'Failed to save');
+      console.error('[Smtp] save', err);
+      alert('Failed to save SMTP profile: ' + getErrorMessage(err));
     } finally { setSaving(false); }
   };
 
@@ -266,7 +268,7 @@ export const PhishingSmtpPage: React.FC = () => {
       if (error) throw error;
       setDeleteId(null);
       loadProfiles();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err) { console.error('[Smtp] delete', err); alert('Failed to delete SMTP profile: ' + getErrorMessage(err)); }
     finally { setDeleting(false); }
   };
 
@@ -279,11 +281,11 @@ export const PhishingSmtpPage: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('process-campaign', {
         body: { test_smtp_profile_id: testModal.profileId, test_to: testEmail.trim() },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       if (data?.success === false || data?.error) throw new Error(data?.error || 'Send failed');
       setTestResult({ ok: true, msg: `Test email sent to ${testEmail}.` });
     } catch (err: unknown) {
-      setTestResult({ ok: false, msg: (err instanceof Error ? err.message : null) || 'Send failed' });
+      setTestResult({ ok: false, msg: getErrorMessage(err) });
     } finally { setTestSending(false); }
   };
 
@@ -292,7 +294,6 @@ export const PhishingSmtpPage: React.FC = () => {
   const updateHeader = (i: number, field: 'key' | 'value', val: string) =>
     setForm(f => ({ ...f, custom_headers: f.custom_headers.map((h, idx) => idx === i ? { ...h, [field]: val } : h) }));
 
-  const f = (p: SmtpProfile) => !p.isPushed;
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>

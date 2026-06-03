@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   ArrowLeft, Award, BookOpen, ClipboardCheck,
   TrendingUp, Download, Calendar, CheckCircle,
-  Shield, AlertTriangle, Mail,
+  AlertTriangle, Mail,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -494,7 +494,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
             <TrendingUp size={15} style={{ color: T.accent }} /> Exam Score Trend
           </div>
           <div style={{ padding: '16px 20px 20px' }}>
-            <LineChart exams={[...exams].reverse()} />
+            <LineChart exams={[...exams].reverse().map(e => ({ score: e.score, label: e.exam_name, passed: e.passed }))} />
             <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: T.textMuted }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.green }} /> Passed

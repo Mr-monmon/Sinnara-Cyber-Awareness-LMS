@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Plus, Trash2, Eye, EyeOff, Edit2, AlertTriangle,
-  Shield, X, Save, Loader2, Check, ChevronDown,
+  Shield, X, Save, Loader2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
