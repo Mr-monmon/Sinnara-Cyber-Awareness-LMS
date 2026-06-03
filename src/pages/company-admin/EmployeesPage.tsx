@@ -652,7 +652,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         invalidEmail: 0,
         existingEmail: 0,
       };
-      const existingEmails = employees.map((e) => e.email);
+      const existingEmails = new Set(
+        employees.map((e) => e.email.toLowerCase())
+      );
+      const seenInFile = new Set<string>();
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         const row = requiredHeaders.reduce<Record<string, string>>(
@@ -674,10 +677,12 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           rejected.invalidEmail++;
           continue;
         }
-        if (existingEmails.includes(row.email)) {
+        const normalizedEmail = row.email.toLowerCase();
+        if (existingEmails.has(normalizedEmail) || seenInFile.has(normalizedEmail)) {
           rejected.existingEmail++;
           continue;
         }
+        seenInFile.add(normalizedEmail);
         // Use CSV password only if it meets policy; otherwise auto-generate
         const csvPassword = row.password?.trim();
         const password =
