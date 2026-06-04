@@ -282,6 +282,23 @@ async function sendViaZepto(params: {
   }
 }
 
+/* ── Read the `role` claim from a JWT WITHOUT verifying the signature ──
+ * Safe ONLY because the Supabase gateway runs this function with verify_jwt
+ * enabled, so it has already cryptographically validated the token's signature
+ * before invocation (a forged/unsigned token is rejected at the gateway with
+ * UNAUTHORIZED_INVALID_JWT_FORMAT and never reaches here). We therefore only
+ * need to read the already-trusted claim. Used by the cron auth check below. */
+function jwtRole(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Master send function ── */
 async function sendEmail(params: {
   to: string; subject: string; html: string;
@@ -327,7 +344,18 @@ Deno.serve(async (req) => {
   //   2. An authenticated company/platform admin — the manual "launch / relaunch" path.
   const authHeader = req.headers.get("Authorization") ?? "";
   const bearer     = authHeader.replace(/^Bearer\s+/i, "").trim();
-  const isCron     = bearer.length > 0 && bearer === SERVICE_ROLE_KEY;
+  // The cron invoker authenticates with a service-role credential. Accept two forms:
+  //   1. Exact match against the injected SUPABASE_SERVICE_ROLE_KEY (legacy setups
+  //      where the env key and the pg_cron bearer are the same string).
+  //   2. Any service-role JWT (role claim === "service_role"). Supabase's new API
+  //      key system injects SUPABASE_SERVICE_ROLE_KEY in the new `sb_secret_…`
+  //      format, while the gateway still requires a JWT (`eyJ…`) in the
+  //      Authorization header — so the exact-match in (1) can never hold for a
+  //      JWT bearer. The gateway runs with verify_jwt enabled and has already
+  //      validated the JWT signature before this point, so reading the role claim
+  //      is sufficient to recognise the cron caller.
+  const isCron     = bearer.length > 0 &&
+    (bearer === SERVICE_ROLE_KEY || jwtRole(bearer) === "service_role");
 
   if (!isCron) {
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

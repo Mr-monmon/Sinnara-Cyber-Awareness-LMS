@@ -68,11 +68,30 @@ async function sendViaZepto(
   }
 }
 
+/* ── Read the `role` claim from a JWT WITHOUT verifying the signature ──
+ * Safe ONLY because the Supabase gateway runs this function with verify_jwt
+ * enabled, so the token's signature is already validated before invocation. */
+function jwtRole(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Auth helper ── */
 async function authorize(authHeader: string): Promise<{ allowed: boolean; reason?: string }> {
-  // Cron path: service role key passed directly as bearer token
+  // Cron path: a service-role credential passed as the bearer token. Accept either
+  // an exact match against the injected service-role env key (legacy setups) or any
+  // service-role JWT (role claim === "service_role"). The latter is required because
+  // Supabase's new key system injects SUPABASE_SERVICE_ROLE_KEY as `sb_secret_…`
+  // while the gateway still requires a JWT (`eyJ…`) bearer, so the two strings differ.
+  // The gateway (verify_jwt on) has already validated the JWT signature by this point.
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (token === SUPABASE_SERVICE_ROLE_KEY) {
+  if (token.length > 0 && (token === SUPABASE_SERVICE_ROLE_KEY || jwtRole(token) === "service_role")) {
     return { allowed: true };
   }
 
