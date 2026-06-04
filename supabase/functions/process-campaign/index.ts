@@ -194,11 +194,22 @@ async function sendViaSmtp(params: {
     // deno-lint-ignore no-explicit-any
     const nodemailer = await import("npm:nodemailer@6") as any;
 
+    // Port 465 = implicit TLS (TLS from the first byte, nodemailer `secure: true`).
+    // Port 587 / 2525 / 25 with TLS enabled = STARTTLS upgrade after connect
+    // (`requireTLS: true`). The original code only set requireTLS from the
+    // `use_starttls` flag, so `use_tls: true` + port 587 produced NO TLS at all,
+    // causing every SMTP server that requires TLS for AUTH to reject with 535.
+    const smtpPort    = params.profile.port;
+    const useTls      = params.profile.use_tls;
+    const useStartTls = params.profile.use_starttls;
+    const implicitTls = useTls && smtpPort === 465;
+    const requireTLS  = useStartTls || (useTls && !implicitTls);
+
     const transport = nodemailer.createTransport({
       host: params.profile.host,
-      port: params.profile.port,
-      secure: params.profile.use_tls && params.profile.port === 465,
-      requireTLS: params.profile.use_starttls,
+      port: smtpPort,
+      secure: implicitTls,
+      requireTLS,
       tls: { rejectUnauthorized: !params.profile.ignore_cert_errors },
       auth: { user: params.profile.username, pass: password },
       connectionTimeout: 15000,
