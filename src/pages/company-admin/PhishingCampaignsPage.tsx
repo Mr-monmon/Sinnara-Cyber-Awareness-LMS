@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { getErrorMessage } from '../../lib/errors';
+import { getEdgeFunctionError } from '../../lib/errors';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -338,7 +338,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       loadCampaigns();
     } catch (err) {
       console.error('[launchCampaign]', err);
-      alert('Failed to launch campaign: ' + getErrorMessage(err));
+      alert('Failed to launch campaign: ' + await getEdgeFunctionError(err));
     } finally { setSaving(false); }
   };
 
@@ -361,7 +361,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       if (data?.error) throw new Error(data.error);
       setTestEmailResult({ ok: true, msg: `Test email sent to ${testEmailTo.trim()}${data?.from_used ? ` (sender: ${data.from_used})` : ''}.` });
     } catch (err: unknown) {
-      setTestEmailResult({ ok: false, msg: getErrorMessage(err) });
+      setTestEmailResult({ ok: false, msg: await getEdgeFunctionError(err) });
     } finally {
       setTestEmailSending(false);
     }
