@@ -4,7 +4,7 @@ import {
   CreditCard, History, Shield, ChevronRight,
   Mail, Globe, Bell, Award, Zap, AlertTriangle,
   TrendingUp, HelpCircle, Clock, CheckCircle, DollarSign, Server,
-  Target, MousePointer, Send as SendIcon, Eye,
+  Target, MousePointer, Send as SendIcon, Eye, LayoutTemplate,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { CompaniesPage }              from "./CompaniesPage";
@@ -20,6 +20,7 @@ import { PhishingTemplatesPage }      from "./PhishingTemplatesPage";
 import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
 import { PhishingDomainsPage }        from "./PhishingDomainsPage";
 import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
+import { PhishingLandingPagesAdminPage } from "./PhishingLandingPagesAdminPage";
 import { PhishingScenariosPage }      from "./PhishingScenariosPage";
 import { PhishingCompanyLimitsPage }  from "./PhishingCompanyLimitsPage";
 import { PhishingManagementPage }     from "./PhishingManagementPage";
@@ -124,6 +125,7 @@ const ACTIONS = [
   { page: 'phishing-requests',      icon: Target,    color: T.orange,  label: 'Campaign Requests',      sub: 'Review & track ticket requests' },
   { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
   { page: 'phishing-smtp-admin',    icon: Server,    color: T.cyan,    label: 'Platform SMTP Profiles', sub: 'Push SMTP to companies'         },
+  { page: 'phishing-landing-admin', icon: LayoutTemplate, color: T.orange, label: 'Landing Pages',        sub: 'Author & share landing pages'   },
   { page: 'phishing-scenarios',     icon: Zap,       color: T.orange,  label: 'Phishing Scenarios',     sub: 'Predefined attack templates'    },
   { page: 'phishing-company-limits',icon: Shield,    color: T.red,     label: 'Company Limits',         sub: 'Quotas & feature access'        },
   { page: 'fraud-alerts-management', icon: AlertTriangle, color: T.orange, label: 'Fraud Alerts',        sub: 'Manage public alerts'           },
@@ -311,6 +313,7 @@ export const PlatformDashboard = () => {
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
       case "phishing-smtp-admin":      return <PhishingSmtpAdminPage />;
+      case "phishing-landing-admin":   return <PhishingLandingPagesAdminPage />;
       case "phishing-scenarios":       return <PhishingScenariosPage />;
       case "phishing-company-limits":  return <PhishingCompanyLimitsPage />;
       case "fraud-alerts-management":  return <FraudAlertsManagementPage />;
