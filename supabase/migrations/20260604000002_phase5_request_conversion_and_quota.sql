@@ -28,7 +28,8 @@
 
   4. ADMIN-FIELD PROTECTION (M-requests)
      The company RLS policy on phishing_campaign_requests is FOR ALL, which would let
-     a company user escalate status or overwrite admin_notes/approved_*/rejected_reason.
+     a company user escalate status or overwrite admin_notes, approved_by/at, or
+     rejected_reason.
      Add a BEFORE UPDATE trigger that blocks non-platform-admins from changing
      admin-only fields or setting privileged statuses.
 */
