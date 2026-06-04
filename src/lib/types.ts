@@ -123,6 +123,18 @@ export interface PhishingCampaignRequest {
   redirect_url: string | null;
   requested_by: string;
   landing_page_html: string | null;
+  // Phase 5 — sending method + conversion lifecycle
+  sending_method?: string | null;
+  smtp_profile_id?: string | null;
+  reply_to_address?: string | null;
+  authorization_confirmed?: boolean | null;
+  launch_type?: string | null;
+  scheduled_launch_at?: Date | string | null;
+  group_ids?: string[] | null;
+  landing_page_id?: string | null;
+  email_template_id?: string | null;
+  campaign_id?: string | null;
+  converted_at?: Date | string | null;
 }
 
 export interface RequestWithCompany extends PhishingCampaignRequest {

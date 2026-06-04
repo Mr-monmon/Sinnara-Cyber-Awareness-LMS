@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Shield, Eye, CheckCircle, X, Loader2, AlertCircle, BarChart2, Edit2, Check, Activity, RefreshCw, Pause, Play } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
+import { useAuth } from "../../contexts/AuthContext";
 import { RequestWithCompany } from "../../lib/types";
 import RequestPreview from "./RequestPreview";
 
@@ -48,6 +49,8 @@ const STATUS_CFG: Record<string, { color: string; bg: string; border: string }> 
   RUNNING:   { color: T.orange,   bg: T.orangeBg,  border: T.orangeBorder  },
   COMPLETED: { color: T.purple,   bg: T.purpleBg,  border: T.purpleBorder  },
   REJECTED:  { color: T.red,      bg: T.redBg,     border: T.redBorder     },
+  NEEDS_INFO: { color: T.orange,  bg: T.orangeBg,  border: T.orangeBorder  },
+  CONVERTED_TO_CAMPAIGN: { color: T.green, bg: T.greenBg, border: T.greenBorder },
 };
 const getStatusCfg = (s: string) => STATUS_CFG[s] ?? STATUS_CFG['DRAFT'];
 
@@ -481,6 +484,7 @@ const StatCard: React.FC<{ color: string; label: string; value: number; onClick?
 type MainTab = 'campaigns' | 'monitoring' | 'quota';
 
 export const PhishingManagementPage: React.FC = () => {
+  const { user } = useAuth();
   const [mainTab, setMainTab] = useState<MainTab>('campaigns');
   const [requests, setRequests]           = useState<RequestWithCompany[]>([]);
   const [loading, setLoading]             = useState(true);
@@ -510,11 +514,11 @@ export const PhishingManagementPage: React.FC = () => {
     const id = String(actionModal.request.id);
     setActionLoading(true); setStatusUpdating(p => ({ ...p, [id]: true }));
     try {
-      const { error } = await supabase.from('phishing_campaign_requests').update({ status: 'APPROVED', admin_notes: adminNotes, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', actionModal.request.id);
+      const { error } = await supabase.from('phishing_campaign_requests').update({ status: 'APPROVED', admin_notes: adminNotes, approved_by: user?.id ?? null, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', actionModal.request.id);
       if (error) throw error;
       setActionModal({ type: null, request: null }); setAdminNotes('');
       loadRequests();
-    } catch { alert('Failed to approve request'); }
+    } catch (err) { alert('Failed to approve request: ' + getErrorMessage(err)); }
     finally { setActionLoading(false); setStatusUpdating(p => ({ ...p, [id]: false })); }
   };
 
@@ -523,12 +527,14 @@ export const PhishingManagementPage: React.FC = () => {
     const id = String(actionModal.request.id);
     setActionLoading(true); setStatusUpdating(p => ({ ...p, [id]: true }));
     try {
+      // Rejecting a request consumes no quota to refund: campaign quota is only
+      // consumed when a campaign row is actually created (DB trigger), which never
+      // happened for a rejected request. (Previously this wrongly decremented quota.)
       const { error: ue } = await supabase.from('phishing_campaign_requests').update({ status: 'REJECTED', rejected_reason: adminNotes, updated_at: new Date().toISOString() }).eq('id', actionModal.request.id);
       if (ue) throw ue;
-      await supabase.rpc('refund_used_quotes', { p_company_id: actionModal.request.company_id, p_quota_year: new Date().getFullYear() });
       setActionModal({ type: null, request: null }); setAdminNotes('');
       loadRequests();
-    } catch { alert('Failed to reject request'); }
+    } catch (err) { alert('Failed to reject request: ' + getErrorMessage(err)); }
     finally { setActionLoading(false); setStatusUpdating(p => ({ ...p, [id]: false })); }
   };
 
@@ -711,6 +717,7 @@ export const PhishingManagementPage: React.FC = () => {
           selectedRequest={selectedRequest}
           updateSelectedRequest={r => setSelectedRequest(r)}
           getStatusColor={getStatusColor}
+          onConverted={loadRequests}
         />
       )}
 
