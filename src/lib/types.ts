@@ -126,6 +126,7 @@ export interface PhishingCampaignRequest {
   requested_by: string;
   landing_page_html: string | null;
   // Phase 5 — sending method + conversion lifecycle
+  emails_per_minute?: number | null;
   sending_method?: string | null;
   smtp_profile_id?: string | null;
   reply_to_address?: string | null;

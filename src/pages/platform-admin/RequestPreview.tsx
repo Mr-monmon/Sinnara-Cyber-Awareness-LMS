@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Download, Rocket, Loader2 } from "lucide-react";
+import {
+  AlertTriangle, Download, Rocket, Loader2, Settings, Save,
+  Server, LayoutTemplate, Globe, Clock, Gauge,
+} from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
@@ -37,6 +40,54 @@ const RequestPreview = ({
   const [domainName, setDomainName] = useState<string>("");
   const [smtpProfileName, setSmtpProfileName] = useState<string>("");
   const [converting, setConverting] = useState(false);
+
+  // ── Execution Setup (Platform Admin completes/overrides before converting) ──
+  const [smtpProfiles, setSmtpProfiles] = useState<
+    { id: string; name: string; is_platform_profile: boolean }[]
+  >([]);
+  const [landingPages, setLandingPages] = useState<
+    { id: string; name: string; is_platform_page: boolean }[]
+  >([]);
+  const [domainOptions, setDomainOptions] = useState<
+    { id: string; domain_name: string; is_platform_domain: boolean }[]
+  >([]);
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [setup, setSetup] = useState({
+    campaign_name: "",
+    email_subject: "",
+    email_html_body: "",
+    smtp_profile_id: "",
+    landing_page_id: "",
+    domain_id: "",
+    from_name: "",
+    from_address: "",
+    redirect_url: "",
+    reply_to_address: "",
+    emails_per_minute: 10,
+    launch_type: "IMMEDIATE",
+    scheduled_launch_at: "",
+  });
+
+  // Seed the editable setup from the request whenever a different request opens.
+  useEffect(() => {
+    setSetup({
+      campaign_name: selectedRequest.campaign_name || "",
+      email_subject: selectedRequest.email_subject || "",
+      email_html_body: selectedRequest.email_html_body || "",
+      smtp_profile_id: selectedRequest.smtp_profile_id || "",
+      landing_page_id: selectedRequest.landing_page_id || "",
+      domain_id: selectedRequest.domain_id || "",
+      from_name: selectedRequest.from_name || "",
+      from_address: selectedRequest.from_address || "",
+      redirect_url: selectedRequest.redirect_url || "",
+      reply_to_address: selectedRequest.reply_to_address || "",
+      emails_per_minute: selectedRequest.emails_per_minute ?? 10,
+      launch_type: selectedRequest.launch_type || "IMMEDIATE",
+      scheduled_launch_at: selectedRequest.scheduled_launch_at
+        ? String(selectedRequest.scheduled_launch_at).slice(0, 16)
+        : "",
+    });
+  }, [selectedRequest.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sanitizedEmailHtml = useMemo(
     () =>
@@ -83,10 +134,125 @@ const RequestPreview = ({
         .maybeSingle();
       if (profile?.name) setSmtpProfileName(profile.name);
     }
+
+    // ── Execution Setup option lists (company-owned + platform resources) ──
+    const company = selectedRequest.company_id;
+    const [smtpRes, lpRes, lpAccessRes, domRes] = await Promise.all([
+      supabase
+        .from("smtp_profiles")
+        .select("id, name, is_platform_profile, company_id, is_active")
+        .or(`company_id.eq.${company},is_platform_profile.eq.true`)
+        .eq("is_active", true)
+        .order("name"),
+      supabase
+        .from("phishing_company_landing_pages")
+        .select("id, name, company_id, is_platform_page, visibility")
+        .or(`company_id.eq.${company},is_platform_page.eq.true`)
+        .order("name"),
+      supabase
+        .from("landing_page_company_access")
+        .select("landing_page_id")
+        .eq("company_id", company),
+      supabase
+        .from("phishing_domains")
+        .select("id, domain_name, is_platform_domain, is_verified, company_id")
+        .or(`company_id.eq.${company},is_platform_domain.eq.true`)
+        .eq("is_verified", true)
+        .order("domain_name"),
+    ]);
+
+    setSmtpProfiles(
+      (smtpRes.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        is_platform_profile: !!p.is_platform_profile,
+      }))
+    );
+
+    // Only offer landing pages this company may actually use: its own, GLOBAL
+    // platform pages, or platform pages explicitly shared with it.
+    const sharedIds = new Set(
+      (lpAccessRes.data ?? []).map((a) => a.landing_page_id)
+    );
+    setLandingPages(
+      (lpRes.data ?? [])
+        .filter(
+          (lp) =>
+            lp.company_id === company ||
+            lp.visibility === "GLOBAL" ||
+            sharedIds.has(lp.id)
+        )
+        .map((lp) => ({
+          id: lp.id,
+          name: lp.name,
+          is_platform_page: !!lp.is_platform_page,
+        }))
+    );
+
+    setDomainOptions(
+      (domRes.data ?? []).map((d) => ({
+        id: d.id,
+        domain_name: d.domain_name,
+        is_platform_domain: !!d.is_platform_domain,
+      }))
+    );
   }, [selectedRequest]);
 
+  // Persist the platform admin's execution setup onto the request row. The
+  // conversion function reads these fields, so saving = "fix the setup".
+  const buildSetupPayload = () => ({
+    campaign_name: setup.campaign_name?.trim() || null,
+    email_subject: setup.email_subject?.trim() || null,
+    email_html_body: setup.email_html_body || null,
+    smtp_profile_id: setup.smtp_profile_id || null,
+    landing_page_id: setup.landing_page_id || null,
+    domain_id: setup.domain_id || null,
+    from_name: setup.from_name?.trim() || null,
+    from_address: setup.from_address?.trim() || null,
+    redirect_url: setup.redirect_url?.trim() || null,
+    reply_to_address: setup.reply_to_address?.trim() || null,
+    emails_per_minute: Math.max(1, Number(setup.emails_per_minute) || 10),
+    // SMTP profile chosen ⇒ company SMTP, otherwise the platform default sender.
+    sending_method: setup.smtp_profile_id ? "COMPANY_SMTP" : "PLATFORM_DEFAULT",
+    launch_type: setup.launch_type,
+    scheduled_launch_at:
+      setup.launch_type === "SCHEDULED" && setup.scheduled_launch_at
+        ? new Date(setup.scheduled_launch_at).toISOString()
+        : null,
+    updated_at: new Date().toISOString(),
+  });
+
+  const saveSetup = async (): Promise<boolean> => {
+    setSavingSetup(true);
+    try {
+      const payload = buildSetupPayload();
+      const { error } = await supabase
+        .from("phishing_campaign_requests")
+        .update(payload)
+        .eq("id", selectedRequest.id);
+      if (error) throw error;
+      // Reflect the saved values back into the open request (keeps the summary
+      // grid + completeness warning in sync).
+      updateSelectedRequest({
+        ...selectedRequest,
+        ...payload,
+      } as unknown as RequestWithCompany);
+      return true;
+    } catch (err) {
+      alert("Failed to save setup: " + getErrorMessage(err));
+      return false;
+    } finally {
+      setSavingSetup(false);
+    }
+  };
+
+  const handleSaveSetup = async () => {
+    const ok = await saveSetup();
+    if (ok) alert("Execution setup saved.");
+  };
+
   const handleCreateCampaign = async () => {
-    if (converting) return;
+    if (converting || savingSetup) return;
     if (
       !confirm(
         `Create and launch a campaign from request ${selectedRequest.ticket_number}? This will queue emails to the requested targets.`
@@ -95,6 +261,9 @@ const RequestPreview = ({
       return;
     setConverting(true);
     try {
+      // Always persist the platform admin's setup first so the conversion uses it.
+      const saved = await saveSetup();
+      if (!saved) return;
       const { data, error } = await supabase.functions.invoke(
         "create-campaign-from-request",
         { body: { request_id: selectedRequest.id } }
@@ -228,6 +397,231 @@ const RequestPreview = ({
               </div>
             );
           })()}
+
+          {/* ── Execution Setup — Platform Admin completes/fixes before converting ── */}
+          {!selectedRequest.campaign_id && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Settings className="h-4 w-4 text-emerald-700" />
+                <h3 className="text-sm font-bold text-emerald-900">
+                  Execution Setup
+                </h3>
+                <span className="text-xs text-emerald-700">
+                  Review and complete before converting — these values are used to launch.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Campaign Name
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.campaign_name}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, campaign_name: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Email Subject
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.email_subject}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, email_subject: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Email HTML Body
+                  </label>
+                  <textarea
+                    rows={5}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-slate-900"
+                    value={setup.email_html_body}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, email_html_body: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                    <Server className="h-3 w-3" /> Sender (SMTP Profile)
+                  </label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.smtp_profile_id}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, smtp_profile_id: e.target.value }))
+                    }
+                  >
+                    <option value="">Platform default sender</option>
+                    {smtpProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.is_platform_profile ? "(Platform)" : "(Company)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                    <LayoutTemplate className="h-3 w-3" /> Landing Page
+                  </label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.landing_page_id}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, landing_page_id: e.target.value }))
+                    }
+                  >
+                    <option value="">No landing page (use redirect URL)</option>
+                    {landingPages.map((lp) => (
+                      <option key={lp.id} value={lp.id}>
+                        {lp.name} {lp.is_platform_page ? "(Platform)" : "(Company)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                    <Globe className="h-3 w-3" /> Sending Domain
+                  </label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.domain_id}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, domain_id: e.target.value }))
+                    }
+                  >
+                    <option value="">Not specified</option>
+                    {domainOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.domain_name} {d.is_platform_domain ? "(Platform)" : "(Company)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                    <Gauge className="h-3 w-3" /> Sending Rate (emails / min)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.emails_per_minute}
+                    onChange={(e) =>
+                      setSetup((s) => ({
+                        ...s,
+                        emails_per_minute: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">
+                    From Name
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.from_name}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, from_name: e.target.value }))
+                    }
+                    placeholder="AwareOne Security"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">
+                    From Address
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.from_address}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, from_address: e.target.value }))
+                    }
+                    placeholder="noreply@your-domain.com"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Redirect URL (used when no landing page is selected)
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.redirect_url}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, redirect_url: e.target.value }))
+                    }
+                    placeholder="https://www.google.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                    <Clock className="h-3 w-3" /> Launch
+                  </label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={setup.launch_type}
+                    onChange={(e) =>
+                      setSetup((s) => ({ ...s, launch_type: e.target.value }))
+                    }
+                  >
+                    <option value="IMMEDIATE">Immediately on conversion</option>
+                    <option value="SCHEDULED">Scheduled</option>
+                  </select>
+                </div>
+                {setup.launch_type === "SCHEDULED" && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Scheduled At
+                    </label>
+                    <input
+                      type="datetime-local"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                      value={setup.scheduled_launch_at}
+                      onChange={(e) =>
+                        setSetup((s) => ({
+                          ...s,
+                          scheduled_launch_at: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={handleSaveSetup}
+                  disabled={savingSetup || converting}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingSetup ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {savingSetup ? "Saving…" : "Save Setup"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-sm text-slate-600">Ticket Number</div>
@@ -388,7 +782,7 @@ const RequestPreview = ({
             )}
           </div>
 
-          {/* Email body — needed to build the Gophish email template */}
+          {/* Email body — sent by the internal campaign engine on conversion */}
           {selectedRequest.email_html_body && (
             <div>
               <div className="text-sm text-slate-600 mb-1">Email HTML Body</div>
@@ -420,7 +814,7 @@ const RequestPreview = ({
             </div>
           )}
 
-          {/* Landing page — needed to build the Gophish landing page */}
+          {/* Landing page — served by the internal serve-landing-page function */}
           {selectedRequest.landing_page_html && (
             <div>
               <div className="text-sm text-slate-600 mb-1">
