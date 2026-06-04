@@ -243,6 +243,9 @@ Deno.serve(async (req) => {
       landing_page_id:          landing_page_id ?? null,
       group_ids:                group_ids,
       scenario_id:              scenario_id ?? null,
+      // Stored so phishing-track can resolve the post-click/submit redirect
+      // server-side (open-redirect defence) instead of trusting the query param.
+      redirect_url:             String(redirect_url || "https://www.google.com"),
       emails_per_minute:        Number(emails_per_minute ?? 10),
       random_delay_enabled:     Boolean(random_delay),
       random_delay_max_seconds: Number(random_delay_max_seconds ?? 60),

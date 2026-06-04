@@ -26,6 +26,112 @@ function redactSubmittedFields(body: Record<string, unknown> | null | undefined)
   return { submitted: true, field_names, redacted_fields };
 }
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SAFE_DEFAULT_REDIRECT = "https://www.google.com";
+
+// ── Open-redirect guard (mirrors src/lib/urlSafety.ts; unit-tested there) ──
+function parseHttpUrl(value: string): URL | null {
+  let u: URL;
+  try { u = new URL(value); } catch { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  return u;
+}
+function isPrivateOrReservedIp(ip: string): boolean {
+  const addr = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const mapped = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mapped) return isPrivateOrReservedIp(mapped[1]);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(addr)) {
+    const p = addr.split(".").map((x) => parseInt(x, 10));
+    if (p.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
+    const [a, b] = p;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 192 && b === 0) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    if (a >= 224) return true;
+    return false;
+  }
+  if (addr.includes(":")) {
+    if (addr === "::" || addr === "::1") return true;
+    if (/^fe[89ab]/.test(addr)) return true;
+    if (addr.startsWith("fc") || addr.startsWith("fd")) return true;
+    if (addr.startsWith("ff")) return true;
+    if (addr.startsWith("::ffff:")) return true;
+    return false;
+  }
+  return false;
+}
+function isBlockedHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (host === "metadata" || host === "metadata.google.internal") return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) return isPrivateOrReservedIp(host);
+  return false;
+}
+function isAllowedRedirect(target: string, allowedOrigins: string[]): boolean {
+  const u = parseHttpUrl(target);
+  if (!u) return false;
+  if (isBlockedHostname(u.hostname)) return false;
+  const allow = new Set(allowedOrigins.filter(Boolean).map((o) => o.replace(/\/$/, "")));
+  return allow.has(u.origin);
+}
+
+/**
+ * Resolve the redirect destination SERVER-SIDE from the campaign record rather
+ * than trusting the query parameter. A query-provided URL is only honoured when
+ * it matches the server-derived allowlist (our own functions origin, or the
+ * campaign's stored redirect origin). Otherwise we fall back to the campaign's
+ * landing page, its stored redirect_url, or a safe default — never to an
+ * attacker-controlled value.
+ */
+async function resolveRedirect(
+  campaignId: string,
+  recipientId: string,
+  queryUrl: string,
+): Promise<string> {
+  let landingPageId: string | null = null;
+  let storedRedirect: string | null = null;
+  if (campaignId) {
+    const { data } = await supabase
+      .from("phishing_campaigns")
+      .select("landing_page_id, redirect_url")
+      .eq("id", campaignId)
+      .maybeSingle();
+    landingPageId = (data?.landing_page_id as string) ?? null;
+    storedRedirect = (data?.redirect_url as string) ?? null;
+  }
+
+  const ourOrigin = (() => { try { return new URL(SUPABASE_URL).origin; } catch { return ""; } })();
+  const allow = [ourOrigin];
+  if (storedRedirect) {
+    const su = parseHttpUrl(storedRedirect);
+    if (su) allow.push(su.origin);
+  }
+
+  // 1. Honour the query URL ONLY if it is on the allowlist (e.g. our own
+  //    serve-landing-page link, or the campaign's configured redirect origin).
+  if (queryUrl && isAllowedRedirect(queryUrl, allow)) return queryUrl;
+
+  // 2. Otherwise resolve from the record: landing page → serve-landing-page.
+  if (landingPageId) {
+    return `${SUPABASE_URL}/functions/v1/serve-landing-page?lp=${landingPageId}&c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recipientId)}`;
+  }
+
+  // 3. Stored campaign redirect, if it is a safe public http(s) URL.
+  if (storedRedirect) {
+    const su = parseHttpUrl(storedRedirect);
+    if (su && !isBlockedHostname(su.hostname)) return storedRedirect;
+  }
+
+  // 4. Safe default.
+  return SAFE_DEFAULT_REDIRECT;
+}
+
 // Heuristic: is this request an <img> load rather than a real navigation?
 // Legacy templates put {{.TrackingURL}} (the click URL) inside an <img src>,
 // so an open would otherwise be miscounted as a click. Browsers send
@@ -256,12 +362,15 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
       });
     }
+    // SECURITY (open redirect): do not trust the query-provided URL. Decode it
+    // for the allowlist check, then resolve the final destination server-side
+    // from the campaign record.
     const encodedUrl = url.searchParams.get("url") ?? "";
-    let redirectUrl = "https://www.google.com";
-    try { redirectUrl = atob(encodedUrl); } catch {
-      const errId = `PT-${Date.now().toString(36).toUpperCase()}-BADURL`;
-      return errorHtml(errId, "Invalid Link", "This link could not be decoded. Please report this to your administrator.");
+    let decodedUrl = "";
+    if (encodedUrl) {
+      try { decodedUrl = atob(encodedUrl); } catch { decodedUrl = ""; }
     }
+    const redirectUrl = await resolveRedirect(campaign_id, recipient_id, decodedUrl);
     logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});
     return Response.redirect(redirectUrl, 302);
   }
@@ -283,7 +392,10 @@ Deno.serve(async (req) => {
     } catch {
       // Non-fatal: log failure silently, still redirect
     }
-    const redirectUrl = url.searchParams.get("redirect") ?? "https://www.google.com";
+    // SECURITY (open redirect): resolve the post-submit destination server-side
+    // from the campaign record; only honour ?redirect= if it is allowlisted.
+    const submitRedirect = url.searchParams.get("redirect") ?? "";
+    const redirectUrl = await resolveRedirect(campaign_id, recipient_id, submitRedirect);
     return Response.redirect(redirectUrl, 302);
   }
 
