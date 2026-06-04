@@ -204,7 +204,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
     try {
       const { data, error: err } = await supabase
         .from('phishing_campaign_requests')
-        .select(`*, companies(name), users!phishing_campaign_requests_requested_by_fkey(full_name), phishing_templates(name)`)
+        .select(`*, companies(name), users!phishing_campaign_requests_requested_by_fkey(full_name), phishing_scenarios(name)`)
         .in('status', ['RUNNING', 'COMPLETED', 'APPROVED'])
         .order('created_at', { ascending: false });
       if (err) throw err;
@@ -254,7 +254,9 @@ export const PhishingCampaignResultsPage: React.FC = () => {
         .insert({
           company_id: selectedCampaign.company_id,
           name: selectedCampaign.campaign_name,
-          template_id: selectedCampaign.template_id || null,
+          // Unified library: prefer scenario_id, fall back to legacy template_id
+          // (old requests are backfilled so both hold the same id).
+          scenario_id: selectedCampaign.scenario_id || selectedCampaign.template_id || null,
           request_id: selectedCampaign.id,
           launch_date: nowIso,
           launched_at: nowIso,
@@ -615,7 +617,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
                 {[
                   { label: 'Status',           value: selectedCampaign.status, isStatus: true },
-                  { label: 'Template',          value: selectedCampaign.phishing_templates?.name || 'N/A' },
+                  { label: 'Scenario',          value: selectedCampaign.phishing_scenarios?.name || 'N/A' },
                   { label: 'Scheduled Date',    value: selectedCampaign.scheduled_date ? new Date(selectedCampaign.scheduled_date).toLocaleDateString('en-SA') : 'Not set' },
                   { label: 'Target Employees',  value: String(selectedCampaign.target_employee_count ?? 'N/A') },
                   { label: 'Priority',          value: selectedCampaign.priority || 'N/A' },

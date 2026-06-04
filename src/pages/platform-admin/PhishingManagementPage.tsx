@@ -501,7 +501,7 @@ export const PhishingManagementPage: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('phishing_campaign_requests')
-        .select(`*, companies(name), users!phishing_campaign_requests_requested_by_fkey(full_name), phishing_templates(name)`)
+        .select(`*, companies(name), users!phishing_campaign_requests_requested_by_fkey(full_name), phishing_scenarios(name)`)
         .order('created_at', { ascending: false });
       if (error) throw error;
       if (data) setRequests(data as RequestWithCompany[]);
@@ -646,7 +646,7 @@ export const PhishingManagementPage: React.FC = () => {
                 <th>Ticket</th>
                 <th>Company</th>
                 <th>Campaign Name</th>
-                <th>Template</th>
+                <th>Scenario</th>
                 <th style={{ textAlign: 'center' }}>Targets</th>
                 <th>Status</th>
                 <th>Date</th>
@@ -665,7 +665,7 @@ export const PhishingManagementPage: React.FC = () => {
                       </td>
                       <td style={{ fontWeight: 600, color: T.white }}>{req.companies?.name || 'N/A'}</td>
                       <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.campaign_name}</td>
-                      <td style={{ color: T.textMuted }}>{req.phishing_templates?.name || 'N/A'}</td>
+                      <td style={{ color: T.textMuted }}>{req.phishing_scenarios?.name || 'N/A'}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontWeight: 700, color: T.white }}>{req.target_employee_count}</span>
                       </td>
