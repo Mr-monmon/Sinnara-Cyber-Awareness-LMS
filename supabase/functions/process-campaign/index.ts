@@ -392,8 +392,21 @@ Deno.serve(async (req) => {
     for (const job of jobs) {
       const campaign = job.phishing_campaigns as Record<string, unknown> | null;
 
-      // Skip if campaign is not running
-      if (campaign?.status !== "RUNNING") {
+      // Campaign-state gating:
+      //   RUNNING              → process now (fall through).
+      //   SCHEDULED / PAUSED   → not yet active OR temporarily halted. Leave the
+      //                          row PENDING so it is picked up once the campaign
+      //                          becomes RUNNING (the scheduler flips SCHEDULED→
+      //                          RUNNING; an admin resumes PAUSED). Marking it
+      //                          SKIPPED here would silently drop the email.
+      //   anything else        → terminal (COMPLETED/FAILED/PARTIAL_FAILURE/
+      //                          DRAFT/REJECTED). Mark SKIPPED; it will never send.
+      const campaignStatus = campaign?.status as string | undefined;
+      if (campaignStatus !== "RUNNING") {
+        if (campaignStatus === "SCHEDULED" || campaignStatus === "PAUSED") {
+          // leave PENDING; do not count as skipped (it is merely deferred)
+          continue;
+        }
         await supabase.from("campaign_email_queue")
           .update({ status: "SKIPPED" })
           .eq("id", job.id);
@@ -612,17 +625,43 @@ Deno.serve(async (req) => {
         const campId    = job.campaign_id;
         const companyId = (campaign?.company_id as string) || job.company_id;
 
+        // Determine final status based on outcome mix:
+        //   COMPLETED      — all emails sent successfully
+        //   PARTIAL_FAILURE — some sent, some permanently failed
+        //   FAILED         — every email permanently failed (nothing was delivered)
+        const [{ count: sentCount }, { count: failedCount }] = await Promise.all([
+          supabase.from("campaign_email_queue").select("id", { count: "exact", head: true }).eq("campaign_id", campId).eq("status", "SENT"),
+          supabase.from("campaign_email_queue").select("id", { count: "exact", head: true }).eq("campaign_id", campId).eq("status", "FAILED"),
+        ]);
+
+        let finalStatus: string;
+        if ((failedCount ?? 0) === 0) {
+          finalStatus = "COMPLETED";
+        } else if ((sentCount ?? 0) === 0) {
+          finalStatus = "FAILED";
+        } else {
+          finalStatus = "PARTIAL_FAILURE";
+        }
+
         await supabase.from("phishing_campaigns")
-          .update({ status: "COMPLETED", completion_date: new Date().toISOString() })
+          .update({ status: finalStatus, completion_date: new Date().toISOString() })
           .eq("id", campId);
 
         await supabase.from("phishing_alerts").insert({
           campaign_id: campId,
           company_id:  companyId,
           alert_type:  "CAMPAIGN_COMPLETE",
-          priority:    "LOW",
-          title:       "Campaign Completed",
-          message:     `Campaign has finished sending. Check results in the dashboard.`,
+          priority:    finalStatus === "FAILED" ? "HIGH" : (finalStatus === "PARTIAL_FAILURE" ? "MEDIUM" : "LOW"),
+          title:       finalStatus === "COMPLETED"
+            ? "Campaign Completed"
+            : finalStatus === "PARTIAL_FAILURE"
+              ? "Campaign Completed with Errors"
+              : "Campaign Failed",
+          message: finalStatus === "COMPLETED"
+            ? `Campaign has finished sending. Check results in the dashboard.`
+            : finalStatus === "PARTIAL_FAILURE"
+              ? `Campaign finished but ${failedCount} email(s) could not be delivered. Check the event log for details.`
+              : `Campaign could not deliver any emails. Check your SMTP configuration.`,
         });
       }
 
