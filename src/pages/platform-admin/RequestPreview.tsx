@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Rocket, Loader2 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "../../lib/supabase";
+import { getErrorMessage } from "../../lib/errors";
 import { RequestWithCompany, User } from "../../lib/types";
 
 type DepartmentOption = {
@@ -15,16 +16,26 @@ type Props = {
   selectedRequest: RequestWithCompany;
   updateSelectedRequest: (request: RequestWithCompany | null) => void;
   getStatusColor: (status: string) => string;
+  onConverted?: () => void;
+};
+
+const SENDING_METHOD_LABEL: Record<string, string> = {
+  PLATFORM_DEFAULT: "Platform default sender",
+  COMPANY_SMTP: "Company SMTP profile",
+  REQUEST_ADMIN_CONFIG: "Platform admin to configure SMTP",
 };
 
 const RequestPreview = ({
   selectedRequest,
   updateSelectedRequest,
   getStatusColor,
+  onConverted,
 }: Props) => {
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [users, setUsers] = useState<TargetUser[]>([]);
   const [domainName, setDomainName] = useState<string>("");
+  const [smtpProfileName, setSmtpProfileName] = useState<string>("");
+  const [converting, setConverting] = useState(false);
 
   const sanitizedEmailHtml = useMemo(
     () =>
@@ -62,7 +73,44 @@ const RequestPreview = ({
         .maybeSingle();
       if (domain?.domain_name) setDomainName(domain.domain_name);
     }
+
+    if (selectedRequest.smtp_profile_id) {
+      const { data: profile } = await supabase
+        .from("smtp_profiles")
+        .select("name")
+        .eq("id", selectedRequest.smtp_profile_id)
+        .maybeSingle();
+      if (profile?.name) setSmtpProfileName(profile.name);
+    }
   }, [selectedRequest]);
+
+  const handleCreateCampaign = async () => {
+    if (converting) return;
+    if (
+      !confirm(
+        `Create and launch a campaign from request ${selectedRequest.ticket_number}? This will queue emails to the requested targets.`
+      )
+    )
+      return;
+    setConverting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "create-campaign-from-request",
+        { body: { request_id: selectedRequest.id } }
+      );
+      if (error) throw error;
+      if (data && !data.success) throw new Error(data.error ?? "Conversion failed");
+      alert(
+        `Campaign created (${data.status}) with ${data.target_count} targets.`
+      );
+      updateSelectedRequest(null);
+      onConverted?.();
+    } catch (err) {
+      alert("Failed to create campaign: " + getErrorMessage(err));
+    } finally {
+      setConverting(false);
+    }
+  };
 
   const escapeCsvValue = (value: string | number | null | undefined) => {
     const normalized = value == null ? "" : String(value);
@@ -121,6 +169,26 @@ const RequestPreview = ({
               Request Details
             </h2>
             <div className="flex items-center gap-3">
+              {selectedRequest.campaign_id ? (
+                <span className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                  <Rocket className="h-4 w-4" />
+                  Campaign Created
+                </span>
+              ) : (
+                <button
+                  onClick={handleCreateCampaign}
+                  disabled={converting}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Create and launch a campaign from this request"
+                >
+                  {converting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Rocket className="h-4 w-4" />
+                  )}
+                  {converting ? "Creating…" : "Create Campaign from Request"}
+                </button>
+              )}
               <button
                 onClick={exportUsersCsv}
                 disabled={users.length === 0}
@@ -227,6 +295,45 @@ const RequestPreview = ({
                         : ""
                     }`.trim()
                   : "Not specified"}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-600">Sending Method</div>
+              <div className="font-semibold">
+                {SENDING_METHOD_LABEL[selectedRequest.sending_method || "PLATFORM_DEFAULT"] ||
+                  selectedRequest.sending_method ||
+                  "Platform default sender"}
+                {selectedRequest.sending_method === "COMPANY_SMTP" && smtpProfileName
+                  ? ` — ${smtpProfileName}`
+                  : ""}
+              </div>
+            </div>
+            {selectedRequest.reply_to_address && (
+              <div>
+                <div className="text-sm text-slate-600">Reply-To</div>
+                <div className="font-semibold break-all">
+                  {selectedRequest.reply_to_address}
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="text-sm text-slate-600">Launch</div>
+              <div className="font-semibold">
+                {selectedRequest.launch_type === "SCHEDULED" &&
+                (selectedRequest.scheduled_launch_at || selectedRequest.scheduled_date)
+                  ? `Scheduled — ${new Date(
+                      (selectedRequest.scheduled_launch_at as string) ||
+                        (selectedRequest.scheduled_date as unknown as string)
+                    ).toLocaleString()}`
+                  : "Immediate on conversion"}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-600">Authorisation</div>
+              <div className="font-semibold">
+                {selectedRequest.authorization_confirmed
+                  ? "Confirmed by requester"
+                  : "Not confirmed"}
               </div>
             </div>
             <div>

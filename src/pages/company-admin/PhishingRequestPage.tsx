@@ -258,6 +258,8 @@ export const PhishingRequestPage: React.FC = () => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [domains, setDomains]       = useState<PhishingDomain[]>([]);
+  const [smtpProfiles, setSmtpProfiles] =
+    useState<{ id: string; name: string; from_address: string; from_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [previewTemplate, setPreviewTemplate] =
@@ -285,6 +287,16 @@ export const PhishingRequestPage: React.FC = () => {
     track_clicks: true,
     capture_credentials: true,
     capture_passwords: false,
+    // Sending method (section H): how the platform should send this campaign.
+    sending_method: "PLATFORM_DEFAULT" as
+      | "PLATFORM_DEFAULT"
+      | "COMPANY_SMTP"
+      | "REQUEST_ADMIN_CONFIG",
+    smtp_profile_id: "",
+    reply_to_address: "",
+    timezone: "Asia/Riyadh",
+    // Requester attests they are authorised to run this simulation.
+    authorization_confirmed: false,
   });
 
   useEffect(() => {
@@ -295,7 +307,7 @@ export const PhishingRequestPage: React.FC = () => {
     if (!user?.company_id) return;
     try {
       const year = new Date().getFullYear();
-      const [tRes, dRes, qRes, domRes] = await Promise.all([
+      const [tRes, dRes, qRes, domRes, smRes] = await Promise.all([
         supabase
           .from("phishing_templates")
           .select("*")
@@ -318,11 +330,18 @@ export const PhishingRequestPage: React.FC = () => {
           .eq("is_platform_domain", true)
           .eq("is_verified", true)
           .order("domain_name"),
+        // Company SMTP profiles the requester can choose as the sending method.
+        supabase
+          .from("smtp_profiles")
+          .select("id, name, from_address, from_name")
+          .eq("is_active", true)
+          .order("name"),
       ]);
       if (tRes.data) setTemplates(tRes.data);
       if (dRes.data) setDepartments(dRes.data);
       if (qRes.data) setQuota(qRes.data);
       if (domRes.data) setDomains(domRes.data);
+      if (smRes.data) setSmtpProfiles(smRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -362,18 +381,23 @@ export const PhishingRequestPage: React.FC = () => {
       return;
     }
 
+    if (!form.authorization_confirmed) {
+      alert("Please confirm you are authorised to run this phishing simulation before submitting.");
+      return;
+    }
+
+    if (form.sending_method === "COMPANY_SMTP" && !form.smtp_profile_id) {
+      alert("Select a company SMTP profile, or choose a different sending method.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      const { error: quotaError } = await supabase.rpc(
-        "consume_campaign_quota",
-        {
-          p_company_id: user.company_id,
-          p_quota_year: new Date().getFullYear(),
-        }
-      );
-      if (quotaError) throw quotaError;
-
+      // NOTE: submitting a request does NOT consume campaign quota. A request is a
+      // ticket that may be rejected; campaign quota is consumed exactly once when
+      // the platform admin creates the actual campaign (DB trigger on
+      // phishing_campaigns INSERT). We only do a read-only remaining-quota check above.
       const { count: employeeCount } = await supabase
         .from("users")
         .select("*", { count: "exact", head: true })
@@ -381,14 +405,17 @@ export const PhishingRequestPage: React.FC = () => {
         .eq("role", "EMPLOYEE")
         .in("department_id", form.target_departments);
 
+      // Dedicated phishing ticket numbering (references phishing_campaign_requests).
       const { data: ticketData, error: ticketErr } = await supabase.rpc(
-        "generate_ticket_number"
+        "generate_phishing_ticket_number"
       );
 
       const ticketNumber =
         !ticketErr && ticketData
           ? ticketData
           : `PHC-${Date.now().toString().slice(-6)}`;
+
+      const launchType = form.scheduled_date ? "SCHEDULED" : "IMMEDIATE";
 
       const { error } = await supabase
         .from("phishing_campaign_requests")
@@ -402,6 +429,9 @@ export const PhishingRequestPage: React.FC = () => {
             target_departments: form.target_departments,
             target_employee_count: employeeCount,
             scheduled_date: form.scheduled_date || null,
+            scheduled_launch_at: form.scheduled_date || null,
+            launch_type: launchType,
+            timezone: form.timezone,
             status: "SUBMITTED",
             priority: form.priority,
             notes: form.notes || null,
@@ -413,6 +443,14 @@ export const PhishingRequestPage: React.FC = () => {
             domain_id: form.domain_id || null,
             from_address: form.from_address || null,
             from_name: form.from_name || null,
+            // Sending method (section H)
+            sending_method: form.sending_method,
+            smtp_profile_id:
+              form.sending_method === "COMPANY_SMTP"
+                ? form.smtp_profile_id || null
+                : null,
+            reply_to_address: form.reply_to_address || null,
+            authorization_confirmed: form.authorization_confirmed,
             track_opens: form.track_opens,
             track_clicks: form.track_clicks,
             capture_credentials: form.capture_credentials,
@@ -420,14 +458,7 @@ export const PhishingRequestPage: React.FC = () => {
           },
         ]);
 
-      if (error) {
-        // Rollback: refund the quota since insert failed
-        await supabase.rpc("refund_used_quotes", {
-          p_company_id: user.company_id,
-          p_quota_year: new Date().getFullYear(),
-        });
-        throw error;
-      }
+      if (error) throw error;
 
       alert(`Campaign request submitted successfully! Ticket: ${ticketNumber}`);
 
@@ -663,7 +694,9 @@ export const PhishingRequestPage: React.FC = () => {
     form.target_departments.length === 0 ||
     !form.campaign_name ||
     !form.email_subject ||
-    !form.email_html_body;
+    !form.email_html_body ||
+    !form.authorization_confirmed ||
+    (form.sending_method === "COMPANY_SMTP" && !form.smtp_profile_id);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -1132,6 +1165,67 @@ export const PhishingRequestPage: React.FC = () => {
                       </code>{" "}
                       to personalize emails.
                     </div>
+                    {/* Sending method (section H) */}
+                    <div>
+                      <label className="aw-pr-label">
+                        Sending Method <span style={{ color: T.accent }}>*</span>
+                      </label>
+                      <select
+                        className="aw-pr-select"
+                        value={form.sending_method}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            sending_method: e.target.value as typeof p.sending_method,
+                            smtp_profile_id:
+                              e.target.value === "COMPANY_SMTP" ? p.smtp_profile_id : "",
+                          }))
+                        }
+                      >
+                        <option value="PLATFORM_DEFAULT">Platform default sender</option>
+                        <option value="COMPANY_SMTP">Use a company SMTP profile</option>
+                        <option value="REQUEST_ADMIN_CONFIG">
+                          Ask the platform admin to configure SMTP
+                        </option>
+                      </select>
+                      {form.sending_method === "COMPANY_SMTP" && (
+                        <div style={{ marginTop: 10 }}>
+                          <label className="aw-pr-label">
+                            SMTP Profile <span style={{ color: T.accent }}>*</span>
+                          </label>
+                          {smtpProfiles.length > 0 ? (
+                            <select
+                              className="aw-pr-select"
+                              value={form.smtp_profile_id}
+                              onChange={(e) => {
+                                const p = smtpProfiles.find((s) => s.id === e.target.value);
+                                setForm((prev) => ({
+                                  ...prev,
+                                  smtp_profile_id: e.target.value,
+                                  from_name: p?.from_name || prev.from_name,
+                                  from_address: p?.from_address || prev.from_address,
+                                }));
+                              }}
+                            >
+                              <option value="">— Select an SMTP profile —</option>
+                              {smtpProfiles.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name} ({s.from_address})
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p style={{ fontSize: 12, color: T.orange, marginTop: 4 }}>
+                              No active SMTP profiles found. Create one in SMTP Settings,
+                              or choose a different sending method.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <p style={{ fontSize: 11, color: T.textMuted, marginTop: 6, marginBottom: 0 }}>
+                        Tells the platform team exactly how this campaign should send mail.
+                      </p>
+                    </div>
                     {domains.length > 0 && (
                       <div>
                         <label className="aw-pr-label">
@@ -1199,6 +1293,18 @@ export const PhishingRequestPage: React.FC = () => {
                           }
                         />
                       </div>
+                    </div>
+                    <div>
+                      <label className="aw-pr-label">Reply-To Address (optional)</label>
+                      <input
+                        className="aw-pr-input"
+                        type="email"
+                        placeholder="replies@company.com"
+                        value={form.reply_to_address}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, reply_to_address: e.target.value }))
+                        }
+                      />
                     </div>
                     <div>
                       <label className="aw-pr-label">
@@ -1451,6 +1557,55 @@ export const PhishingRequestPage: React.FC = () => {
                       <strong>Note:</strong> All captured data is encrypted and
                       only accessible to authorized administrators. Capturing
                       actual passwords is not recommended for security reasons.
+                    </div>
+
+                    {/* Authorisation attestation (required) */}
+                    <div
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          authorization_confirmed: !p.authorization_confirmed,
+                        }))
+                      }
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        padding: "12px 16px",
+                        background: form.authorization_confirmed ? T.greenBg : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${form.authorization_confirmed ? T.greenBorder : T.border}`,
+                        borderRadius: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 5,
+                          marginTop: 1,
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: form.authorization_confirmed ? T.accent : "transparent",
+                          border: `2px solid ${form.authorization_confirmed ? T.accent : "rgba(255,255,255,0.20)"}`,
+                        }}
+                      >
+                        {form.authorization_confirmed && (
+                          <Check size={12} style={{ color: T.accentDark, strokeWidth: 3 }} />
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.white, marginBottom: 3 }}>
+                          I am authorised to run this phishing simulation{" "}
+                          <span style={{ color: T.accent }}>*</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: T.textMuted }}>
+                          I confirm my organisation has authorised this simulation against the
+                          selected employees, and that I am permitted to request it.
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
