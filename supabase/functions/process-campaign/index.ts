@@ -418,7 +418,7 @@ Deno.serve(async (req) => {
         ),
         phishing_campaign_targets(
           employee_id, first_name, last_name, position, department,
-          users(full_name, email, job_title, manager_name, office_location, phone, departments(name))
+          users(full_name, email, job_title, manager_name, office_location, phone, departments!users_department_id_fkey(name))
         )
       `)
       .eq("status", "PENDING")

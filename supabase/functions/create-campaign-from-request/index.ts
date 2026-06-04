@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
   } else {
     const { data: emps, error: eErr } = await db
       .from("users")
-      .select("email, full_name, job_title, departments(name)")
+      .select("email, full_name, job_title, departments!users_department_id_fkey(name)")
       .eq("company_id", companyId)
       .eq("role", "EMPLOYEE")
       .in("department_id", deptIds);
