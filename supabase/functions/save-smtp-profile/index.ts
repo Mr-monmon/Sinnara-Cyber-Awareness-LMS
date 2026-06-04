@@ -102,10 +102,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "User record not found" }), { status: 403, headers: corsHeaders });
   }
 
-  const isPlatformAdmin = callerRow.role === "PLATFORM_ADMIN";
-  const isCompanyAdmin  = callerRow.role === "COMPANY_ADMIN";
+  const isPlatformAdmin  = callerRow.role === "PLATFORM_ADMIN";
+  const isCompanyPhishing = ["COMPANY_ADMIN", "COMPANY_SUPER_ADMIN", "PHISHING_OPERATOR"].includes(callerRow.role);
 
-  if (!isPlatformAdmin && !isCompanyAdmin) {
+  if (!isPlatformAdmin && !isCompanyPhishing) {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
   }
 
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
   if (targetIsPlatform && !isPlatformAdmin) {
     return new Response(JSON.stringify({ error: "Only platform admins may create platform profiles" }), { status: 403, headers: corsHeaders });
   }
-  if (!targetIsPlatform && !isCompanyAdmin && !isPlatformAdmin) {
+  if (!targetIsPlatform && !isCompanyPhishing && !isPlatformAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
   }
 
