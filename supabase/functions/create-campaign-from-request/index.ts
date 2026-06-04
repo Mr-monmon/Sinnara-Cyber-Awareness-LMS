@@ -223,6 +223,8 @@ Deno.serve(async (req) => {
       smtp_profile_id:      rq.smtp_profile_id ?? null,
       landing_page_id:      rq.landing_page_id ?? null,
       group_ids:            groupIds,
+      // Stored so phishing-track can resolve the redirect server-side (open-redirect defence).
+      redirect_url:         String(rq.redirect_url || "https://www.google.com"),
       emails_per_minute:    Number(rq.emails_per_minute ?? 10),
       business_hours_only:  Boolean(rq.business_hours_only ?? false),
       business_hours_start: Number(rq.business_hours_start ?? 9),

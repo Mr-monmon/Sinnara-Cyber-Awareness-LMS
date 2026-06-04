@@ -18,6 +18,111 @@ const BROWSERLESS_TOKEN   = Deno.env.get("BROWSERLESS_TOKEN") ?? "";
 const SCRAPINGBEE_KEY     = Deno.env.get("SCRAPINGBEE_KEY") ?? "";
 const RENDER_SERVICE_URL  = Deno.env.get("RENDER_SERVICE_URL") ?? "";
 
+// ─── SSRF guard (mirrors src/lib/urlSafety.ts; unit-tested there) ────────────
+function parseHttpUrl(value: string): URL | null {
+  let u: URL;
+  try { u = new URL(value); } catch { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  return u;
+}
+function isPrivateOrReservedIp(ip: string): boolean {
+  const addr = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const mapped = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mapped) return isPrivateOrReservedIp(mapped[1]);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(addr)) {
+    const p = addr.split(".").map((x) => parseInt(x, 10));
+    if (p.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
+    const [a, b] = p;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 192 && b === 0) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    if (a >= 224) return true;
+    return false;
+  }
+  if (addr.includes(":")) {
+    if (addr === "::" || addr === "::1") return true;
+    if (/^fe[89ab]/.test(addr)) return true;
+    if (addr.startsWith("fc") || addr.startsWith("fd")) return true;
+    if (addr.startsWith("ff")) return true;
+    if (addr.startsWith("::ffff:")) return true;
+    return false;
+  }
+  return false;
+}
+function isBlockedHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (host === "metadata" || host === "metadata.google.internal") return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) return isPrivateOrReservedIp(host);
+  return false;
+}
+
+const MAX_FETCH_BYTES = 5_000_000; // 5 MB cap on any single cloned resource
+
+/** Validate a URL is safe to fetch: http(s) only, public host, and (best-effort)
+ *  resolves only to public IPs. Throws a clear error otherwise. */
+async function assertPublicUrl(raw: string): Promise<URL> {
+  const u = parseHttpUrl(raw);
+  if (!u) throw new Error("Only http(s) URLs can be cloned.");
+  if (isBlockedHostname(u.hostname)) {
+    throw new Error("Refusing to fetch a private, local, or internal address.");
+  }
+  // Best-effort DNS resolution check (defends against DNS rebinding to private IPs).
+  try {
+    const [a, aaaa] = await Promise.all([
+      Deno.resolveDns(u.hostname, "A").catch(() => [] as string[]),
+      Deno.resolveDns(u.hostname, "AAAA").catch(() => [] as string[]),
+    ]);
+    for (const ip of [...a, ...aaaa]) {
+      if (isPrivateOrReservedIp(ip)) {
+        throw new Error("Refusing to fetch: the hostname resolves to a private address.");
+      }
+    }
+  } catch (e) {
+    // Re-throw our own private-address error; ignore resolver unavailability.
+    if (e instanceof Error && e.message.includes("private address")) throw e;
+  }
+  return u;
+}
+
+/** SSRF-safe fetch: validates the target (and every redirect hop) against the
+ *  guard above, uses manual redirect handling, enforces a timeout, an optional
+ *  HTML content-type requirement, and a Content-Length cap. */
+async function safeFetch(
+  raw: string,
+  init: RequestInit = {},
+  opts: { timeout?: number; requireHtml?: boolean; maxRedirects?: number } = {},
+): Promise<Response> {
+  const { timeout = 15000, requireHtml = false, maxRedirects = 4 } = opts;
+  let current = raw;
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    await assertPublicUrl(current);
+    const res = await fetch(current, { ...init, redirect: "manual", signal: AbortSignal.timeout(timeout) });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return res;
+      current = new URL(loc, current).toString(); // revalidate next hop on the next loop
+      continue;
+    }
+    if (requireHtml) {
+      const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+      if (ct && !ct.includes("text/html") && !ct.includes("application/xhtml")) {
+        throw new Error("The URL did not return an HTML page.");
+      }
+    }
+    const len = parseInt(res.headers.get("content-length") ?? "0", 10);
+    if (len && len > MAX_FETCH_BYTES) throw new Error("The requested page is too large to clone.");
+    return res;
+  }
+  throw new Error("Too many redirects while fetching the page.");
+}
+
 // ─── Analytics / tracking / infra to strip ───────────────────────────────────
 const STRIP_DOMAINS = [
   "google-analytics.com", "googletagmanager.com", "googlesyndication.com",
@@ -57,14 +162,14 @@ const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 async function fetchResource(url: string, timeout = 8000): Promise<Response | null> {
   try {
-    const res = await fetch(url, {
+    // SSRF-safe: validates the URL (and any redirect hops) against the guard.
+    const res = await safeFetch(url, {
       headers: {
         "User-Agent": BROWSER_UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
-      signal: AbortSignal.timeout(timeout),
-    });
+    }, { timeout });
     if (!res.ok) return null;
     return res;
   } catch { return null; }
@@ -106,15 +211,13 @@ async function smartFetchPage(url: string): Promise<{
 
   let cookies = "";
 
-  // Pass 1 — initial GET
+  // Pass 1 — initial GET (SSRF-safe: validates target + every redirect hop)
   let res: Response | null = null;
   try {
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       headers: { ...baseHeaders, ...(cookies ? { "Cookie": cookies } : {}) },
-      signal: AbortSignal.timeout(22000),
-      redirect: "follow",
-    });
-  } catch { /* network error */ }
+    }, { timeout: 22000, maxRedirects: 5 });
+  } catch { /* network error or blocked target */ }
 
   if (!res) {
     return { html: "", finalUrl: url, botProtected: false, statusCode: 0 };
@@ -149,11 +252,9 @@ async function smartFetchPage(url: string): Promise<{
 
   if (cookies && (seemsIncomplete || isChallenge)) {
     try {
-      const res2 = await fetch(url, {
+      const res2 = await safeFetch(url, {
         headers: { ...baseHeaders, "Cookie": cookies, "Referer": new URL(url).origin + "/" },
-        signal: AbortSignal.timeout(22000),
-        redirect: "follow",
-      });
+      }, { timeout: 22000, maxRedirects: 5 });
       if (res2.ok) {
         const html2 = await res2.text();
         if (html2.length > html1.length) {
@@ -621,8 +722,9 @@ Deno.serve(async (req) => {
     const { url } = body;
     if (!url) throw new Error("URL is required");
 
-    // Validate URL format early
-    new URL(url);
+    // SSRF guard: reject non-http(s), private/internal hosts, and hostnames that
+    // resolve to private IPs — before any server-side fetch is attempted.
+    await assertPublicUrl(url);
 
     // ── Step 1: Smart fetch with cookie-chain + locale headers ───────────────
     const fetchResult = await smartFetchPage(url);
