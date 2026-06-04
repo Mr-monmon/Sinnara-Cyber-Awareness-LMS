@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Rocket, Loader2 } from "lucide-react";
+import { AlertTriangle, Download, Rocket, Loader2 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
+import { missingCampaignFields } from "../../lib/requestCompleteness";
 import { RequestWithCompany, User } from "../../lib/types";
 
 type DepartmentOption = {
@@ -212,6 +213,21 @@ const RequestPreview = ({
           </div>
         </div>
         <div className="p-6 space-y-4">
+          {/* Conversion readiness — warn when required fields are absent */}
+          {(() => {
+            if (selectedRequest.campaign_id) return null;
+            const missing = missingCampaignFields(selectedRequest);
+            if (missing.length === 0) return null;
+            return (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-800">
+                  <span className="font-semibold">Cannot convert yet.</span>{" "}
+                  Missing: {missing.join(", ")}.
+                </div>
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-sm text-slate-600">Ticket Number</div>
