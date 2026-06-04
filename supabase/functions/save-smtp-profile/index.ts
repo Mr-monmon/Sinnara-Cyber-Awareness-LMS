@@ -46,7 +46,7 @@ async function encryptPassword(plaintext: string): Promise<{ ciphertext: string;
 
   const keyBytes = decodeKey(keyStr);
   if (keyBytes.length !== 32) {
-    console.error("[encryptPassword] Invalid key length:", keyBytes.length, "expected 32");
+    console.error(`[encryptPassword] SMTP_ENCRYPTION_KEY decoded to ${keyBytes.length} bytes, expected 32. Generate a valid key with: openssl rand -hex 32`);
     return { ciphertext: plaintext, encrypted: false };
   }
   const cryptoKey = await crypto.subtle.importKey(

@@ -120,11 +120,16 @@ function decodeKey(keyStr: string): Uint8Array {
 async function decryptPassword(encrypted: string): Promise<string> {
   const keyStr = Deno.env.get("SMTP_ENCRYPTION_KEY");
   if (!keyStr) {
-    throw new Error("SMTP_ENCRYPTION_KEY is not configured on the server; cannot decrypt the SMTP password.");
+    throw new Error("SMTP_ENCRYPTION_KEY is not set in the Supabase Edge Function secrets. Set it to a 64-char hex string (openssl rand -hex 32) or a 44-char base64 string (openssl rand -base64 32), then re-save the SMTP profile to re-encrypt the password.");
   }
   const keyBytes = decodeKey(keyStr);
   if (keyBytes.length !== 32) {
-    throw new Error("SMTP_ENCRYPTION_KEY is invalid (must decode to 32 bytes).");
+    throw new Error(
+      `SMTP_ENCRYPTION_KEY decoded to ${keyBytes.length} bytes but AES-256 requires exactly 32. ` +
+      `Generate a valid key with: openssl rand -hex 32  (produces 64 hex chars)  ` +
+      `or: openssl rand -base64 32  (produces 44 base64 chars). ` +
+      `Set it in Supabase → Edge Functions → Secrets, then re-save the SMTP profile so the password is re-encrypted.`
+    );
   }
   const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
 
