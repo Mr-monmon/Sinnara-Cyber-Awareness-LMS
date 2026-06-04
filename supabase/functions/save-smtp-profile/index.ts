@@ -58,10 +58,14 @@ async function encryptPassword(plaintext: string): Promise<{ ciphertext: string;
   const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, encoded);
 
   // Combine iv + ciphertext, encode as base64url
+  // Use a loop instead of spread to avoid "Maximum call stack size exceeded"
+  // on large buffers in some Deno/V8 environments.
   const combined = new Uint8Array(iv.byteLength + cipherBuf.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(cipherBuf), iv.byteLength);
-  const b64 = btoa(String.fromCharCode(...combined))
+  let b64str = "";
+  for (let i = 0; i < combined.length; i++) b64str += String.fromCharCode(combined[i]);
+  const b64 = btoa(b64str)
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 
   return { ciphertext: b64, encrypted: true };
@@ -73,6 +77,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
   }
 
+  try {
   // Authenticate the caller using their session JWT
   const authHeader = req.headers.get("Authorization") ?? "";
   const userClient = createClient(
@@ -238,4 +243,10 @@ Deno.serve(async (req) => {
     .single();
 
   return new Response(JSON.stringify({ profile: saved }), { status: 200, headers: corsHeaders });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    console.error("[save-smtp-profile] unhandled exception:", msg);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
+  }
 });
