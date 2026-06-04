@@ -725,8 +725,16 @@ Deno.serve(async (req) => {
     );
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Worker error";
-    console.error("[process-campaign]", msg);
+    // Supabase/PostgREST throws plain objects ({message, details, hint, code}),
+    // not Error instances — so `err instanceof Error` is false and a naive
+    // fallback hides the real reason behind a generic "Worker error". Dig the
+    // most specific text out of whatever was thrown so the 500 body and the logs
+    // both carry an actionable message.
+    const e = err as { message?: string; details?: string; hint?: string; code?: string };
+    const msg = err instanceof Error
+      ? err.message
+      : (e?.message || e?.details || e?.hint || (e?.code ? `Database error ${e.code}` : "Worker error"));
+    console.error("[process-campaign]", msg, JSON.stringify(err));
     await captureException(err, { function: "process-campaign" });
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
   }
