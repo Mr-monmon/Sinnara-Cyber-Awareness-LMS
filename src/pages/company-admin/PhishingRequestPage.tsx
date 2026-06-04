@@ -252,9 +252,19 @@ const SectionHeader: React.FC<{
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
+// A Phishing Scenario presented in the picker. Scenarios are the unified library
+// (the old "Phishing Templates" were folded in). We map the scenario shape onto the
+// picker's option shape and keep the bundle fields so selecting a scenario can
+// pre-fill the email AND the landing page / redirect / capture settings.
+type ScenarioOption = PhishingTemplate & {
+  landing_page_html?: string;
+  redirect_url?: string;
+  capture_credentials?: boolean;
+};
+
 export const PhishingRequestPage: React.FC = () => {
   const { user } = useAuth();
-  const [templates, setTemplates]   = useState<PhishingTemplate[]>([]);
+  const [templates, setTemplates]   = useState<ScenarioOption[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [domains, setDomains]       = useState<PhishingDomain[]>([]);
@@ -309,7 +319,7 @@ export const PhishingRequestPage: React.FC = () => {
       const year = new Date().getFullYear();
       const [tRes, dRes, qRes, domRes, smRes] = await Promise.all([
         supabase
-          .from("phishing_templates")
+          .from("phishing_scenarios")
           .select("*")
           .eq("is_active", true)
           .order("name"),
@@ -337,7 +347,25 @@ export const PhishingRequestPage: React.FC = () => {
           .eq("is_active", true)
           .order("name"),
       ]);
-      if (tRes.data) setTemplates(tRes.data);
+      // Map scenario rows onto the picker option shape (subject/html come from the
+      // scenario's email fields; bundle fields are retained for pre-fill).
+      if (tRes.data)
+        setTemplates(
+          (tRes.data as Record<string, unknown>[]).map((s) => ({
+            id: String(s.id),
+            name: String(s.name ?? ""),
+            description: String(s.description ?? ""),
+            subject: String(s.email_subject ?? ""),
+            html_content: String(s.email_html ?? ""),
+            difficulty_level: String(s.difficulty ?? "MEDIUM"),
+            category: String(s.category ?? "GENERAL"),
+            created_at: String(s.created_at ?? ""),
+            updated_at: String(s.updated_at ?? ""),
+            landing_page_html: String(s.landing_page_html ?? ""),
+            redirect_url: String(s.redirect_url ?? ""),
+            capture_credentials: !!s.capture_credentials,
+          })),
+        );
       if (dRes.data) setDepartments(dRes.data);
       if (qRes.data) setQuota(qRes.data);
       if (domRes.data) setDomains(domRes.data);
@@ -354,9 +382,16 @@ export const PhishingRequestPage: React.FC = () => {
     if (tpl)
       setForm((prev) => ({
         ...prev,
+        // form.template_id holds the selected SCENARIO id (unified library).
         template_id: id,
         email_subject: tpl.subject,
         email_html_body: tpl.html_content,
+        // Pre-fill the landing page / redirect / capture from the scenario bundle,
+        // but only overwrite when the scenario actually provides a value.
+        landing_page_html: tpl.landing_page_html || prev.landing_page_html,
+        redirect_url: tpl.redirect_url || prev.redirect_url,
+        capture_credentials:
+          tpl.capture_credentials ?? prev.capture_credentials,
       }));
     else setForm((prev) => ({ ...prev, template_id: id }));
   };
@@ -425,7 +460,10 @@ export const PhishingRequestPage: React.FC = () => {
             company_id: user.company_id,
             requested_by: user.id,
             campaign_name: form.campaign_name,
-            template_id: form.template_id || null,
+            // Unified library: the picker stores a scenario id. Persist it as
+            // scenario_id and leave the deprecated template_id null.
+            scenario_id: form.template_id || null,
+            template_id: null,
             target_departments: form.target_departments,
             target_employee_count: employeeCount,
             scheduled_date: form.scheduled_date || null,
@@ -906,14 +944,14 @@ export const PhishingRequestPage: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="aw-pr-label">Phishing Template</label>
+                      <label className="aw-pr-label">Phishing Scenario</label>
                       <select
                         className="aw-pr-select"
                         value={form.template_id}
                         onChange={(e) => handleTemplateChange(e.target.value)}
                       >
                         <option value="">
-                          Select a template (or create custom below)…
+                          Select a scenario (or create custom below)…
                         </option>
                         {templates.map((t) => (
                           <option key={t.id} value={t.id}>
@@ -940,7 +978,7 @@ export const PhishingRequestPage: React.FC = () => {
                             fontFamily: "inherit",
                           }}
                         >
-                          <Eye size={12} /> Preview Template
+                          <Eye size={12} /> Preview Scenario
                         </button>
                       )}
                     </div>

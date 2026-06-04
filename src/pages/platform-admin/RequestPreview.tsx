@@ -264,9 +264,9 @@ const RequestPreview = ({
               </div>
             </div>
             <div>
-              <div className="text-sm text-slate-600">Template</div>
+              <div className="text-sm text-slate-600">Scenario</div>
               <div className="font-semibold">
-                {selectedRequest.phishing_templates?.name || "N/A"}
+                {selectedRequest.phishing_scenarios?.name || "N/A"}
               </div>
             </div>
             <div>

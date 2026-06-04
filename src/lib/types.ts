@@ -115,7 +115,9 @@ export interface PhishingCampaignRequest {
   track_clicks: boolean;
   updated_at: Date;
   ticket_number: string;
+  /** @deprecated legacy phishing_templates reference — use scenario_id (unified library). */
   template_id: string;
+  scenario_id?: string | null;
   domain_id: string | null;
   target_employee_count: number;
   target_departments: string[];
@@ -140,7 +142,8 @@ export interface PhishingCampaignRequest {
 export interface RequestWithCompany extends PhishingCampaignRequest {
   companies?: { name: string };
   users?: { full_name: string };
-  phishing_templates?: { name: string };
+  // Unified library: the picked scenario (formerly "template").
+  phishing_scenarios?: { name: string };
 }
 
 export interface PhishingCampaign {

@@ -16,7 +16,6 @@ import { SubscriptionsPage }          from "./SubscriptionsPage";
 import { AnalyticsPage }              from "./AnalyticsPage";
 import { AuditLogsPage }              from "./AuditLogsPage";
 import { CertificateTemplatesPage }   from "./CertificateTemplatesPage";
-import { PhishingTemplatesPage }      from "./PhishingTemplatesPage";
 import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
 import { PhishingDomainsPage }        from "./PhishingDomainsPage";
 import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
@@ -308,7 +307,8 @@ export const PlatformDashboard = () => {
       case "audit-logs":               return <AuditLogsPage />;
       case "error-logs":               return <ErrorLogsPage />;
       case "certificates":             return <CertificateTemplatesPage />;
-      case "phishing-templates":       return <PhishingTemplatesPage />;
+      // "Phishing Templates" is deprecated and unified into Phishing Scenarios.
+      case "phishing-templates":       return <PhishingScenariosPage />;
       case "phishing-requests":        return <PhishingManagementPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
