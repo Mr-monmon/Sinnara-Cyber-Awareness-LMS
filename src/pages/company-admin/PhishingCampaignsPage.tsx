@@ -872,6 +872,8 @@ export const PhishingCampaignsPage: React.FC = () => {
                   ['Name', form.name],
                   ['Scenario', form.selectedScenario?.name || 'Custom'],
                   ['Target Groups', form.selectedGroups.length + ` groups (${totalTargets} targets)`],
+                  ['SMTP Profile', form.smtpProfileId ? (smtpProfiles.find(s => s.id === form.smtpProfileId)?.name ?? 'Selected') : 'Platform Default'],
+                  ['Sender', form.fromName || form.fromAddress ? `${form.fromName || ''}${form.fromAddress ? ` <${form.fromAddress}>` : ''}`.trim() : 'From profile / default'],
                   ['Sending Speed', `${form.emailsPerMinute} emails/min`],
                   ['Business Hours', form.businessHoursOnly ? `${form.businessHoursStart}:00 – ${form.businessHoursEnd}:00 ${form.timezone}` : 'No restriction'],
                   ['Launch', form.launchType === 'immediate' ? 'Immediate' : (form.scheduledAt || 'Not set')],
