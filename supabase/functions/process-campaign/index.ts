@@ -578,15 +578,34 @@ Deno.serve(async (req) => {
       const resolvedHtml    = resolveVars(job.email_html);
       const resolvedSubject = resolveVars(job.email_subject);
 
+      // ── Rewrite anchor links to route through the click-tracking endpoint ──
+      // A phishing simulation must record a LINK_CLICKED for ANY link the
+      // recipient clicks and land them on the campaign's landing page. Templates
+      // imported from GoPhish hardcode a placeholder host (e.g.
+      // http://127.0.0.1/?rid=…) instead of using {{.URL}}, so those clicks are
+      // never tracked and lead nowhere. Replace every external http(s) anchor
+      // target with the click URL. Links that already point at our own tracking
+      // endpoint (an existing click/report/landing link) and non-navigational
+      // schemes (mailto:/tel:/sms:/#) are left untouched.
+      const ourOrigin = (() => { try { return new URL(SUPABASE_URL).origin; } catch { return ""; } })();
+      const rewriteAnchors = (html: string) =>
+        html.replace(/(<a\b[^>]*?\bhref=)(["'])(.*?)\2/gi, (full, pre, q, url) => {
+          const trimmed = String(url).trim();
+          if (/^(mailto:|tel:|sms:|#|\{\{)/i.test(trimmed)) return full;       // non-navigational / unresolved
+          if (ourOrigin && trimmed.startsWith(ourOrigin)) return full;          // already a tracking link
+          return `${pre}${q}${trackingUrl}${q}`;
+        });
+      const linkedHtml = rewriteAnchors(resolvedHtml);
+
       // Inject open-tracking pixel (idempotent: only if not already present)
       const trackBase   = `${SUPABASE_URL}/functions/v1/phishing-track`;
       const pixelUrl    = `${trackBase}?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
       const trackPixel  = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
-      const finalHtml   = resolvedHtml.includes("phishing-track?t=open")
-        ? resolvedHtml
-        : resolvedHtml.includes("</body>")
-          ? resolvedHtml.replace("</body>", trackPixel + "</body>")
-          : resolvedHtml + trackPixel;
+      const finalHtml   = linkedHtml.includes("phishing-track?t=open")
+        ? linkedHtml
+        : linkedHtml.includes("</body>")
+          ? linkedHtml.replace("</body>", trackPixel + "</body>")
+          : linkedHtml + trackPixel;
 
       // Send
       const result = await sendEmail({
