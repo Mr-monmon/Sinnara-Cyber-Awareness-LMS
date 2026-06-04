@@ -145,14 +145,36 @@ Deno.serve(async (req) => {
       return errorHtml(errId, "Page Unavailable", "This page is no longer available. Please contact the sender.");
     }
 
-    // 2. Landing page must exist and belong to the SAME company as the campaign.
+    // 2. Landing page must exist and be usable by the campaign's company:
+    //    - a company-owned page belonging to the SAME company, OR
+    //    - a platform page that is GLOBAL, OR
+    //    - a platform page SHARED with the campaign's company.
     const { data: landing } = await supabase
       .from("phishing_company_landing_pages")
-      .select("id, company_id, html_content")
+      .select("id, company_id, html_content, is_platform_page, visibility")
       .eq("id", landingId)
       .single();
 
-    if (!landing || landing.company_id !== campaign.company_id) {
+    let landingAllowed = false;
+    if (landing) {
+      if (landing.company_id === campaign.company_id) {
+        landingAllowed = true;
+      } else if (landing.is_platform_page) {
+        if (landing.visibility === "GLOBAL") {
+          landingAllowed = true;
+        } else {
+          const { data: access } = await supabase
+            .from("landing_page_company_access")
+            .select("id")
+            .eq("landing_page_id", landingId)
+            .eq("company_id", campaign.company_id)
+            .maybeSingle();
+          landingAllowed = !!access;
+        }
+      }
+    }
+
+    if (!landing || !landingAllowed) {
       const errId = `LP-${Date.now().toString(36).toUpperCase()}-NOLP`;
       return errorHtml(errId, "Page Unavailable", "This page is no longer available. Please contact the sender.");
     }

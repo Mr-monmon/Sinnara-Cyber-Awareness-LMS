@@ -35,6 +35,7 @@ import {
   Eye,
   Sun,
   Moon,
+  LayoutTemplate,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -209,6 +210,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       "phishing-results":        "phishing-campaigns",
       "phishing-domains":        "phishing-campaigns",
       "phishing-smtp-admin":     "phishing-campaigns",
+      "phishing-landing-admin":  "phishing-campaigns",
       "phishing-scenarios":      "phishing-campaigns",
       "phishing-company-limits": "phishing-campaigns",
       // Company admin phishing pages
@@ -297,6 +299,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             { id: "phishing-results",        label: "Campaign Results",       icon: Activity },
             { id: "phishing-domains",        label: "Phishing Domains",       icon: Globe   },
             { id: "phishing-smtp-admin",     label: "Platform SMTP Profiles", icon: Server  },
+            { id: "phishing-landing-admin",  label: "Landing Pages",          icon: LayoutTemplate },
             { id: "phishing-scenarios",      label: "Phishing Scenarios",     icon: Zap     },
             { id: "phishing-company-limits", label: "Company Limits",         icon: Shield  },
           ],
