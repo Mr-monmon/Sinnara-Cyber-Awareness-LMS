@@ -368,7 +368,13 @@ Deno.serve(async (req) => {
     const encodedUrl = url.searchParams.get("url") ?? "";
     let decodedUrl = "";
     if (encodedUrl) {
-      try { decodedUrl = atob(encodedUrl); } catch { decodedUrl = ""; }
+      try {
+        // The URL is base64url-encoded (+ → -, / → _, padding stripped).
+        // atob requires standard base64, so convert back before decoding.
+        const b64 = encodedUrl.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = b64 + "==".slice(0, (4 - b64.length % 4) % 4);
+        decodedUrl = atob(padded);
+      } catch { decodedUrl = ""; }
     }
     const redirectUrl = await resolveRedirect(campaign_id, recipient_id, decodedUrl);
     logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});

@@ -42,7 +42,9 @@ function resolveVariables(
 ): string {
   const toB64url = (s: string): string => {
     const bytes = new TextEncoder().encode(s);
-    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    let b64str = "";
+    for (let i = 0; i < bytes.length; i++) b64str += String.fromCharCode(bytes[i]);
+    return btoa(b64str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
   };
   const domain   = target.email.split("@")[1] || "";
   const rid      = target.recipient_id ?? "";
@@ -85,6 +87,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), { status: 405, headers: corsHeaders });
   }
 
+  try {
   const authHeader = req.headers.get("Authorization") ?? "";
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -341,4 +344,10 @@ Deno.serve(async (req) => {
     success: true, campaign_id: camp.id, status,
     target_count: targets.length, queue_size: queueEntries.length,
   }), { headers: corsHeaders });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    console.error("[create-campaign-from-request] unhandled exception:", msg);
+    return new Response(JSON.stringify({ success: false, error: msg }), { status: 500, headers: corsHeaders });
+  }
 });

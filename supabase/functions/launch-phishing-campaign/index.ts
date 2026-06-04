@@ -45,8 +45,9 @@ function resolveVariables(
 ): string {
   const toB64url = (s: string): string => {
     const bytes = new TextEncoder().encode(s);
-    let b64 = btoa(String.fromCharCode(...bytes));
-    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    let b64str = "";
+    for (let i = 0; i < bytes.length; i++) b64str += String.fromCharCode(bytes[i]);
+    return btoa(b64str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
   };
 
   const domain   = target.email.split("@")[1] || "";
@@ -99,6 +100,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), { status: 405, headers: corsHeaders });
   }
 
+  try {
   // Authenticate caller
   const authHeader = req.headers.get("Authorization") ?? "";
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -409,4 +411,10 @@ Deno.serve(async (req) => {
     target_count: targetCount,
     queue_size:   queueEntries.length,
   }), { headers: corsHeaders });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    console.error("[launch-phishing-campaign] unhandled exception:", msg);
+    return new Response(JSON.stringify({ success: false, error: msg }), { status: 500, headers: corsHeaders });
+  }
 });
