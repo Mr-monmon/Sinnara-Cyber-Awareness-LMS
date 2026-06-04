@@ -120,11 +120,16 @@ function decodeKey(keyStr: string): Uint8Array {
 async function decryptPassword(encrypted: string): Promise<string> {
   const keyStr = Deno.env.get("SMTP_ENCRYPTION_KEY");
   if (!keyStr) {
-    throw new Error("SMTP_ENCRYPTION_KEY is not configured on the server; cannot decrypt the SMTP password.");
+    throw new Error("SMTP_ENCRYPTION_KEY is not set in the Supabase Edge Function secrets. Set it to a 64-char hex string (openssl rand -hex 32) or a 44-char base64 string (openssl rand -base64 32), then re-save the SMTP profile to re-encrypt the password.");
   }
   const keyBytes = decodeKey(keyStr);
   if (keyBytes.length !== 32) {
-    throw new Error("SMTP_ENCRYPTION_KEY is invalid (must decode to 32 bytes).");
+    throw new Error(
+      `SMTP_ENCRYPTION_KEY decoded to ${keyBytes.length} bytes but AES-256 requires exactly 32. ` +
+      `Generate a valid key with: openssl rand -hex 32  (produces 64 hex chars)  ` +
+      `or: openssl rand -base64 32  (produces 44 base64 chars). ` +
+      `Set it in Supabase → Edge Functions → Secrets, then re-save the SMTP profile so the password is re-encrypted.`
+    );
   }
   const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
 
@@ -142,14 +147,20 @@ async function decryptPassword(encrypted: string): Promise<string> {
 
 /* ── Turn raw nodemailer/SMTP errors into actionable, secret-free messages ── */
 function normalizeSmtpError(e: unknown): string {
-  const err = e as { code?: string; responseCode?: number; message?: string };
+  const err = e as { code?: string; responseCode?: number; message?: string; response?: string };
   const code = (err?.code ?? "").toUpperCase();
   const resp = err?.responseCode ?? 0;
   const msg  = err?.message ?? "";
   const m = msg.toLowerCase();
+  // The server's raw response (e.g. Mailgun's "535 5.7.0 incorrect username/password"
+  // or a region hint) is far more diagnostic than a generic message. It contains no
+  // secrets — only the server's own reply text — so surface it to the operator.
+  const serverResp = (err?.response ?? "").trim();
 
   if (code === "EAUTH" || resp === 535 || resp === 534 || /invalid login|authentication failed|auth/i.test(m)) {
-    return "SMTP authentication failed — check the username and password.";
+    return serverResp
+      ? `SMTP authentication failed — the server replied: "${serverResp}". Verify the SMTP username/password (for Mailgun, use the SMTP credentials from Domain settings, not your account login, and confirm you are using the correct region host — smtp.mailgun.org for US, smtp.eu.mailgun.org for EU).`
+      : "SMTP authentication failed — check the username and password.";
   }
   if (code === "ETIMEDOUT" || code === "ETIMEOUT" || /timed? ?out|greeting never received/i.test(m)) {
     return "Connection to the SMTP server timed out — check the host and port.";
