@@ -3,9 +3,10 @@ import {
   Activity, RefreshCw, Play, Pause, CheckCircle, XCircle,
   Clock, Mail, Eye, MousePointer, KeyRound, Flag, AlertTriangle,
   Building2, Info, Loader2, Inbox, Send as SendIcon,
-  BarChart3, Zap, Target,
+  BarChart3, Zap, Target, Download,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { generateCampaignPdf } from "../../lib/campaignReport";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -338,6 +339,32 @@ export const PhishingMonitoringPage: React.FC = () => {
     if (selected) await loadDrillDown(selected.id);
   };
 
+  /* ── Export selected campaign to PDF (reuses already-loaded targets) ── */
+  const handleExportPdf = () => {
+    if (!selected) return;
+    generateCampaignPdf({
+      name: selected.name,
+      companyName: getCompanyName(selected.companies),
+      status: selected.status,
+      launchedAt: selected.launched_at,
+      totalTargets: selected.total_targets,
+      emailsSent: selected.emails_sent,
+      emailsOpened: selected.emails_opened,
+      linksClicked: selected.links_clicked,
+      credentialsSubmitted: selected.credentials_entered ?? selected.data_submitted ?? 0,
+      emailsReported: selected.emails_reported,
+      targets: targets.map(t => ({
+        email: t.email,
+        name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
+        status: t.status,
+        opened_at: t.opened_at,
+        clicked_at: t.clicked_at,
+        submitted_at: t.submitted_at,
+        reported_at: t.reported_at,
+      })),
+    });
+  };
+
   /* ── Queue totals for selected campaign ── */
   const qTotal    = queueCounts.reduce((s, q) => s + q.count, 0);
   const qByStatus = Object.fromEntries(queueCounts.map(q => [q.status, q.count]));
@@ -469,6 +496,12 @@ export const PhishingMonitoringPage: React.FC = () => {
                   </div>
                 </div>
                 {drillLoading && <Loader2 size={14} style={{ color: T.textMuted }} className="aw-mon-spin" />}
+                <button
+                  onClick={handleExportPdf}
+                  title="Export campaign results to PDF"
+                  style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'rgba(200,255,0,0.08)', border: `1px solid rgba(200,255,0,0.22)`, color: T.accent, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <Download size={12} /> Export PDF
+                </button>
               </div>
 
               {/* Metrics cards */}

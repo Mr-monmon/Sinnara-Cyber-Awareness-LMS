@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PhishingCampaignQuota, PhishingCampaign, PhishingCampaignRequest } from '../../lib/types';
+import { generateCampaignPdf } from '../../lib/campaignReport';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -399,6 +400,53 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
     a.click(); URL.revokeObjectURL(url);
   };
 
+  const [exportingId, setExportingId] = useState<string | null>(null);
+
+  const exportCampaignPdf = async (c: PhishingCampaign) => {
+    setExportingId(c.id);
+    try {
+      const { data, error } = await supabase
+        .from('phishing_campaign_targets')
+        .select('email, first_name, last_name, status, opened_at, clicked_at, submitted_at, reported_at')
+        .eq('campaign_id', c.id);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        status: string;
+        opened_at: string | null;
+        clicked_at: string | null;
+        submitted_at: string | null;
+        reported_at: string | null;
+      }>;
+      generateCampaignPdf({
+        name: c.name,
+        status: c.status,
+        launchedAt: c.launched_at || c.launch_date,
+        totalTargets: c.total_queue_size || c.total_targets || 0,
+        emailsSent: c.emails_sent,
+        emailsOpened: c.emails_opened,
+        linksClicked: c.links_clicked,
+        credentialsSubmitted: c.credentials_entered ?? 0,
+        emailsReported: c.emails_reported,
+        targets: rows.map(t => ({
+          email: t.email,
+          name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
+          status: t.status,
+          opened_at: t.opened_at,
+          clicked_at: t.clicked_at,
+          submitted_at: t.submitted_at,
+          reported_at: t.reported_at,
+        })),
+      });
+    } catch (err) {
+      console.error('Failed to export campaign PDF', err);
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 14, fontFamily: 'Inter, sans-serif' }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.06)', borderTopColor: T.accent, animation: 'aw-spin 0.8s linear infinite' }} />
@@ -537,6 +585,16 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
                   </option>
                 ))}
               </select>
+              {selectedData && (
+                <button
+                  className="aw-ph-dl-btn"
+                  onClick={() => exportCampaignPdf(selectedData)}
+                  disabled={exportingId === selectedData.id}
+                  title="Download per-target results as PDF">
+                  <Download size={14} />
+                  {exportingId === selectedData.id ? 'Generating…' : 'Download Results (PDF)'}
+                </button>
+              )}
             </div>
           </div>
 
