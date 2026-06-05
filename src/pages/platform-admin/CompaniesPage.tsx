@@ -393,15 +393,15 @@ export const CompaniesPage: React.FC = () => {
 
         try {
           await sendNotificationEmail(
-            formData.admin_email,
-            formData.admin_name,
+            formData.admin_email as string,
+            formData.admin_name as string,
             "Welcome to Awareone",
             "Welcome aboard",
             `Your company workspace for ${formData.name} is ready. Use the credentials below to sign in and start managing your team.`,
             {
               loginUrl,
               credentials: {
-                email: formData.admin_email,
+                email: formData.admin_email as string,
                 password: adminPassword,
                 role: "Company Admin",
               },

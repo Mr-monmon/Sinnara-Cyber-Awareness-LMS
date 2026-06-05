@@ -328,15 +328,15 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
       .order("last_accessed_at", { ascending: false, nullsFirst: false });
     if (!ec?.length) return;
     setCourses(ec.map((e: Record<string, unknown> & { courses?: { title?: string } }) => ({
-      course_id:           e.course_id,
+      course_id:           e.course_id as string,
       course_name:         e.courses?.title || "Unknown",
-      progress_percentage: parseFloat(e.progress_percentage) || 0,
+      progress_percentage: parseFloat(String(e.progress_percentage ?? 0)) || 0,
       status:              e.status === "COMPLETED" ? "COMPLETED" : e.status === "IN_PROGRESS" ? "IN_PROGRESS" : "NOT_STARTED",
-      assigned_at:         e.assigned_at,
-      completed_at:        e.completed_at,
-      last_accessed_at:    e.last_accessed_at ?? null,
-      completed_sections:  e.completed_sections || 0,
-      total_sections:      e.total_sections || 0,
+      assigned_at:         e.assigned_at as string,
+      completed_at:        (e.completed_at as string | null) ?? null,
+      last_accessed_at:    (e.last_accessed_at as string | null) ?? null,
+      completed_sections:  (e.completed_sections as number) || 0,
+      total_sections:      (e.total_sections as number) || 0,
     })));
   };
 
@@ -345,9 +345,10 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
     if (!data) return;
     const counts = new Map<string, number>();
     setExams(data.map((r: Record<string, unknown> & { exams?: { title?: string } }) => {
-      const c = (counts.get(r.exam_id) || 0) + 1;
-      counts.set(r.exam_id, c);
-      return { exam_name: r.exams?.title || "Unknown", attempt_number: c, score: r.percentage || 0, passed: r.passed || false, completed_at: r.completed_at };
+      const examId = r.exam_id as string;
+      const c = (counts.get(examId) || 0) + 1;
+      counts.set(examId, c);
+      return { exam_name: r.exams?.title || "Unknown", attempt_number: c, score: (r.percentage as number) || 0, passed: (r.passed as boolean) || false, completed_at: r.completed_at as string };
     }));
   };
 
@@ -372,14 +373,17 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
       .eq("employee_id", employeeId)
       .order("created_at", { ascending: false });
     if (targets) {
-      setPhishingTargets(targets.map((t: Record<string, unknown> & { phishing_campaigns?: { name?: string; created_at?: string } }) => ({
-        campaign_name: t.phishing_campaigns?.name ?? "Unknown Campaign",
-        campaign_date: t.phishing_campaigns?.created_at ?? "",
-        status: t.status ?? "SENT",
-        clicked: !!t.clicked_at,
-        creds_entered: !!t.credentials_entered,
-        reported: !!t.reported_at,
-      })));
+      setPhishingTargets(targets.map((t: Record<string, unknown> & { phishing_campaigns?: { name?: string; created_at?: string } | { name?: string; created_at?: string }[] }) => {
+        const pc = Array.isArray(t.phishing_campaigns) ? (t.phishing_campaigns[0] ?? null) : t.phishing_campaigns;
+        return {
+          campaign_name: pc?.name ?? "Unknown Campaign",
+          campaign_date: pc?.created_at ?? "",
+          status: String(t.status ?? "SENT"),
+          clicked: !!t.clicked_at,
+          creds_entered: !!t.credentials_entered,
+          reported: !!t.reported_at,
+        };
+      }));
     }
   };
 

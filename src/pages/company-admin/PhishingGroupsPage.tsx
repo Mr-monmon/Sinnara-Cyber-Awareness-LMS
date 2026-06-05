@@ -299,16 +299,19 @@ export const PhishingGroupsPage: React.FC = () => {
           .eq('group_id', activeGroup.id)
           .not('employee_id', 'is', null),
       ]);
-      setEmployees((emps || []).map((e: { id: string; full_name: string; email: string; job_title: string | null; department_id: string | null; departments?: { name?: string | null } | null }) => ({
-        id: e.id,
-        full_name: e.full_name,
-        email: e.email,
-        job_title: e.job_title || '',
-        department_id: e.department_id,
-        department_name: e.departments?.name || '',
-      })));
+      setEmployees((emps || []).map((e: { id: string; full_name: string; email: string; job_title: string | null; department_id: string | null; departments?: { name?: string | null } | { name?: string | null }[] | null }) => {
+        const dept = Array.isArray(e.departments) ? (e.departments[0] ?? null) : e.departments;
+        return {
+          id: e.id,
+          full_name: e.full_name,
+          email: e.email,
+          job_title: e.job_title || '',
+          department_id: e.department_id,
+          department_name: dept?.name || '',
+        };
+      }));
       setDepartments(depts || []);
-      setAlreadySyncedIds(new Set((existing || []).map((r: { employee_id: string | null }) => r.employee_id)));
+      setAlreadySyncedIds(new Set((existing || []).map((r: { employee_id: string | null }) => r.employee_id).filter((id): id is string => id !== null)));
     } finally {
       setLoadingEmployees(false);
     }

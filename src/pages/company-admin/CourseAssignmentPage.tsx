@@ -158,7 +158,10 @@ export const CourseAssignmentPage: React.FC = () => {
       if (ccErr) throw ccErr;
 
       const courseList = (ccData ?? [])
-        .map((cc: { course_id: string; courses: Course | null }) => cc.courses)
+        .map((cc: { course_id: string; courses: Course | null | Course[] }) => {
+          const c = cc.courses;
+          return Array.isArray(c) ? (c[0] ?? null) : c;
+        })
         .filter(Boolean) as Course[];
 
       // Sort by order_index (same as platform admin view)

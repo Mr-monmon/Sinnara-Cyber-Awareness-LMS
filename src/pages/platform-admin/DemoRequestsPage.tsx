@@ -176,7 +176,7 @@ export const DemoRequestsPage: React.FC = () => {
     const headers = ['full_name','status','email','phone','company_name','employee_count','created_at','message'];
     const esc = (v: string | number) => { const s = String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const sep = (1.1).toLocaleString().includes(',') ? ';' : ',';
-    const rows = filtered.map(r => headers.map(h => esc((r as unknown as Record<string, unknown>)[h] ?? '')).join(sep));
+    const rows = filtered.map(r => headers.map(h => esc(((r as unknown as Record<string, unknown>)[h] ?? '') as string | number)).join(sep));
     const csv = [headers.join(sep), ...rows].join('\r\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');

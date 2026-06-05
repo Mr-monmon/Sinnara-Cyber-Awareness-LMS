@@ -343,7 +343,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [campaigns, setCampaigns]   = useState<PhishingCampaign[]>([]);
   const [requests, setRequests]     = useState<PhishingCampaignRequest[]>([]);
-  const [deptStats, setDeptStats]   = useState<{ id: string; vulnerability_score?: number | null; total_targets: number; links_clicked: number; emails_reported: number; credentials_entered: number; department?: { name?: string | null } | null }[]>([]);
+  const [deptStats, setDeptStats]   = useState<{ id: string; vulnerability_score?: number | null; total_targets: number; emails_opened: number; links_clicked: number; emails_reported: number; credentials_entered: number; department?: { name?: string | null } | null }[]>([]);
   const [loading, setLoading]       = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
 

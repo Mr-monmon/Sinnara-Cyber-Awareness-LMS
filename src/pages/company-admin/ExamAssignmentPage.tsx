@@ -282,7 +282,10 @@ export const ExamAssignmentPage: React.FC = () => {
       .eq("company_id", user.company_id);
 
     const examList = (data ?? [])
-      .map((ce: { exam_id: string; exams: Exam | null }) => ce.exams)
+      .map((ce: { exam_id: string; exams: Exam | null | Exam[] }) => {
+        const e = ce.exams;
+        return Array.isArray(e) ? (e[0] ?? null) : e;
+      })
       .filter(Boolean) as Exam[];
 
     examList.sort((a, b) => a.title.localeCompare(b.title));

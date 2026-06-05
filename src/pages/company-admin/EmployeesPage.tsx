@@ -694,8 +694,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           email: row.email,
           employee_id: row["employee id"],
           phone: row.phone,
-          job_title: row.position || null,
-          department_name: row.department || null, // resolved to ID below
+          job_title: row.position || "",
+          department_name: row.department || "", // resolved to ID below
           password,
           role: "EMPLOYEE",
           company_id: currentUser.company_id,
@@ -730,7 +730,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         const deptId = row.department_name
           ? deptLookup.get(row.department_name.trim().toLowerCase()) || null
           : null;
-        row.department_id = deptId;
+        row.department_id = deptId ?? "";
         delete row.department_name;
       }
       const totalRejected = Object.values(rejected).reduce((a, b) => a + b, 0);
