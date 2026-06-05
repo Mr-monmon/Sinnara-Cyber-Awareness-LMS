@@ -4,7 +4,7 @@ import {
   CreditCard, History, Shield, ChevronRight,
   Mail, Globe, Bell, Award, Zap, AlertTriangle,
   TrendingUp, HelpCircle, Clock, CheckCircle, DollarSign, Server,
-  Target, MousePointer, Send as SendIcon, Eye, LayoutTemplate,
+  Target, MousePointer, Send as SendIcon, Eye, LayoutTemplate, Activity,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { CompaniesPage }              from "./CompaniesPage";
@@ -22,6 +22,7 @@ import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
 import { PhishingLandingPagesAdminPage } from "./PhishingLandingPagesAdminPage";
 import { PhishingScenariosPage }      from "./PhishingScenariosPage";
 import { PhishingCompanyLimitsPage }  from "./PhishingCompanyLimitsPage";
+import { PhishingMonitoringPage }     from "./PhishingMonitoringPage";
 import { PhishingManagementPage }     from "./PhishingManagementPage";
 import { DemoRequestsPage }           from "./DemoRequestsPage";
 import { PartnersManagementPage }     from "./PartnersManagementPage";
@@ -121,6 +122,7 @@ const ACTIONS = [
   { page: 'analytics',               icon: BarChart3, color: T.blue,    label: 'Analytics & Reports',    sub: 'Platform statistics'            },
   { page: 'courses',                 icon: BookOpen,  color: T.cyan,    label: 'Manage Courses',         sub: 'Training content'               },
   { page: 'exams',                   icon: FileText,  color: T.orange,  label: 'Manage Exams',           sub: 'Assessments & quizzes'          },
+  { page: 'phishing-monitor',        icon: Activity,  color: T.red,     label: 'Live Monitor',           sub: 'Real-time campaign visibility'  },
   { page: 'phishing-requests',      icon: Target,    color: T.orange,  label: 'Campaign Requests',      sub: 'Review & track ticket requests' },
   { page: 'phishing-domains',       icon: Globe,     color: T.blue,    label: 'Phishing Domains',       sub: 'Sending domain management'      },
   { page: 'phishing-smtp-admin',    icon: Server,    color: T.cyan,    label: 'Platform SMTP Profiles', sub: 'Push SMTP to companies'         },
@@ -309,6 +311,7 @@ export const PlatformDashboard = () => {
       case "certificates":             return <CertificateTemplatesPage />;
       // "Phishing Templates" is deprecated and unified into Phishing Scenarios.
       case "phishing-templates":       return <PhishingScenariosPage />;
+      case "phishing-monitor":         return <PhishingMonitoringPage />;
       case "phishing-requests":        return <PhishingManagementPage />;
       case "phishing-results":         return <PhishingCampaignResultsPage />;
       case "phishing-domains":         return <PhishingDomainsPage />;
