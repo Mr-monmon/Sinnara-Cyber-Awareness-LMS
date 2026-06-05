@@ -110,6 +110,21 @@ function buildInterceptor(campaignId: string, recipientId: string, redirectUrl: 
 </script>`;
 }
 
+/**
+ * Validate a server-side redirect URL.
+ * Only allows http:// and https:// destinations — never javascript:, data:,
+ * file:, or any other scheme that could execute code or access local resources.
+ */
+function sanitizeRedirect(value: string): string {
+  const fallback = "https://www.google.com";
+  if (!value) return fallback;
+  try {
+    const u = new URL(value);
+    if (u.protocol === "https:" || u.protocol === "http:") return value;
+  } catch { /* invalid URL */ }
+  return fallback;
+}
+
 function injectInterceptor(html: string, interceptor: string): string {
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, interceptor + "</body>");
@@ -124,8 +139,8 @@ Deno.serve(async (req) => {
   const landingId    = url.searchParams.get("lp") ?? "";
   const campaignId   = url.searchParams.get("c") ?? "";
   const recipientId  = url.searchParams.get("r") ?? "";
-  // Optional override of where the victim lands after submitting; defaults to a benign page.
-  const redirectAfter = url.searchParams.get("redirect") ?? "https://www.google.com";
+  // NOTE: redirect destination is resolved server-side from the campaign/landing-page
+  // record — never from a user-supplied query parameter — to prevent open redirect.
 
   if (!landingId || !campaignId || !recipientId) {
     const errId = `LP-${Date.now().toString(36).toUpperCase()}-NOREF`;
@@ -151,7 +166,7 @@ Deno.serve(async (req) => {
     //    - a platform page SHARED with the campaign's company.
     const { data: landing } = await supabase
       .from("phishing_company_landing_pages")
-      .select("id, company_id, html_content, is_platform_page, visibility")
+      .select("id, company_id, html_content, redirect_url, is_platform_page, visibility")
       .eq("id", landingId)
       .single();
 
@@ -192,8 +207,12 @@ Deno.serve(async (req) => {
       return errorHtml(errId, "Invalid Link", "This link could not be verified. Please contact the sender.");
     }
 
+    // Resolve redirect destination from trusted server-side data only.
+    // landing_page.redirect_url is set by the platform admin; fall back to a
+    // benign search page. A user-supplied ?redirect= parameter is NEVER used.
+    const trustedRedirect = sanitizeRedirect(landing.redirect_url ?? "");
     const baseHtml    = landing.html_content || "<!DOCTYPE html><html><body></body></html>";
-    const interceptor = buildInterceptor(campaignId, recipientId, redirectAfter);
+    const interceptor = buildInterceptor(campaignId, recipientId, trustedRedirect);
     const finalHtml   = injectInterceptor(baseHtml, interceptor);
 
     return new Response(finalHtml, {
@@ -204,7 +223,7 @@ Deno.serve(async (req) => {
         "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
-  } catch (_e) {
+  } catch {
     const errId = `LP-${Date.now().toString(36).toUpperCase()}-ERR`;
     return errorHtml(errId, "Unexpected Error", "Something went wrong loading this page. Please try again later.");
   }

@@ -206,7 +206,7 @@ const AccountSettings = () => {
           company_id: user.company_id ?? null,
           description: `Changed password for ${user.email}`,
         }]);
-      } catch {}
+      } catch { /* intentional */ }
 
       setFormData(initialForm);
       alert("Password updated successfully. Please sign in again.");

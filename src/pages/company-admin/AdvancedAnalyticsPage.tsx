@@ -305,7 +305,7 @@ export function AdvancedAnalyticsPage() {
     // ── Process course data ────────────────────────
     if (courseData) {
       const courseMap = new Map<string, CourseStat>();
-      for (const row of courseData as any[]) {
+      for (const row of courseData as { course_id: string; courses?: { title?: string } | null; status: string }[]) {
         const cid2 = row.course_id;
         const title = row.courses?.title ?? "Unknown Course";
         if (!courseMap.has(cid2)) courseMap.set(cid2, { course_id: cid2, title, total_assigned: 0, completed: 0, completion_pct: 0 });
@@ -322,7 +322,7 @@ export function AdvancedAnalyticsPage() {
 
     // ── Process phishing campaigns ─────────────────
     if (campaigns) {
-      setPhishingTrends(campaigns.map((c: any) => {
+      setPhishingTrends(campaigns.map((c: { name: string; total_queue_size?: number | null; total_targets?: number | null; emails_opened?: number | null; links_clicked?: number | null; credentials_entered?: number | null; emails_reported?: number | null }) => {
         // TICKET campaigns have no queue, so fall back to total_targets; otherwise
         // the denominator is 0 and the click rate is forced to 0% regardless of clicks.
         const targets = c.total_queue_size || c.total_targets || 0;

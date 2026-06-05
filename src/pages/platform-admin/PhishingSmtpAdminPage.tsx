@@ -188,7 +188,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
 
       // Load push access for all profiles
       const ids = rawProfiles.map(p => p.id);
-      let accessMap: Record<string, { company_id: string; pushed_at: string }[]> = {};
+      const accessMap: Record<string, { company_id: string; pushed_at: string }[]> = {};
       if (ids.length > 0) {
         const { data: access } = await supabase.from('smtp_profile_company_access').select('smtp_profile_id, company_id, pushed_at').in('smtp_profile_id', ids);
         (access || []).forEach(row => {
@@ -339,7 +339,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
   const toggleCompany = (id: string) => {
     setSelectedCompanies(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   };

@@ -260,7 +260,7 @@ export const SubscriptionsPage: React.FC = () => {
       setShowInvoiceModal(false); setEditingInvoice(null);
       setInvoiceForm({ company_id: '', issue_date: new Date().toISOString().split('T')[0], due_date: '', amount: 0, notes: '' });
       await loadData();
-    } catch (err) { alert('Failed to save invoice: ' + (err as any).message); }
+    } catch (err) { alert('Failed to save invoice: ' + (err as Error).message); }
     finally { setSavingInvoice(false); }
   };
 
@@ -278,7 +278,7 @@ export const SubscriptionsPage: React.FC = () => {
   };
 
   const handleUpdateInvoiceStatus = async (id: string, status: string) => {
-    const updateData: any = { status };
+    const updateData: { status: string; payment_date?: string; payment_method?: string } = { status };
     if (status === 'PAID') { updateData.payment_date = new Date().toISOString(); updateData.payment_method = 'Manual'; }
     await supabase.from("invoices").update(updateData).eq("id", id);
     await supabase.from("audit_logs").insert([{ user_id: user?.id, action_type: "UPDATE", entity_type: "INVOICE", entity_id: id, description: `Invoice status → ${status}`, new_value: { status } }]);

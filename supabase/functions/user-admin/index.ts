@@ -67,7 +67,7 @@ async function logBlockedAttempt(
       company_id: caller.company_id,
       description: `Blocked ${action}: ${detail}`,
     });
-  } catch (_e) {
+  } catch {
     // Audit logging must never break the request flow.
   }
 }
@@ -305,6 +305,16 @@ Deno.serve(async (req) => {
           await logBlockedAttempt(caller, "createUser", null, `target company ${body.company_id} != caller company ${caller.company_id}`);
           return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
         }
+        // Role escalation guard: non-platform admins cannot create PLATFORM_ADMIN users;
+        // COMPANY_ADMIN cannot create COMPANY_SUPER_ADMIN users.
+        if (caller.role !== "PLATFORM_ADMIN" && body.role === "PLATFORM_ADMIN") {
+          await logBlockedAttempt(caller, "createUser", null, `role escalation: attempted to create PLATFORM_ADMIN`);
+          return json({ success: false, error: "Forbidden: cannot assign PLATFORM_ADMIN role" }, 403);
+        }
+        if (caller.role === "COMPANY_ADMIN" && body.role === "COMPANY_SUPER_ADMIN") {
+          await logBlockedAttempt(caller, "createUser", null, `role escalation: COMPANY_ADMIN attempted to create COMPANY_SUPER_ADMIN`);
+          return json({ success: false, error: "Forbidden: cannot assign COMPANY_SUPER_ADMIN role" }, 403);
+        }
         const r = await handleCreateUser(body);
         return json(r);
       }
@@ -419,6 +429,11 @@ Deno.serve(async (req) => {
         const newRole: string = body.newRole;
         if (!allowedRoles.includes(newRole)) {
           return json({ success: false, error: `Invalid role: ${newRole}` });
+        }
+        // Role escalation guard: only PLATFORM_ADMIN may grant the PLATFORM_ADMIN role.
+        if (caller.role !== "PLATFORM_ADMIN" && newRole === "PLATFORM_ADMIN") {
+          await logBlockedAttempt(caller, "updateUserRole", body.userId, `role escalation: attempted to assign PLATFORM_ADMIN`);
+          return json({ success: false, error: "Forbidden: only platform admins may grant PLATFORM_ADMIN role" }, 403);
         }
         if (!(await assertSameTenant(caller, body.userId, "updateUserRole"))) {
           return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);

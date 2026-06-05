@@ -160,7 +160,7 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [editorTab, setEditorTab] = useState<EditorTab>('visual');
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
-  const quillRef = useRef<any>(null);
+  const quillRef = useRef<{ root: { innerHTML: string } } | null>(null);
   const quillContainerRef = useRef<HTMLDivElement>(null);
   const quillInitialized = useRef(false);
 

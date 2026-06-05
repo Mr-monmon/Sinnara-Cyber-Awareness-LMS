@@ -235,10 +235,10 @@ export const CoursesPage: React.FC = () => {
   const handleDownload = async (courseId: string) => {
     const rows = employeeCourses.filter(ec => ec.course_id === courseId);
     if (!rows.length) { alert("No employee records for this course"); return; }
-    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = ["name", "email", "department", "progress_%", "completed_at"];
     const lines = rows.map(r => {
-      const e = (r as any).employee;
+      const e = (r as { employee?: { full_name?: string; email?: string; department?: { name?: string } } }).employee;
       return [esc(e?.full_name), esc(e?.email), esc(e?.department?.name), esc(r.progress_percentage), esc(r.completed_at)].join(",");
     });
     const csv = [headers.join(","), ...lines].join("\n");
@@ -299,7 +299,7 @@ export const CoursesPage: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {courses.map((course, idx) => {
             const cfg = getTypeCfg(course.content_type);
-            const hasCert = !!(course as any).certificate_templates;
+            const hasCert = !!course.certificate_templates;
             const empCount = employeeCourses.filter(ec => ec.course_id === course.id).length;
             const completedCount = employeeCourses.filter(ec => ec.course_id === course.id && ec.completed_at).length;
 
@@ -411,7 +411,7 @@ export const CoursesPage: React.FC = () => {
                         <button key={key} type="button"
                           className="aw-csp-type-btn"
                           style={{ background: active ? bg : 'rgba(255,255,255,0.02)', borderColor: active ? border : 'rgba(255,255,255,0.08)', color: active ? color : T.textMuted }}
-                          onClick={() => setForm(p => ({ ...p, content_type: key as any }))}>
+                          onClick={() => setForm(p => ({ ...p, content_type: key as 'TEXT' | 'VIDEO' | 'SLIDES' }))}>
                           <Icon size={13} style={{ color: active ? color : T.textMuted }} />
                           {label}
                         </button>

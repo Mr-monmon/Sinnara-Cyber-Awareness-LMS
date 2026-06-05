@@ -166,13 +166,13 @@ export const PublicResourcesPage = () => {
         .eq("setting_key", "footer")
         .maybeSingle();
       if (data?.setting_value) {
-        const s = data.setting_value as any;
+        const s = data.setting_value as { email?: string; phone?: string; tagline?: string; copyright?: string };
         if (s.email)     setFooterEmail(s.email);
         if (s.phone)     setFooterPhone(s.phone);
         if (s.tagline)   setFooterTagline(s.tagline);
         if (s.copyright) setFooterCopy(s.copyright);
       }
-    } catch {}
+    } catch { /* intentional */ }
   };
 
   const loadArticleBySlug = async (slug: string) => {
@@ -187,13 +187,13 @@ export const PublicResourcesPage = () => {
         setSelected(data);
         incrementViews(data.id);
       }
-    } catch {}
+    } catch { /* intentional */ }
   };
 
   const incrementViews = async (id: string) => {
     try {
       await supabase.rpc("increment_article_view_count", { article_id: id });
-    } catch {}
+    } catch { /* intentional */ }
   };
 
   const openArticle = (article: Article) => {
@@ -212,7 +212,7 @@ export const PublicResourcesPage = () => {
   const handleShare = async (article: Article) => {
     const url = `${window.location.origin}/resources#${article.slug}`;
     if (navigator.share) {
-      try { await navigator.share({ title: article.title, text: article.excerpt, url }); return; } catch {}
+      try { await navigator.share({ title: article.title, text: article.excerpt, url }); return; } catch { /* intentional */ }
     }
     navigator.clipboard.writeText(url);
     setCopied(true);

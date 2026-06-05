@@ -89,6 +89,8 @@ interface EmployeeCourseRow {
   status:              string;
   completed_at:        string | null;
   assigned_at:         string;
+  completed_sections?: number | null;
+  total_sections?:     number | null;
 }
 
 type Props = { navigateToCertificates: () => void };
@@ -123,7 +125,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
         .select("course_id")
         .eq("company_id", user.company_id);
 
-      const companyCourseIds: string[] = (ccData ?? []).map((r: any) => r.course_id);
+      const companyCourseIds: string[] = (ccData ?? []).map((r: { course_id: string }) => r.course_id);
 
       if (companyCourseIds.length === 0) {
         // Company has no courses assigned at all
@@ -144,7 +146,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
 
       // Build map: courseId → Set of allowed department IDs
       const courseDeptMap: Record<string, string[]> = {};
-      (deptRestrictions ?? []).forEach((r: any) => {
+      (deptRestrictions ?? []).forEach((r: { course_id: string; department_id: string }) => {
         if (!courseDeptMap[r.course_id]) courseDeptMap[r.course_id] = [];
         courseDeptMap[r.course_id].push(r.department_id);
       });
@@ -222,8 +224,8 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
               status:              ec.status,
               completed_at:        ec.completed_at,
               assigned_at:         ec.assigned_at,
-              completed_sections:  (ec as any).completed_sections || 0,
-              total_sections:      (ec as any).total_sections     || 0,
+              completed_sections:  ec.completed_sections || 0,
+              total_sections:      ec.total_sections     || 0,
             };
           }
         });

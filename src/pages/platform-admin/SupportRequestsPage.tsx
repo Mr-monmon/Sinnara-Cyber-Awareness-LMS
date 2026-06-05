@@ -245,7 +245,7 @@ const SupportRequestsPage = () => {
           "id, user_id, subject, status, created_at, updated_at, users!support_ticket_user_id_fkey(email, full_name)"
         );
       if (e) throw e;
-      const normalized: SupportTicketRow[] = ((data || []) as any[]).map(
+      const normalized: SupportTicketRow[] = ((data || []) as (Omit<SupportTicketRow, 'users'> & { users: SupportTicketRow['users'] | SupportTicketRow['users'][] })[]).map(
         (t) => ({
           ...t,
           users: Array.isArray(t.users) ? t.users[0] || null : t.users,
@@ -352,7 +352,7 @@ const SupportRequestsPage = () => {
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) { n.delete(id); } else { n.add(id); }
       return n;
     });
 
@@ -469,7 +469,7 @@ const SupportRequestsPage = () => {
             <button
               key={key}
               className={`aw-sr-tab ${filterStatus === key ? "active" : ""}`}
-              onClick={() => setFilterStatus(key as any)}
+              onClick={() => setFilterStatus(key as TicketStatus | "all")}
             >
               {label}
               <span

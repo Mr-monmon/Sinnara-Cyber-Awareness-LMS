@@ -327,7 +327,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
       .eq("employee_id", employeeId)
       .order("last_accessed_at", { ascending: false, nullsFirst: false });
     if (!ec?.length) return;
-    setCourses(ec.map((e: any) => ({
+    setCourses(ec.map((e: Record<string, unknown> & { courses?: { title?: string } }) => ({
       course_id:           e.course_id,
       course_name:         e.courses?.title || "Unknown",
       progress_percentage: parseFloat(e.progress_percentage) || 0,
@@ -344,7 +344,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
     const { data } = await supabase.from("exam_results").select("*, exams(title, passing_score)").eq("employee_id", employeeId).order("completed_at", { ascending: false });
     if (!data) return;
     const counts = new Map<string, number>();
-    setExams(data.map((r: any) => {
+    setExams(data.map((r: Record<string, unknown> & { exams?: { title?: string } }) => {
       const c = (counts.get(r.exam_id) || 0) + 1;
       counts.set(r.exam_id, c);
       return { exam_name: r.exams?.title || "Unknown", attempt_number: c, score: r.percentage || 0, passed: r.passed || false, completed_at: r.completed_at };
@@ -353,7 +353,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
 
   const loadCerts = async () => {
     const { data } = await supabase.from("issued_certificates").select("*, courses(title)").eq("employee_id", employeeId).order("issued_at", { ascending: false });
-    if (data) setCertificates(data.map((c: any) => ({ id: c.id, course_name: c.courses?.title || null, certificate_number: c.certificate_number, issued_at: c.issued_at })));
+    if (data) setCertificates(data.map((c: Record<string, unknown> & { courses?: { title?: string } }) => ({ id: c.id as string, course_name: (c.courses?.title) || null, certificate_number: c.certificate_number as string, issued_at: c.issued_at as string })));
   };
 
   const loadPhishingAndRisk = async () => {
@@ -372,7 +372,7 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
       .eq("employee_id", employeeId)
       .order("created_at", { ascending: false });
     if (targets) {
-      setPhishingTargets(targets.map((t: any) => ({
+      setPhishingTargets(targets.map((t: Record<string, unknown> & { phishing_campaigns?: { name?: string; created_at?: string } }) => ({
         campaign_name: t.phishing_campaigns?.name ?? "Unknown Campaign",
         campaign_date: t.phishing_campaigns?.created_at ?? "",
         status: t.status ?? "SENT",

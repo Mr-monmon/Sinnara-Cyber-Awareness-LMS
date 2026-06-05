@@ -136,7 +136,7 @@ const STRIP_DOMAINS = [
 
 // ─── CDN / framework scripts to always keep (needed for CSR) ─────────────────
 const KEEP_PATTERNS = [
-  /react[\.\-]/, /vue[\.\-]/, /angular[\.\-]/, /ember[\.\-]/, /svelte[\.\-]/,
+  /react[.-]/, /vue[.-]/, /angular[.-]/, /ember[.-]/, /svelte[.-]/,
   /bootstrap/, /jquery/, /lodash/, /moment/, /axios/, /zustand/, /redux/,
   /unpkg\.com/, /cdnjs\.cloudflare\.com/, /cdn\.jsdelivr\.net/,
   /stackpath\.bootstrapcdn\.com/, /ajax\.googleapis\.com/,
@@ -485,16 +485,6 @@ async function extractBranding(html: string, baseUrl: string): Promise<Branding>
 
 // ─── Synthetic login form for SPAs that returned no real form ─────────────────
 function buildSyntheticForm(branding: Branding, fieldHints: FieldHint[]): string {
-  // Decide on fields to show based on bundle analysis
-  const hasEmailHint = fieldHints.some(f =>
-    f.type === "email" || f.name?.toLowerCase().includes("email") ||
-    f.name?.toLowerCase().includes("mail") || f.name?.toLowerCase().includes("user") ||
-    f.name?.toLowerCase().includes("login")
-  );
-  const hasPasswordHint = fieldHints.some(f =>
-    f.type === "password" || f.name?.toLowerCase().includes("pass")
-  );
-
   const emailField = fieldHints.find(f =>
     f.type === "email" || f.name?.toLowerCase().includes("email") || f.name?.toLowerCase().includes("mail")
   );
@@ -778,10 +768,6 @@ Deno.serve(async (req) => {
         }
       }
     }
-
-    // ── Step 4: Re-evaluate after potential render ────────────────────────────
-    const { isSpa: stillSpa } = detectSpa(html);
-    const hasForm = /<form\b/i.test(html);
 
     // ── Step 5: JS bundle analysis (always run, helps variable injection) ─────
     let bundleAnalysis: BundleAnalysis = { fieldHints: [], apiEndpoints: [], formAction: "" };

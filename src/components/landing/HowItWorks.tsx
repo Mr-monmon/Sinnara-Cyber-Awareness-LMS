@@ -45,12 +45,12 @@ export const HowItWorks: React.FC = () => {
       .maybeSingle();
 
     if (data?.setting_value) {
-      setSettings(data.setting_value as any);
+      setSettings(data.setting_value as Settings);
     }
   };
 
   const getIcon = (iconName: string) => {
-    const Icon = (Icons as any)[iconName];
+    const Icon = (Icons as unknown as Record<string, React.ElementType>)[iconName];
     return Icon ? <Icon className="h-10 w-10" /> : <Icons.CheckCircle className="h-10 w-10" />;
   };
 

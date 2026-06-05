@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Activity, RefreshCw, Play, Pause, CheckCircle, XCircle,
   Clock, Mail, Eye, MousePointer, KeyRound, Flag, AlertTriangle,
-  Building2, ChevronRight, Info, Loader2, Inbox, Send as SendIcon,
+  Building2, Info, Loader2, Inbox, Send as SendIcon,
   BarChart3, Zap, Target,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -89,8 +89,15 @@ interface Campaign {
   data_submitted: number;
   emails_reported: number;
   emails_per_minute: number | null;
-  companies: { name: string } | null;
+  // PostgREST returns to-one joins as arrays in its TypeScript inference
+  companies: { name: string }[] | { name: string } | null;
 }
+
+const getCompanyName = (companies: Campaign['companies']): string => {
+  if (!companies) return '—';
+  if (Array.isArray(companies)) return companies[0]?.name ?? '—';
+  return companies.name;
+};
 
 interface QueueCount { status: string; count: number; }
 
@@ -226,7 +233,7 @@ export const PhishingMonitoringPage: React.FC = () => {
         .select('id, name, status, company_id, launched_at, total_queue_size, total_targets, emails_sent, emails_opened, links_clicked, credentials_entered, data_submitted, emails_reported, emails_per_minute, companies(name)')
         .order('launched_at', { ascending: false });
       if (error) throw error;
-      const rows = (data ?? []) as Campaign[];
+      const rows = (data ?? []) as unknown as Campaign[];
       setCampaigns(rows);
 
       const running   = rows.filter(c => c.status === 'RUNNING').length;
@@ -411,7 +418,7 @@ export const PhishingMonitoringPage: React.FC = () => {
                       <div style={{ fontSize: 12, fontWeight: 700, color: T.white, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
                         <Building2 size={10} style={{ color: T.textMuted }} />
-                        <span style={{ fontSize: 10, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(c.companies as any)?.name ?? '—'}</span>
+                        <span style={{ fontSize: 10, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getCompanyName(c.companies)}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 9999, fontSize: 10, fontWeight: 700, background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
@@ -456,7 +463,7 @@ export const PhishingMonitoringPage: React.FC = () => {
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, color: T.textMuted }}><Building2 size={10} style={{ verticalAlign: 'middle', marginRight: 3 }} />{(selected.companies as any)?.name ?? '—'}</span>
+                    <span style={{ fontSize: 11, color: T.textMuted }}><Building2 size={10} style={{ verticalAlign: 'middle', marginRight: 3 }} />{getCompanyName(selected.companies)}</span>
                     {selected.launched_at && <span style={{ fontSize: 11, color: T.textMuted }}>Launched {fmtTime(selected.launched_at)}</span>}
                     {selected.emails_per_minute && <span style={{ fontSize: 11, color: T.textMuted }}>{selected.emails_per_minute}/min</span>}
                   </div>

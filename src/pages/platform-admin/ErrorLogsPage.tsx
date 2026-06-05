@@ -160,7 +160,7 @@ export function ErrorLogsPage() {
   const toggleExpand = (fp: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      next.has(fp) ? next.delete(fp) : next.add(fp);
+      if (next.has(fp)) { next.delete(fp); } else { next.add(fp); }
       return next;
     });
   };

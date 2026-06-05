@@ -265,7 +265,7 @@ type ScenarioOption = PhishingTemplate & {
 export const PhishingRequestPage: React.FC = () => {
   const { user } = useAuth();
   const [templates, setTemplates]   = useState<ScenarioOption[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [domains, setDomains]       = useState<PhishingDomain[]>([]);
   const [smtpProfiles, setSmtpProfiles] =

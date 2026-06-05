@@ -136,7 +136,7 @@ const sanitizeSubdomain = (v: string) => v.toLowerCase().replace(/[^a-z]/g, '');
 interface CompanyFormModalProps {
   company: Company | null;
   onClose: () => void;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Partial<Company> & { admin_phone?: string; status?: string }) => Promise<void>;
   companies: Company[];
 }
 
@@ -180,19 +180,20 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
 
   useEffect(() => {
     if (company) {
+      const c = company as Company & { admin_phone?: string; status?: string };
       setForm({
         name:               company.name || '',
         subdomain:          sanitizeSubdomain(company.subdomain || ''),
-        admin_name:         (company as any).admin_name || '',
-        admin_email:        (company as any).admin_email || '',
-        admin_phone:        (company as any).admin_phone || '',
+        admin_name:         company.admin_name || '',
+        admin_email:        company.admin_email || '',
+        admin_phone:        c.admin_phone || '',
         package_type:       company.package_type === 'TYPE_B' ? 'TYPE_B' : 'TYPE_A',
         license_limit:      company.license_limit || 10,
-        subscription_type:  (company as any).subscription_type || 'POC_3M',
-        subscription_start: (company as any).subscription_start?.split('T')[0] || new Date().toISOString().split('T')[0],
-        subscription_end:   (company as any).subscription_end?.split('T')[0] || '',
-        is_active:          (company as any).is_active !== false,
-        status:             (company as any).status || 'ACTIVE',
+        subscription_type:  company.subscription_type || 'POC_3M',
+        subscription_start: company.subscription_start?.split('T')[0] || new Date().toISOString().split('T')[0],
+        subscription_end:   company.subscription_end?.split('T')[0] || '',
+        is_active:          company.is_active !== false,
+        status:             c.status || 'ACTIVE',
       });
     }
   }, [company]);
@@ -294,7 +295,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
 
                 <div>
                   <label className="aw-cfm-label">Package Type <span style={{ color: T.accent }}>*</span></label>
-                  <select className="aw-cfm-select" required value={form.package_type} onChange={e => setForm(p => ({ ...p, package_type: e.target.value as any }))}>
+                  <select className="aw-cfm-select" required value={form.package_type} onChange={e => setForm(p => ({ ...p, package_type: e.target.value as 'TYPE_A' | 'TYPE_B' }))}>
                     <option value="TYPE_A">Type A — Full Courses</option>
                     <option value="TYPE_B">Type B — Exams Only</option>
                   </select>

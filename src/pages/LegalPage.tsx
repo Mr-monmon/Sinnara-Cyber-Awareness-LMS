@@ -309,13 +309,13 @@ export const LegalPage: React.FC = () => {
       try {
         const { data } = await supabase.from("homepage_settings").select("setting_value").eq("setting_key","footer").maybeSingle();
         if (data?.setting_value) {
-          const s = data.setting_value as any;
+          const s = data.setting_value as { email?: string; phone?: string; tagline?: string; copyright?: string };
           if (s.email)     setFooterEmail(s.email);
           if (s.phone)     setFooterPhone(s.phone);
           if (s.tagline)   setFooterTagline(s.tagline);
           if (s.copyright) setFooterCopy(s.copyright);
         }
-      } catch {}
+      } catch { /* intentional */ }
     })();
   }, []);
 

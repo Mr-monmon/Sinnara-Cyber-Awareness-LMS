@@ -306,7 +306,7 @@ export const FraudAlertsManagementPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="aw-fa-label">Severity <span style={{ color: T.accent }}>*</span></label>
-                  <select className="aw-fa-select" value={form.severity} onChange={e => setForm(p => ({ ...p, severity: e.target.value as any }))}>
+                  <select className="aw-fa-select" value={form.severity} onChange={e => setForm(p => ({ ...p, severity: e.target.value as 'LOW' | 'MEDIUM' | 'HIGH' }))}>
                     <option value="LOW">🔵 Low Severity</option>
                     <option value="MEDIUM">🟡 Medium Severity</option>
                     <option value="HIGH">🔴 High Severity</option>

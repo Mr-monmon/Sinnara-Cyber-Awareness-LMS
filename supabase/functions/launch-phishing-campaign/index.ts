@@ -157,6 +157,46 @@ Deno.serve(async (req) => {
     if (!email_subject || !email_html) {
       return new Response(JSON.stringify({ success: false, error: "Email subject and HTML body are required" }), { status: 400, headers: corsHeaders });
     }
+
+    // Verify every group belongs to the caller's company (prevent cross-tenant group abuse).
+    const { data: ownedGroups, error: grpErr } = await db
+      .from("phishing_groups")
+      .select("id")
+      .in("id", group_ids as string[])
+      .eq("company_id", companyId);
+
+    if (grpErr) {
+      return new Response(JSON.stringify({ success: false, error: "Failed to validate target groups" }), { status: 500, headers: corsHeaders });
+    }
+    if (!ownedGroups || ownedGroups.length !== (group_ids as string[]).length) {
+      return new Response(JSON.stringify({ success: false, error: "One or more groups do not belong to your company" }), { status: 403, headers: corsHeaders });
+    }
+  }
+
+  // Verify SMTP profile ownership (if provided and not the platform default).
+  if (smtp_profile_id && typeof smtp_profile_id === "string") {
+    const { data: smtpOwner } = await db
+      .from("smtp_profiles")
+      .select("id, is_platform_profile")
+      .eq("id", smtp_profile_id)
+      .single();
+
+    if (!smtpOwner) {
+      return new Response(JSON.stringify({ success: false, error: "SMTP profile not found" }), { status: 403, headers: corsHeaders });
+    }
+    if (!smtpOwner.is_platform_profile) {
+      // Company-owned profile: must belong to the caller's company.
+      const { data: smtpCompany } = await db
+        .from("smtp_profiles")
+        .select("id")
+        .eq("id", smtp_profile_id)
+        .eq("company_id", companyId)
+        .single();
+
+      if (!smtpCompany) {
+        return new Response(JSON.stringify({ success: false, error: "SMTP profile does not belong to your company" }), { status: 403, headers: corsHeaders });
+      }
+    }
   }
 
   // ── Draft: create campaign record only ──

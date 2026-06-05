@@ -645,7 +645,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       const deptLookup = new Map(
         departments.map((d) => [d.name.trim().toLowerCase(), d.id])
       );
-      const validRows: any[] = [];
+      const validRows: Record<string, string>[] = [];
       const rejected = {
         missingName: 0,
         missingEmail: 0,

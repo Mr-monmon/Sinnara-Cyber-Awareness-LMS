@@ -304,7 +304,7 @@ export const CompaniesPage: React.FC = () => {
     }
   };
 
-  const handleSaveCompany = async (formData: any) => {
+  const handleSaveCompany = async (formData: Record<string, unknown>) => {
     try {
       if (editingCompany) {
         await supabase
@@ -416,7 +416,7 @@ export const CompaniesPage: React.FC = () => {
       setEditingCompany(null);
       await loadCompanies();
     } catch (err) {
-      alert("Failed to save company: " + (err as any).message);
+      alert("Failed to save company: " + (err as Error).message);
     }
   };
 
