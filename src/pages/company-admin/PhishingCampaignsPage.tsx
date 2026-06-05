@@ -209,7 +209,10 @@ export const PhishingCampaignsPage: React.FC = () => {
       // profiles that have been pushed to them, in addition to their own company profiles.
       supabase.from('smtp_profiles').select('id, name, from_address, from_name'),
       supabase.from('phishing_company_email_templates').select('id, name, subject, html_content').eq('company_id', companyId),
-      supabase.from('phishing_company_landing_pages').select('id, name, html_content').eq('company_id', companyId),
+      // Include platform landing pages (company_id IS NULL, is_platform_page=true)
+      // in addition to the company's own. RLS already restricts which platform
+      // pages are visible (GLOBAL, or explicitly shared via landing_page_company_access).
+      supabase.from('phishing_company_landing_pages').select('id, name, html_content, is_platform_page').or(`company_id.eq.${companyId},is_platform_page.eq.true`),
       supabase.from('company_phishing_limits').select('*').eq('company_id', companyId).maybeSingle(),
     ]);
     setScenarios(scRes.data || []);

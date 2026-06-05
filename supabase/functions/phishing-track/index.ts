@@ -193,22 +193,6 @@ async function logEvent(params: {
 
   if (!campaign) return null;
 
-  // Always record the raw event — multiple opens/clicks are legitimate history.
-  const { data: event } = await supabase.from("phishing_events").insert({
-    campaign_id,
-    target_id: target.id,
-    company_id: campaign.company_id,
-    event_type,
-    recipient_id,
-    email: target.email,
-    ip_address: ip,
-    user_agent: ua,
-    browser: uaParsed.browser,
-    os: uaParsed.os,
-    device_type: uaParsed.device_type,
-    metadata,
-  }).select().single();
-
   // Map each event to its funnel timestamp, target status, rank, and aggregate counter.
   // Rank lets us advance status forward only (an EMAIL_OPENED must never overwrite CLICKED).
   const tsField: Record<string, string> = {
@@ -233,9 +217,34 @@ async function logEvent(params: {
   };
 
   // Has this target already reached this stage? If so, this is a repeat hit —
-  // record the event above but do NOT increment the campaign counter again.
+  // record the event below but do NOT increment the campaign counter again.
   const existingTs = (target as Record<string, unknown>)[tsField[event_type] ?? ""] as string | null;
   const isFirstForStage = !existingTs;
+
+  // EMAIL_OPENED is fired by the tracking pixel, which mail clients and their
+  // image proxies (Gmail/Outlook/Apple) routinely re-fetch — pre-caching on
+  // delivery, then again on actual view, plus on every re-open. Recording each
+  // hit floods the event timeline with duplicate "Email Opened" rows for a
+  // single real open. We therefore collapse opens to ONE event per recipient:
+  // only the first open is persisted. Clicks/submits keep full history.
+  if (event_type === "EMAIL_OPENED" && !isFirstForStage) {
+    return null;
+  }
+
+  const { data: event } = await supabase.from("phishing_events").insert({
+    campaign_id,
+    target_id: target.id,
+    company_id: campaign.company_id,
+    event_type,
+    recipient_id,
+    email: target.email,
+    ip_address: ip,
+    user_agent: ua,
+    browser: uaParsed.browser,
+    os: uaParsed.os,
+    device_type: uaParsed.device_type,
+    metadata,
+  }).select().single();
 
   if (tsField[event_type] && isFirstForStage) {
     const update: Record<string, unknown> = { [tsField[event_type]]: new Date().toISOString() };

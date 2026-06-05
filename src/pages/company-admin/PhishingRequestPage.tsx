@@ -6,7 +6,6 @@ import {
   Send,
   Eye,
   Mail,
-  Globe,
   Lock,
   Activity,
   Loader2,
@@ -204,7 +203,14 @@ if (
   document.head.appendChild(tag);
 }
 
-type Tab = "basic" | "email" | "landing" | "tracking";
+type Tab = "basics" | "content" | "tracking";
+
+// A landing page option offered in the picker (company-owned or shared platform page).
+type LandingPageOption = {
+  id: string;
+  name: string;
+  is_platform_page: boolean;
+};
 
 /* ─────────────────────────────────────────
    SECTION WRAPPER
@@ -270,11 +276,12 @@ export const PhishingRequestPage: React.FC = () => {
   const [domains, setDomains]       = useState<PhishingDomain[]>([]);
   const [smtpProfiles, setSmtpProfiles] =
     useState<{ id: string; name: string; from_address: string; from_name: string }[]>([]);
+  const [landingPages, setLandingPages] = useState<LandingPageOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [previewTemplate, setPreviewTemplate] =
     useState<PhishingTemplate | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("basic");
+  const [activeTab, setActiveTab] = useState<Tab>("basics");
   const [requestingMore, setRequestingMore] = useState(false);
   const [moreError, setMoreError] = useState("");
 
@@ -288,7 +295,10 @@ export const PhishingRequestPage: React.FC = () => {
     email_subject: "",
     email_html_body: "",
     email_text_body: "",
+    // landing_page_html is no longer edited in the UI (replaced by a picker); kept
+    // null in the insert. landing_page_id holds the chosen landing page ("" = blank).
     landing_page_html: "",
+    landing_page_id: "",
     redirect_url: "",
     domain_id: "",
     from_address: "",
@@ -317,7 +327,7 @@ export const PhishingRequestPage: React.FC = () => {
     if (!user?.company_id) return;
     try {
       const year = new Date().getFullYear();
-      const [tRes, dRes, qRes, domRes, smRes] = await Promise.all([
+      const [tRes, dRes, qRes, domRes, smRes, lpRes] = await Promise.all([
         supabase
           .from("phishing_scenarios")
           .select("*")
@@ -346,6 +356,13 @@ export const PhishingRequestPage: React.FC = () => {
           .select("id, name, from_address, from_name")
           .eq("is_active", true)
           .order("name"),
+        // Landing pages the requester can pick: company-owned + shared platform
+        // pages. RLS already restricts platform pages to GLOBAL/shared ones.
+        supabase
+          .from("phishing_company_landing_pages")
+          .select("id, name, is_platform_page")
+          .or(`company_id.eq.${user.company_id},is_platform_page.eq.true`)
+          .order("name"),
       ]);
       // Map scenario rows onto the picker option shape (subject/html come from the
       // scenario's email fields; bundle fields are retained for pre-fill).
@@ -370,6 +387,7 @@ export const PhishingRequestPage: React.FC = () => {
       if (qRes.data) setQuota(qRes.data);
       if (domRes.data) setDomains(domRes.data);
       if (smRes.data) setSmtpProfiles(smRes.data);
+      if (lpRes.data) setLandingPages(lpRes.data as LandingPageOption[]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -386,9 +404,8 @@ export const PhishingRequestPage: React.FC = () => {
         template_id: id,
         email_subject: tpl.subject,
         email_html_body: tpl.html_content,
-        // Pre-fill the landing page / redirect / capture from the scenario bundle,
-        // but only overwrite when the scenario actually provides a value.
-        landing_page_html: tpl.landing_page_html || prev.landing_page_html,
+        // Landing page HTML is no longer edited here (replaced by a picker), so we
+        // don't pre-fill it. Redirect / capture are still pre-filled from the bundle.
         redirect_url: tpl.redirect_url || prev.redirect_url,
         capture_credentials:
           tpl.capture_credentials ?? prev.capture_credentials,
@@ -477,6 +494,7 @@ export const PhishingRequestPage: React.FC = () => {
             email_html_body: form.email_html_body || null,
             email_text_body: form.email_text_body || null,
             landing_page_html: form.landing_page_html || null,
+            landing_page_id: form.landing_page_id || null,
             redirect_url: form.redirect_url || null,
             domain_id: form.domain_id || null,
             from_address: form.from_address || null,
@@ -683,12 +701,33 @@ export const PhishingRequestPage: React.FC = () => {
     );
   }
 
-  const tabs: { id: Tab; icon: React.ElementType; label: string }[] = [
-    { id: "basic", icon: FileText, label: "Basic Info" },
-    { id: "email", icon: Mail, label: "Email Template" },
-    { id: "landing", icon: Globe, label: "Landing Page" },
-    { id: "tracking", icon: Activity, label: "Tracking" },
+  const tabs: { id: Tab; icon: React.ElementType; label: string; done: boolean }[] = [
+    {
+      id: "basics",
+      icon: FileText,
+      label: "Basics & Targets",
+      done: !!form.campaign_name && form.target_departments.length > 0,
+    },
+    {
+      id: "content",
+      icon: Mail,
+      label: "Email & Landing Page",
+      done: !!form.email_subject && !!form.email_html_body,
+    },
+    {
+      id: "tracking",
+      icon: Activity,
+      label: "Tracking & Submit",
+      done: form.authorization_confirmed,
+    },
   ];
+
+  const tabOrder: Tab[] = ["basics", "content", "tracking"];
+  const activeIndex = tabOrder.indexOf(activeTab);
+  const goNext = () =>
+    setActiveTab(tabOrder[Math.min(activeIndex + 1, tabOrder.length - 1)]);
+  const goBack = () =>
+    setActiveTab(tabOrder[Math.max(activeIndex - 1, 0)]);
 
   /* Checklist items */
   const checklist = [
@@ -704,8 +743,9 @@ export const PhishingRequestPage: React.FC = () => {
     },
     {
       label: "Landing Page",
-      done: !!form.landing_page_html,
-      sub: "Capture page",
+      done: !!form.landing_page_id,
+      sub: "Optional — admin picks if blank",
+      optional: true,
     },
     {
       label: "Target Group",
@@ -900,23 +940,30 @@ export const PhishingRequestPage: React.FC = () => {
                 flexWrap: "wrap",
               }}
             >
-              {tabs.map((tab) => (
+              {tabs.map((tab, i) => (
                 <button
                   key={tab.id}
+                  type="button"
                   className={`aw-pr-tab ${
                     activeTab === tab.id ? "active" : ""
                   }`}
                   onClick={() => setActiveTab(tab.id)}
                 >
-                  <tab.icon size={13} /> {tab.label}
+                  {tab.done ? (
+                    <Check size={13} style={{ color: T.green }} />
+                  ) : (
+                    <tab.icon size={13} />
+                  )}{" "}
+                  <span style={{ opacity: 0.55, fontWeight: 700 }}>{i + 1}.</span>{" "}
+                  {tab.label}
                 </button>
               ))}
             </div>
 
             <form onSubmit={handleSubmit}>
               <div style={{ padding: "20px" }}>
-                {/* ── BASIC TAB ── */}
-                {activeTab === "basic" && (
+                {/* ── STEP 1: BASICS & TARGETS ── */}
+                {activeTab === "basics" && (
                   <div
                     style={{
                       display: "flex",
@@ -1152,8 +1199,8 @@ export const PhishingRequestPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── EMAIL TAB ── */}
-                {activeTab === "email" && (
+                {/* ── STEP 2: EMAIL & LANDING PAGE ── */}
+                {activeTab === "content" && (
                   <div
                     style={{
                       display: "flex",
@@ -1398,18 +1445,15 @@ export const PhishingRequestPage: React.FC = () => {
                         }
                       />
                     </div>
-                  </div>
-                )}
 
-                {/* ── LANDING TAB ── */}
-                {activeTab === "landing" && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 18,
-                    }}
-                  >
+                    {/* ── Landing page (merged into step 2) ── */}
+                    <div
+                      style={{
+                        height: 1,
+                        background: T.borderFaint,
+                        margin: "2px 0",
+                      }}
+                    />
                     <div
                       style={{
                         padding: "12px 16px",
@@ -1421,23 +1465,66 @@ export const PhishingRequestPage: React.FC = () => {
                       }}
                     >
                       <strong>Landing Page:</strong> The page displayed when
-                      users click the phishing link. Can capture credentials or
-                      redirect to a real website.
+                      users click the phishing link. Pick one below, or leave it
+                      blank and the platform admin will choose the best landing
+                      page for this campaign.
                     </div>
                     <div>
-                      <label className="aw-pr-label">Landing Page HTML</label>
-                      <textarea
-                        className="aw-pr-textarea aw-pr-code"
-                        rows={12}
-                        placeholder={`<html><body><h2>Account Verification</h2><form><input name='username' placeholder='Email' /><input name='password' type='password' placeholder='Password' /><button>Submit</button></form></body></html>`}
-                        value={form.landing_page_html}
+                      <label className="aw-pr-label">Landing Page</label>
+                      <select
+                        className="aw-pr-select"
+                        value={form.landing_page_id}
                         onChange={(e) =>
                           setForm((p) => ({
                             ...p,
-                            landing_page_html: e.target.value,
+                            landing_page_id: e.target.value,
                           }))
                         }
-                      />
+                      >
+                        <option value="">
+                          Leave blank — platform admin will choose the best
+                          landing page
+                        </option>
+                        {landingPages.map((lp) => (
+                          <option key={lp.id} value={lp.id}>
+                            {lp.name}
+                            {lp.is_platform_page ? " — Platform" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const sel = landingPages.find(
+                          (lp) => lp.id === form.landing_page_id,
+                        );
+                        return sel?.is_platform_page ? (
+                          <span
+                            style={{
+                              display: "inline-block",
+                              marginTop: 8,
+                              padding: "2px 9px",
+                              background: T.purpleBg,
+                              border: `1px solid ${T.purpleBorder}`,
+                              borderRadius: 9999,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: T.purple,
+                            }}
+                          >
+                            Platform
+                          </span>
+                        ) : null;
+                      })()}
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: T.textMuted,
+                          marginTop: 6,
+                          marginBottom: 0,
+                        }}
+                      >
+                        Optional. Platform pages are shared templates maintained
+                        by the platform team.
+                      </p>
                     </div>
                     <div>
                       <label className="aw-pr-label">
@@ -1472,7 +1559,7 @@ export const PhishingRequestPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── TRACKING TAB ── */}
+                {/* ── STEP 3: TRACKING & SUBMIT ── */}
                 {activeTab === "tracking" && (
                   <div
                     style={{
@@ -1649,32 +1736,70 @@ export const PhishingRequestPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Submit */}
+              {/* Step navigation / Submit */}
               <div
                 style={{
                   padding: "16px 20px",
                   borderTop: `1px solid ${T.borderFaint}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
                 }}
               >
                 <button
-                  type="submit"
-                  className="aw-pr-submit"
-                  disabled={isSubmitDisabled}
+                  type="button"
+                  onClick={goBack}
+                  disabled={activeIndex === 0}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "12px 18px",
+                    borderRadius: 10,
+                    border: `1px solid ${T.border}`,
+                    background: "rgba(255,255,255,0.03)",
+                    color: activeIndex === 0 ? T.textMuted : T.textBody,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    fontFamily: "inherit",
+                    cursor: activeIndex === 0 ? "not-allowed" : "pointer",
+                    opacity: activeIndex === 0 ? 0.5 : 1,
+                  }}
                 >
-                  {submitting ? (
-                    <>
-                      <Loader2
-                        size={16}
-                        style={{ animation: "aw-spin 0.8s linear infinite" }}
-                      />{" "}
-                      Submitting…
-                    </>
-                  ) : (
-                    <>
-                      <Send size={16} /> Submit Campaign Request
-                    </>
-                  )}
+                  <ArrowLeft size={15} /> Back
                 </button>
+
+                {activeTab === "tracking" ? (
+                  <button
+                    type="submit"
+                    className="aw-pr-submit"
+                    style={{ flex: 1 }}
+                    disabled={isSubmitDisabled}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          style={{ animation: "aw-spin 0.8s linear infinite" }}
+                        />{" "}
+                        Submitting…
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} /> Submit Campaign Request
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="aw-pr-submit"
+                    style={{ flex: 1 }}
+                  >
+                    Next <ChevronRight size={16} />
+                  </button>
+                )}
               </div>
             </form>
           </div>
