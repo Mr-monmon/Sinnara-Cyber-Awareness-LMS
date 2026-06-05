@@ -9,7 +9,7 @@ compatibility_date = "2026-04-09"
 # dashboard and are in scope during the build, so the Vite bundle is
 # produced with the correct Supabase config baked in.
 [build]
-command = "npm install && npm run build"
+command = "npm ci && npm run typecheck && npm run lint && npm test && npm run build"
 
 [assets]
 directory = "./dist"

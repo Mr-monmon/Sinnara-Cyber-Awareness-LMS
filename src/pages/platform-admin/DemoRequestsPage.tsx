@@ -161,7 +161,7 @@ export const DemoRequestsPage: React.FC = () => {
   };
 
   const toggleExpand = (id: string) =>
-    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExpanded(prev => { const n = new Set(prev); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
 
   const filtered = requests.filter(r => filter === 'ALL' ? true : r.status === filter);
 
@@ -176,7 +176,7 @@ export const DemoRequestsPage: React.FC = () => {
     const headers = ['full_name','status','email','phone','company_name','employee_count','created_at','message'];
     const esc = (v: string | number) => { const s = String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const sep = (1.1).toLocaleString().includes(',') ? ';' : ',';
-    const rows = filtered.map(r => headers.map(h => esc((r as any)[h] ?? '')).join(sep));
+    const rows = filtered.map(r => headers.map(h => esc(((r as unknown as Record<string, unknown>)[h] ?? '') as string | number)).join(sep));
     const csv = [headers.join(sep), ...rows].join('\r\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -219,7 +219,7 @@ export const DemoRequestsPage: React.FC = () => {
           <button
             key={key}
             className={`aw-dr-filter-card ${filter === key ? `active-${key}` : ''}`}
-            onClick={() => setFilter(key as any)}
+            onClick={() => setFilter(key as 'ALL' | DemoStatus)}
           >
             <div style={{ fontSize: 24, fontWeight: 900, color, marginBottom: 4 }}>{count}</div>
             <div style={{ fontSize: 12, color: filter === key ? T.textBody : T.textMuted }}>{label}</div>

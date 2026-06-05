@@ -88,16 +88,6 @@ Deno.serve(async (req) => {
   }[] = [];
 
   if (resultsRes && employees) {
-    const employeeDirectory = new Map(
-      employees.map((employee) => [
-        employee.id,
-        {
-          name: employee.full_name || "Employee",
-          email: employee.email || "",
-        },
-      ])
-    );
-
     const scoreMap = new Map<string, { total: number; count: number }>();
     resultsRes.forEach((result) => {
       const current = scoreMap.get(result.employee_id) || {

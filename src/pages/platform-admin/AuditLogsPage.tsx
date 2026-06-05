@@ -178,7 +178,7 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-al-styles'))
 interface AuditLog {
   id: string; user_id?: string; action_type: string;
   entity_type?: string; entity_id?: string; entity_name?: string;
-  old_value?: any; new_value?: any; ip_address?: string;
+  old_value?: unknown; new_value?: unknown; ip_address?: string;
   user_agent?: string; description?: string; created_at: string;
   users: User;
 }

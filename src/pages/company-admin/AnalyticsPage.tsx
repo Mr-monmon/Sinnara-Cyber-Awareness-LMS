@@ -87,7 +87,8 @@ interface EmployeePerformance {
 }
 interface CourseStats {
   totalAssigned: number; totalCompleted: number; completionRate: number;
-  employeesCompleted: any[]; employeesIncomplete: any[];
+  employeesCompleted: { id: string; employee?: { full_name?: string | null } | null; course?: { title?: string | null } | null }[];
+  employeesIncomplete: { id: string; full_name: string | null; department?: { name?: string | null } | null }[];
 }
 interface ExamStats {
   totalAttempts: number; uniqueEmployees: number;
@@ -304,7 +305,7 @@ export const AnalyticsPage: React.FC = () => {
       const completionRate = assignedCount && assignedCount > 0 ? ((completedCount || 0) / assignedCount) * 100 : 0;
       const completedIds = [...new Set(completions?.map(c => c.employee_id))];
       const incompleteEmployees = allEmployees.filter(emp => !completedIds.includes(emp.id));
-      setCourseStats({ totalAssigned: assignedCount || 0, totalCompleted: completedCount || 0, completionRate, employeesCompleted: completions || [], employeesIncomplete: incompleteEmployees });
+      setCourseStats({ totalAssigned: assignedCount || 0, totalCompleted: completedCount || 0, completionRate, employeesCompleted: (completions || []) as unknown as CourseStats['employeesCompleted'], employeesIncomplete: incompleteEmployees as unknown as CourseStats['employeesIncomplete'] });
     } catch (err) { console.error(err); }
   };
 
@@ -545,7 +546,7 @@ export const AnalyticsPage: React.FC = () => {
               <span style={{ marginLeft: 'auto', fontSize: 11, color: T.green, fontWeight: 700 }}>{courseStats.employeesCompleted.length}</span>
             </div>
             <div className="aw-ca-list" style={{ padding: '10px 0' }}>
-              {courseStats.employeesCompleted.map((comp: any) => (
+              {courseStats.employeesCompleted.map((comp) => (
                 <div key={comp.id} style={{ padding: '8px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: T.textBody, fontWeight: 500 }}>{comp.employee?.full_name}</span>
                   <span style={{ fontSize: 11, color: T.textMuted, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.course?.title}</span>
@@ -565,7 +566,7 @@ export const AnalyticsPage: React.FC = () => {
               <span style={{ marginLeft: 'auto', fontSize: 11, color: T.orange, fontWeight: 700 }}>{courseStats.employeesIncomplete.length}</span>
             </div>
             <div className="aw-ca-list" style={{ padding: '10px 0' }}>
-              {courseStats.employeesIncomplete.map((emp: any) => (
+              {courseStats.employeesIncomplete.map((emp) => (
                 <div key={emp.id} style={{ padding: '8px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: T.textBody, fontWeight: 500 }}>{emp.full_name}</span>
                   <span style={{ fontSize: 11, color: T.textMuted }}>{emp.department?.name || 'No Dept'}</span>

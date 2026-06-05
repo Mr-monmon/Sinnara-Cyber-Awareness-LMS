@@ -65,6 +65,12 @@ BEGIN
 END $$;
 
 -- Public tables (anon read)
-CREATE POLICY IF NOT EXISTS "Allow anon read demo_requests" ON public.demo_requests FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY IF NOT EXISTS "Allow anon insert public_assessments" ON public.public_assessments FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY IF NOT EXISTS "Allow anon select public_assessments" ON public.public_assessments FOR SELECT TO anon USING (true);
+-- Note: CREATE POLICY IF NOT EXISTS is only valid on PG17+. Use DROP + CREATE for PG15/16 compat.
+DROP POLICY IF EXISTS "Allow anon read demo_requests" ON public.demo_requests;
+CREATE POLICY "Allow anon read demo_requests" ON public.demo_requests FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon insert public_assessments" ON public.public_assessments;
+CREATE POLICY "Allow anon insert public_assessments" ON public.public_assessments FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon select public_assessments" ON public.public_assessments;
+CREATE POLICY "Allow anon select public_assessments" ON public.public_assessments FOR SELECT TO anon USING (true);

@@ -203,7 +203,7 @@ const MonitoringTab: React.FC = () => {
         .order('created_at', { ascending: false })
         .limit(200);
 
-      setCampaigns((camps || []).map((c: any) => ({
+      setCampaigns((camps || []).map((c: { id: string; name: string; status: string; company_id: string; companies?: { name: string } | null; total_queue_size?: number; emails_sent?: number; emails_opened?: number; links_clicked?: number; data_submitted?: number; created_at: string; completion_date?: string }) => ({
         id:               c.id,
         name:             c.name,
         status:           c.status,
@@ -215,7 +215,7 @@ const MonitoringTab: React.FC = () => {
         links_clicked:    c.links_clicked || 0,
         data_submitted:   c.data_submitted || 0,
         created_at:       c.created_at,
-        completion_date:  c.completion_date,
+        completion_date:  c.completion_date ?? null,
       })));
     } finally { setLoading(false); }
   }, []);
@@ -340,7 +340,7 @@ const QuotaTab: React.FC = () => {
         .eq('quota_year', new Date().getFullYear());
 
       const quotaMap = new Map<string, { annual_quota: number; used_campaigns: number }>();
-      (quotaData || []).forEach((q: any) => quotaMap.set(q.company_id, { annual_quota: q.annual_quota, used_campaigns: q.used_campaigns }));
+      (quotaData || []).forEach((q: { company_id: string; annual_quota: number; used_campaigns: number }) => quotaMap.set(q.company_id, { annual_quota: q.annual_quota, used_campaigns: q.used_campaigns }));
 
       const result: CompanyQuota[] = (companies || []).map(c => ({
         id: c.id,

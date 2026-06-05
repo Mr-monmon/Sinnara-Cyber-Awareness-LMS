@@ -343,7 +343,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const [quota, setQuota]           = useState<PhishingCampaignQuota | null>(null);
   const [campaigns, setCampaigns]   = useState<PhishingCampaign[]>([]);
   const [requests, setRequests]     = useState<PhishingCampaignRequest[]>([]);
-  const [deptStats, setDeptStats]   = useState<any[]>([]);
+  const [deptStats, setDeptStats]   = useState<{ id: string; vulnerability_score?: number | null; total_targets: number; emails_opened: number; links_clicked: number; emails_reported: number; credentials_entered: number; department?: { name?: string | null } | null }[]>([]);
   const [loading, setLoading]       = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
 
@@ -569,7 +569,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Department Vulnerability Analysis</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {deptStats.map((stat: any) => {
+                {deptStats.map((stat) => {
                   // vulnerability_score is populated by a DB trigger and is NULL until
                   // it first runs (e.g. a freshly created department), so coerce safely.
                   const scoreNum = Number(stat.vulnerability_score) || 0;

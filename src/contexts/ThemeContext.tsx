@@ -222,7 +222,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    try { localStorage.setItem("aw-theme", isDark ? "dark" : "light"); } catch {}
+    try { localStorage.setItem("aw-theme", isDark ? "dark" : "light"); } catch { /* intentional */ }
 
     /* Inject / update light-mode CSS overrides */
     const STYLE_ID = "aw-theme-overrides";

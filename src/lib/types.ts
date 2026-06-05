@@ -63,7 +63,7 @@ export interface CourseSection {
   title: string;
   section_type: "VIDEO" | "ARTICLE" | "QUIZ";
   content: string;
-  content_data: any;
+  content_data: Record<string, unknown>;
   duration_minutes: number;
   order_index: number;
   created_at: string;

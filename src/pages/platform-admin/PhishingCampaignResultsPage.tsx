@@ -209,7 +209,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
         .order('created_at', { ascending: false });
       if (err) throw err;
       if (data) setCampaigns(data);
-    } catch (err) { setError('Failed to load campaigns'); }
+    } catch { setError('Failed to load campaigns'); }
     finally { setLoading(false); }
   };
 
@@ -621,7 +621,7 @@ export const PhishingCampaignResultsPage: React.FC = () => {
                   { label: 'Scheduled Date',    value: selectedCampaign.scheduled_date ? new Date(selectedCampaign.scheduled_date).toLocaleDateString('en-SA') : 'Not set' },
                   { label: 'Target Employees',  value: String(selectedCampaign.target_employee_count ?? 'N/A') },
                   { label: 'Priority',          value: selectedCampaign.priority || 'N/A' },
-                  { label: 'Requested By',      value: (selectedCampaign as any).users?.full_name || 'N/A' },
+                  { label: 'Requested By',      value: selectedCampaign.users?.full_name || 'N/A' },
                 ].map(({ label, value, isStatus }) => {
                   const cfg = isStatus ? getStatusCfg(value) : null;
                   return (

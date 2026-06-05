@@ -158,7 +158,10 @@ export const CourseAssignmentPage: React.FC = () => {
       if (ccErr) throw ccErr;
 
       const courseList = (ccData ?? [])
-        .map((cc: any) => cc.courses)
+        .map((cc: { course_id: string; courses: Course | null | Course[] }) => {
+          const c = cc.courses;
+          return Array.isArray(c) ? (c[0] ?? null) : c;
+        })
         .filter(Boolean) as Course[];
 
       // Sort by order_index (same as platform admin view)
@@ -283,15 +286,16 @@ export const CourseAssignmentPage: React.FC = () => {
 
   /* ── CSV export ── */
   const handleDownload = async (courseId: string) => {
-    const rows = employeeCourses.filter(ec =>
+    type ECWithEmployee = EmployeeCourse & { employee?: { full_name?: string; email?: string; company_id?: string; department?: { name?: string } } };
+    const rows = (employeeCourses as ECWithEmployee[]).filter(ec =>
       ec.course_id === courseId &&
-      (ec as any).employee?.company_id === user?.company_id
+      ec.employee?.company_id === user?.company_id
     );
     if (!rows.length) { alert("No employee records for this course"); return; }
-    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = ["name", "email", "department", "progress_%", "completed_at"];
     const lines = rows.map(r => {
-      const e = (r as any).employee;
+      const e = r.employee;
       return [
         esc(e?.full_name), esc(e?.email),
         esc(e?.department?.name),
@@ -311,9 +315,10 @@ export const CourseAssignmentPage: React.FC = () => {
 
   /* ── Stats from employee_courses (per company) ── */
   const getStats = (courseId: string) => {
-    const rows = employeeCourses.filter(ec =>
+    type ECWithEmployee = EmployeeCourse & { employee?: { company_id?: string } };
+    const rows = (employeeCourses as ECWithEmployee[]).filter(ec =>
       ec.course_id === courseId &&
-      (ec as any).employee?.company_id === user?.company_id
+      ec.employee?.company_id === user?.company_id
     );
     const completed = rows.filter(r => r.completed_at).length;
     const avg = rows.length > 0

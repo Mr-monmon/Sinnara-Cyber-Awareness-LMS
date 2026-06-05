@@ -367,7 +367,7 @@ const EmailPage = () => {
     quill.on("selection-change", (range) => {
       if (range) selectionIndexRef.current = range.index;
     });
-    (quill.getModule("toolbar") as any).addHandler("image", () =>
+    (quill.getModule("toolbar") as { addHandler: (name: string, handler: () => void) => void }).addHandler("image", () =>
       imageInputRef.current?.click()
     );
     quillInstanceRef.current = quill;

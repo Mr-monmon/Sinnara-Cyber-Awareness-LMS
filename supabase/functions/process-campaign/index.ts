@@ -202,8 +202,7 @@ async function sendViaSmtp(params: {
     return { success: false, error: e instanceof Error ? e.message : "Could not decrypt SMTP password.", from_used: fromUsed };
   }
   try {
-    // deno-lint-ignore no-explicit-any
-    const nodemailer = await import("npm:nodemailer@6") as any;
+    const nodemailer = await import("npm:nodemailer@6") as { createTransport: (opts: Record<string, unknown>) => { sendMail: (opts: Record<string, unknown>) => Promise<void> } };
 
     // Port 465 = implicit TLS (TLS from the first byte, nodemailer `secure: true`).
     // Port 587 / 2525 / 25 with TLS enabled = STARTTLS upgrade after connect
@@ -357,6 +356,9 @@ Deno.serve(async (req) => {
   const isCron     = bearer.length > 0 &&
     (bearer === SERVICE_ROLE_KEY || jwtRole(bearer) === "service_role");
 
+  // For non-cron callers, capture company scope for query restriction below.
+  let callerCompanyId: string | null = null;
+
   if (!isCron) {
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -369,6 +371,10 @@ Deno.serve(async (req) => {
       .from("users").select("role, company_id").eq("id", user.id).single();
     if (!caller || caller.role === "EMPLOYEE") {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
+    // Non-PLATFORM_ADMIN callers are scoped to their own company only.
+    if (caller.role !== "PLATFORM_ADMIN") {
+      callerCompanyId = caller.company_id as string | null;
     }
   }
 
@@ -427,6 +433,8 @@ Deno.serve(async (req) => {
       .limit(batch_size);
 
     if (campaign_id) query = query.eq("campaign_id", campaign_id);
+    // Scope to caller's company for non-cron, non-platform-admin callers.
+    if (callerCompanyId) query = query.eq("company_id", callerCompanyId);
 
     const { data: jobs, error: qErr } = await query;
     if (qErr) throw qErr;
@@ -494,8 +502,8 @@ Deno.serve(async (req) => {
       //   1. Linked employee record (users table) — SOLE source when employee_id exists
       //   2. Target persona columns (fallback only when employee_id is NULL)
       //   3. Email-derived first_name as last resort
-      const target = (job.phishing_campaign_targets as Record<string, any> | null);
-      const linkedUser = (target?.users as Record<string, any> | null);
+      const target = (job.phishing_campaign_targets as Record<string, unknown> | null);
+      const linkedUser = (target?.users as Record<string, unknown> | null);
 
       let firstName      = "";
       let lastName       = "";

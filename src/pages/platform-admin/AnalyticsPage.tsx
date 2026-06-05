@@ -387,7 +387,7 @@ export const AnalyticsPage: React.FC = () => {
       const exams           = exRes.data || [];
       const examResults     = erRes.data || [];
 
-      const activeCompanies  = companies.filter(c => (c as any).is_active !== false).length;
+      const activeCompanies  = companies.filter(c => (c as { is_active?: boolean }).is_active !== false).length;
       const employees        = users.filter(u => u.role === 'EMPLOYEE');
       const completedCourses = employeeCourses.filter(ec => ec.status === 'COMPLETED').length;
       const passedExams      = examResults.filter(er => er.passed).length;

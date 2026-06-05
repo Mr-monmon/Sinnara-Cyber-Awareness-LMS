@@ -58,7 +58,7 @@ const TipCarousel: React.FC = () => {
   const { t } = useTranslation('employee');
   const { isDark, tokens: T } = useTheme();
   const tipColors = isDark ? TIP_COLORS_DARK : TIP_COLORS_LIGHT;
-  const tips: { title: string; body: string }[] = t('dashboard.securityTip.tips', { returnObjects: true }) as any;
+  const tips: { title: string; body: string }[] = t('dashboard.securityTip.tips', { returnObjects: true }) as { title: string; body: string }[];
   const [idx, setIdx]     = useState(0);
   const [cls, setCls]     = useState('aw-d-tip-in');
   const timer             = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -282,7 +282,7 @@ const EmployeeDashboardInner: React.FC = () => {
       // Step 1: company courses
       const { data: ccData } = await supabase
         .from("company_courses").select("course_id").eq("company_id", user.company_id);
-      const companyCourseIds: string[] = (ccData ?? []).map((r: any) => r.course_id);
+      const companyCourseIds: string[] = (ccData ?? []).map((r: { course_id: string }) => r.course_id);
 
       // Step 2: department restrictions
       const { data: deptRestrictions } = await supabase
@@ -291,7 +291,7 @@ const EmployeeDashboardInner: React.FC = () => {
         .eq("company_id", user.company_id)
         .in("course_id", companyCourseIds.length ? companyCourseIds : ["00000000-0000-0000-0000-000000000000"]);
       const courseDeptMap: Record<string, string[]> = {};
-      (deptRestrictions ?? []).forEach((r: any) => {
+      (deptRestrictions ?? []).forEach((r: { course_id: string; department_id: string }) => {
         if (!courseDeptMap[r.course_id]) courseDeptMap[r.course_id] = [];
         courseDeptMap[r.course_id].push(r.department_id);
       });
@@ -314,7 +314,7 @@ const EmployeeDashboardInner: React.FC = () => {
           .in("course_id", accessibleCourseIds);
 
         const latestByCourse = new Map<string, string>();
-        (ecRows ?? []).forEach((r: any) => latestByCourse.set(r.course_id, r.status));
+        (ecRows ?? []).forEach((r: { course_id: string; status: string }) => latestByCourse.set(r.course_id, r.status));
 
         totalCount = accessibleCourseIds.length;
         latestByCourse.forEach(status => {
@@ -343,8 +343,8 @@ const EmployeeDashboardInner: React.FC = () => {
           .maybeSingle();
         if (lastCourseRow) {
           setLastCourse({
-            title: (lastCourseRow.courses as any)?.title || "Course",
-            progress_percentage: parseFloat(lastCourseRow.progress_percentage as any) || 0,
+            title: (lastCourseRow.courses as { title?: string | null } | null)?.title || "Course",
+            progress_percentage: parseFloat(String(lastCourseRow.progress_percentage ?? 0)) || 0,
             last_accessed_at: lastCourseRow.last_accessed_at ?? null,
           });
         } else {

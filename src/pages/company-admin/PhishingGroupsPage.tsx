@@ -165,7 +165,7 @@ export const PhishingGroupsPage: React.FC = () => {
       }
       setGroupModal({ open: false, edit: null });
       loadGroups();
-    } catch (err: any) { alert(err.message || 'Failed to save'); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Failed to save'); }
     finally { setSavingGroup(false); }
   };
 
@@ -176,7 +176,7 @@ export const PhishingGroupsPage: React.FC = () => {
       await supabase.from('phishing_groups').delete().eq('id', deleteGroupId);
       setDeleteGroupId(null);
       loadGroups();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Failed to delete'); }
     finally { setDeletingGroup(false); }
   };
 
@@ -189,7 +189,7 @@ export const PhishingGroupsPage: React.FC = () => {
       setMemberForm({ ...EMPTY_MEMBER });
       loadMembers(activeGroup.id);
       loadGroups();
-    } catch (err: any) { alert(err.message || 'Failed to add member'); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Failed to add member'); }
     finally { setAddingMember(false); }
   };
 
@@ -201,7 +201,7 @@ export const PhishingGroupsPage: React.FC = () => {
       setDeleteMemberId(null);
       loadMembers(activeGroup.id);
       loadGroups();
-    } catch (err: any) { alert(err.message || 'Failed to delete'); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Failed to delete'); }
     finally { setDeletingMember(false); }
   };
 
@@ -258,7 +258,7 @@ export const PhishingGroupsPage: React.FC = () => {
       setCsvPreview(null); setCsvRaw(null);
       loadMembers(activeGroup.id);
       loadGroups();
-    } catch (err: any) { alert(err.message || 'Import failed'); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Import failed'); }
     finally { setCsvImporting(false); }
   };
 
@@ -299,16 +299,19 @@ export const PhishingGroupsPage: React.FC = () => {
           .eq('group_id', activeGroup.id)
           .not('employee_id', 'is', null),
       ]);
-      setEmployees((emps || []).map((e: any) => ({
-        id: e.id,
-        full_name: e.full_name,
-        email: e.email,
-        job_title: e.job_title || '',
-        department_id: e.department_id,
-        department_name: e.departments?.name || '',
-      })));
+      setEmployees((emps || []).map((e: { id: string; full_name: string; email: string; job_title: string | null; department_id: string | null; departments?: { name?: string | null } | { name?: string | null }[] | null }) => {
+        const dept = Array.isArray(e.departments) ? (e.departments[0] ?? null) : e.departments;
+        return {
+          id: e.id,
+          full_name: e.full_name,
+          email: e.email,
+          job_title: e.job_title || '',
+          department_id: e.department_id,
+          department_name: dept?.name || '',
+        };
+      }));
       setDepartments(depts || []);
-      setAlreadySyncedIds(new Set((existing || []).map((r: any) => r.employee_id)));
+      setAlreadySyncedIds(new Set((existing || []).map((r: { employee_id: string | null }) => r.employee_id).filter((id): id is string => id !== null)));
     } finally {
       setLoadingEmployees(false);
     }
@@ -344,8 +347,8 @@ export const PhishingGroupsPage: React.FC = () => {
       setSyncResult({ inserted });
       loadMembers(activeGroup.id);
       loadGroups();
-    } catch (err: any) {
-      alert(err.message || 'Sync failed');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setSyncing(false);
     }

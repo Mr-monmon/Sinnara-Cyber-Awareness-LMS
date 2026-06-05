@@ -485,7 +485,7 @@ export const PlatformDashboard = () => {
 
                   {/* Company */}
                   <span style={{ fontSize: 12, color: T.textBody, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', alignSelf: 'center' }}>
-                    {(c.companies as any)?.name ?? '—'}
+                    {c.companies?.name ?? '—'}
                   </span>
 
                   {/* Campaign name */}

@@ -282,7 +282,10 @@ export const ExamAssignmentPage: React.FC = () => {
       .eq("company_id", user.company_id);
 
     const examList = (data ?? [])
-      .map((ce: any) => ce.exams)
+      .map((ce: { exam_id: string; exams: Exam | null | Exam[] }) => {
+        const e = ce.exams;
+        return Array.isArray(e) ? (e[0] ?? null) : e;
+      })
       .filter(Boolean) as Exam[];
 
     examList.sort((a, b) => a.title.localeCompare(b.title));
@@ -401,7 +404,7 @@ export const ExamAssignmentPage: React.FC = () => {
   const toggleGroup = (examId: string) =>
     setExpandedGroups(prev => {
       const next = new Set(prev);
-      next.has(examId) ? next.delete(examId) : next.add(examId);
+      if (next.has(examId)) { next.delete(examId); } else { next.add(examId); }
       return next;
     });
 
