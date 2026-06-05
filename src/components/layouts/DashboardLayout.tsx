@@ -36,6 +36,7 @@ import {
   Sun,
   Moon,
   LayoutTemplate,
+  MonitorPlay,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
@@ -206,6 +207,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       exams: "content-management",
       certificates: "content-management",
       // Platform admin phishing pages
+      "phishing-monitor":        "phishing-campaigns",
       "phishing-requests":       "phishing-campaigns",
       "phishing-results":        "phishing-campaigns",
       "phishing-domains":        "phishing-campaigns",
@@ -295,6 +297,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           icon: Shield,
           section: "Phishing",
           children: [
+            { id: "phishing-monitor",        label: "Live Monitor",           icon: MonitorPlay },
             { id: "phishing-requests",       label: "Campaign Requests",      icon: Target  },
             { id: "phishing-results",        label: "Campaign Results",       icon: Activity },
             { id: "phishing-domains",        label: "Phishing Domains",       icon: Globe   },
