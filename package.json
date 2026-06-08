@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:schema-alignment": "node tools/verify-schema-alignment.mjs",
     "preview:worker": "npm run build && npx wrangler dev",
     "deploy:worker": "npm run build && npx wrangler deploy"
   },
