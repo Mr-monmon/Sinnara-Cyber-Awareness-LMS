@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PhishingCampaignQuota, PhishingCampaign, PhishingCampaignRequest } from '../../lib/types';
 import { generateCampaignPdf } from '../../lib/campaignReport';
+import { calculateCampaignMetrics, methodologyNotes } from '../../lib/phishingMetrics';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -378,22 +379,44 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const handleSelectCampaign = async (id: string) => { setSelectedCampaign(id); await loadDeptStats(id); };
 
   const exportCSV = () => {
+    // Canonical figures (same methodology as the PDF): delivered rates use SENT
+    // emails, susceptibility uses TARGETED users. Headers state the denominator.
     const rows = campaigns.map(c => {
-      const total = c.total_queue_size || c.total_targets || 0;
+      const m = calculateCampaignMetrics({
+        total_targets: c.total_targets || c.total_queue_size || 0,
+        emails_sent: c.emails_sent,
+        emails_opened: c.emails_opened,
+        links_clicked: c.links_clicked,
+        credentials_submitted: c.credentials_entered ?? 0,
+        emails_reported: c.emails_reported,
+        queued_emails: c.total_queue_size || 0,
+      });
       const launchDate = c.launched_at || c.launch_date;
       return {
         'Campaign':   c.name,
         'Status':     c.status,
         'Launch Date': launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
-        'Targets':    total,
-        'Sent':       c.emails_sent,
-        'Open %':     total > 0 ? Math.round((c.emails_opened       / total) * 100) : 0,
-        'Click %':    total > 0 ? Math.round((c.links_clicked        / total) * 100) : 0,
-        'Cred %':     total > 0 ? Math.round((c.credentials_entered  / total) * 100) : 0,
-        'Report %':   total > 0 ? Math.round((c.emails_reported      / total) * 100) : 0,
+        'Targeted Users': m.targetedUsers,
+        'Queued':     m.queuedEmails,
+        'Sent':       m.sentEmails,
+        'Failed':     m.failedEmails,
+        'Open % (of sent)':   m.openRateDelivered,
+        'Click % (of sent)':  m.clickRateDelivered,
+        'Cred % (of sent)':   m.credentialRateDelivered,
+        'Report % (of sent)': m.reportRateDelivered,
+        'Susceptibility % (of targeted)': m.targetSusceptibilityRate,
       };
     });
-    const csv = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
+    const headers = Object.keys(rows[0] || {});
+    const esc = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const body = [headers.join(','), ...rows.map(r => headers.map(h => esc((r as Record<string, unknown>)[h])).join(','))];
+    // Methodology footer (commented rows) so the export is self-documenting.
+    body.push('');
+    methodologyNotes.forEach(n => body.push(esc(`# ${n}`)));
+    const csv = body.join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url; a.download = `phishing-analytics-${new Date().toISOString().split('T')[0]}.csv`;
@@ -420,6 +443,12 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         submitted_at: string | null;
         reported_at: string | null;
       }>;
+      // Per-status queue counts so the PDF can show send-success / delivery-failure.
+      const { data: qrows } = await supabase
+        .from('campaign_email_queue')
+        .select('status')
+        .eq('campaign_id', c.id);
+      const qcount = (s: string) => (qrows ?? []).filter((r: { status: string }) => r.status === s).length;
       generateCampaignPdf({
         name: c.name,
         status: c.status,
@@ -430,6 +459,10 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         linksClicked: c.links_clicked,
         credentialsSubmitted: c.credentials_entered ?? 0,
         emailsReported: c.emails_reported,
+        queuedEmails: (qrows ?? []).length || (c.total_queue_size || 0),
+        failedEmails: qcount('FAILED'),
+        pendingEmails: qcount('PENDING'),
+        skippedEmails: qcount('SKIPPED'),
         targets: rows.map(t => ({
           email: t.email,
           name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
@@ -518,9 +551,9 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         <MetricCard icon={Shield}           color={remainingQuota > 0 ? T.accent : T.red} bg={remainingQuota > 0 ? 'rgba(200,255,0,0.08)' : T.redBg} border={remainingQuota > 0 ? 'rgba(200,255,0,0.20)' : T.redBorder} label="Campaigns Remaining" sub={`of ${quota?.annual_quota || 0} annual quota`} value={`${remainingQuota}`} />
-        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="employees clicked links"    value={`${avgClickRate}%`} />
-        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="employees reported phishing" value={`${avgReportRate}%`} />
-        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="entered credentials"         value={`${avgCredRate}%`} />
+        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="of targeted users (weighted)"   value={`${avgClickRate}%`} />
+        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="of targeted users (weighted)"   value={`${avgReportRate}%`} />
+        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="of targeted users (weighted)"   value={`${avgCredRate}%`} />
       </div>
 
       {/* ── Charts row ── */}

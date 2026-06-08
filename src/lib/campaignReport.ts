@@ -1,4 +1,10 @@
 import { jsPDF } from 'jspdf';
+import {
+  calculateCampaignMetrics,
+  summarizeTargets,
+  methodologyNotes,
+  type QueueStats,
+} from './phishingMetrics';
 
 export interface CampaignReportTarget {
   email: string;
@@ -21,10 +27,13 @@ export interface CampaignReportData {
   linksClicked: number;
   credentialsSubmitted: number;
   emailsReported: number;
+  /** Optional queue breakdown — enables send-success / delivery-failure figures. */
+  queuedEmails?: number;
+  failedEmails?: number;
+  pendingEmails?: number;
+  skippedEmails?: number;
   targets: CampaignReportTarget[];
 }
-
-const pct = (a: number, b: number): number => (b > 0 ? Math.round((a / b) * 100) : 0);
 
 const fmtTimestamp = (iso?: string | null): string => {
   if (!iso) return '—';
@@ -91,15 +100,42 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   doc.line(marginX, y, pageW - marginX, y);
   y += 22;
 
+  /* ── Canonical metrics (single source of truth; deduped from target rows) ── */
+  // Prefer deduplicated target-row stats; fall back to campaign-level counts.
+  const tStats = data.targets && data.targets.length > 0 ? summarizeTargets(data.targets) : undefined;
+  const queueStats: Partial<QueueStats> | undefined =
+    data.queuedEmails != null || data.failedEmails != null
+      ? {
+          queued: data.queuedEmails ?? 0,
+          sent: data.emailsSent,
+          failed: data.failedEmails ?? 0,
+          pending: data.pendingEmails ?? 0,
+          skipped: data.skippedEmails ?? 0,
+        }
+      : { sent: data.emailsSent, failed: data.failedEmails ?? 0, pending: 0, skipped: 0 };
+
+  const M = calculateCampaignMetrics(
+    {
+      total_targets: data.totalTargets,
+      emails_opened: data.emailsOpened,
+      links_clicked: data.linksClicked,
+      credentials_submitted: data.credentialsSubmitted,
+      emails_reported: data.emailsReported,
+    },
+    queueStats,
+    tStats,
+  );
+
   /* ── Summary metrics ── */
-  const sent = data.emailsSent;
-  const metrics: Array<{ label: string; value: number; pctOf: boolean }> = [
-    { label: 'Targets', value: data.totalTargets, pctOf: false },
-    { label: 'Sent', value: data.emailsSent, pctOf: false },
-    { label: 'Opened', value: data.emailsOpened, pctOf: true },
-    { label: 'Clicked', value: data.linksClicked, pctOf: true },
-    { label: 'Credentials', value: data.credentialsSubmitted, pctOf: true },
-    { label: 'Reported', value: data.emailsReported, pctOf: true },
+  const metrics: Array<{ label: string; value: number; sub?: string }> = [
+    { label: 'Targets', value: M.targetedUsers },
+    { label: 'Queued', value: M.queuedEmails },
+    { label: 'Sent', value: M.sentEmails, sub: `Send ${M.sendSuccessRate}%` },
+    { label: 'Failed', value: M.failedEmails, sub: `Fail ${M.deliveryFailureRate}%` },
+    { label: 'Opened', value: M.opened, sub: `${M.openRateDelivered}% of sent` },
+    { label: 'Clicked', value: M.clicked, sub: `${M.clickRateDelivered}% of sent` },
+    { label: 'Submitted', value: M.submitted, sub: `${M.credentialRateDelivered}% of sent` },
+    { label: 'Reported', value: M.reported, sub: `${M.reportRateDelivered}% of sent` },
   ];
 
   doc.setFont('helvetica', 'bold');
@@ -112,29 +148,43 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   metrics.forEach((m, i) => {
     const cx = marginX + i * colW;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
+    doc.setFontSize(15);
     doc.setTextColor(20, 20, 20);
     doc.text(String(m.value), cx, y + 4);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(110, 110, 110);
-    const sub = m.pctOf ? `${m.label} (${pct(m.value, sent)}%)` : m.label;
-    doc.text(sub, cx, y + 18);
+    doc.text(m.label, cx, y + 16);
+    if (m.sub) {
+      doc.setTextColor(140, 140, 140);
+      doc.text(m.sub, cx, y + 26);
+    }
   });
-  y += 36;
+  y += 44;
+
+  /* ── Susceptibility headline (of targeted users) ── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(180, 60, 60);
+  doc.text(
+    `Target Susceptibility: ${M.targetSusceptibilityRate}% of targeted users clicked or submitted   |   Reported by ${M.reportByTargetRate}% of targeted users`,
+    marginX,
+    y,
+  );
+  y += 20;
 
   /* ── Funnel bars ── */
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
-  doc.text('Engagement Funnel', marginX, y);
+  doc.text('Engagement Funnel (rates of delivered/sent emails)', marginX, y);
   y += 14;
 
-  const funnel: Array<{ label: string; value: number; rgb: [number, number, number] }> = [
-    { label: 'Opened', value: data.emailsOpened, rgb: [167, 139, 250] },
-    { label: 'Clicked', value: data.linksClicked, rgb: [251, 146, 60] },
-    { label: 'Submitted', value: data.credentialsSubmitted, rgb: [248, 113, 113] },
-    { label: 'Reported', value: data.emailsReported, rgb: [52, 211, 153] },
+  const funnel: Array<{ label: string; value: number; p: number; rgb: [number, number, number] }> = [
+    { label: 'Opened', value: M.opened, p: M.openRateDelivered, rgb: [167, 139, 250] },
+    { label: 'Clicked', value: M.clicked, p: M.clickRateDelivered, rgb: [251, 146, 60] },
+    { label: 'Submitted', value: M.submitted, p: M.credentialRateDelivered, rgb: [248, 113, 113] },
+    { label: 'Reported', value: M.reported, p: M.reportRateDelivered, rgb: [52, 211, 153] },
   ];
 
   const labelW = 70;
@@ -142,7 +192,7 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   const barMaxW = contentW - labelW - 60;
   const barH = 11;
   funnel.forEach((f) => {
-    const p = pct(f.value, sent);
+    const p = f.p;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(70, 70, 70);
@@ -159,6 +209,26 @@ export function generateCampaignPdf(data: CampaignReportData): void {
     doc.setTextColor(70, 70, 70);
     doc.text(`${f.value} (${p}%)`, barX + barMaxW + 6, y + barH - 2);
     y += barH + 6;
+  });
+  y += 16;
+
+  /* ── Methodology ── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Methodology', marginX, y);
+  y += 14;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(95, 95, 95);
+  methodologyNotes.forEach((note) => {
+    const lines = doc.splitTextToSize(`•  ${note}`, contentW) as string[];
+    lines.forEach((ln) => {
+      if (y + 12 > pageH - 40) { doc.addPage(); y = 48; }
+      doc.text(ln, marginX, y);
+      y += 11;
+    });
   });
   y += 14;
 

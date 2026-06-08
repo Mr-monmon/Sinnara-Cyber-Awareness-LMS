@@ -244,16 +244,18 @@ export const PhishingMonitoringPage: React.FC = () => {
       const totalOpened  = rows.reduce((s, c) => s + (c.emails_opened || 0), 0);
       const totalClicked = rows.reduce((s, c) => s + (c.links_clicked || 0), 0);
 
-      // Count FAILED queue rows across all running campaigns
+      // Count FAILED queue rows across ALL campaigns (failures persist after a
+      // campaign completes, so do not restrict to RUNNING). A `head: true` count
+      // query returns the total in `count`, NOT in `data` — read it correctly.
       let totalFailed = 0;
-      if (running > 0) {
-        const runningIds = rows.filter(c => c.status === 'RUNNING').map(c => c.id);
-        const { data: failData } = await supabase
+      const allIds = rows.map(c => c.id);
+      if (allIds.length > 0) {
+        const { count: failedCount } = await supabase
           .from('campaign_email_queue')
           .select('id', { count: 'exact', head: true })
-          .in('campaign_id', runningIds)
+          .in('campaign_id', allIds)
           .eq('status', 'FAILED');
-        totalFailed = failData as unknown as number ?? 0;
+        totalFailed = failedCount ?? 0;
       }
 
       setOverview({ running, scheduled, completed, totalSent, totalFailed, totalOpened, totalClicked });
@@ -353,6 +355,10 @@ export const PhishingMonitoringPage: React.FC = () => {
       linksClicked: selected.links_clicked,
       credentialsSubmitted: selected.credentials_entered ?? selected.data_submitted ?? 0,
       emailsReported: selected.emails_reported,
+      queuedEmails: qTotal,
+      failedEmails: qByStatus['FAILED'] ?? 0,
+      pendingEmails: qByStatus['PENDING'] ?? 0,
+      skippedEmails: qByStatus['SKIPPED'] ?? 0,
       targets: targets.map(t => ({
         email: t.email,
         name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
