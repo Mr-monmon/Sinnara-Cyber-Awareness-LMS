@@ -53,12 +53,22 @@ const corsHeaders = {
 };
 
 /* ── Timezone helpers ── */
+// Read the current wall-clock time in the given IANA timezone. Returns whole
+// hour/minute/second in that zone (NOT the server's local zone). hour is
+// normalised to 0–23 (Intl can emit "24" at midnight for some locales).
+function getWallClockInTimezone(tz: string): { hour: number; minute: number; second: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value ?? "0", 10);
+  let hour = get("hour");
+  if (hour === 24) hour = 0;
+  return { hour, minute: get("minute"), second: get("second") };
+}
+
 function getHourInTimezone(tz: string): number {
   try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz, hour: "numeric", hour12: false,
-    });
-    return parseInt(formatter.format(new Date()));
+    return getWallClockInTimezone(tz).hour;
   } catch { return new Date().getUTCHours(); }
 }
 
@@ -66,18 +76,27 @@ function isBusinessHour(hour: number, start: number, end: number): boolean {
   return hour >= start && hour < end;
 }
 
-function nextBusinessHourStart(start: number, end: number, tz: string): Date {
-  const currentHour = getHourInTimezone(tz);
-  const next = new Date();
-  // If before business hours, set to start today
-  if (currentHour < start) {
-    next.setHours(start, 0, 0, 0);
-  } else {
-    // After business hours, set to start tomorrow
-    next.setDate(next.getDate() + 1);
-    next.setHours(start, 0, 0, 0);
+// Compute the next instant at which the campaign's local wall clock reads
+// `start:00:00`. We advance from the current wall-clock time in `tz` by the
+// elapsed duration to the next business-hour start; because timezone offset is
+// constant over this short window, adding that real duration to `now` lands on
+// the correct UTC instant regardless of the zone's offset (handles +03:00,
+// +05:30, etc.) — unlike Date.setHours(), which silently uses the server zone.
+function nextBusinessHourStart(start: number, _end: number, tz: string): Date {
+  let wall: { hour: number; minute: number; second: number };
+  try {
+    wall = getWallClockInTimezone(tz);
+  } catch {
+    const d = new Date();
+    wall = { hour: d.getUTCHours(), minute: d.getUTCMinutes(), second: d.getUTCSeconds() };
   }
-  return next;
+
+  // Whole hours from now until the next `start` boundary (today or tomorrow).
+  const hoursUntilStart = wall.hour < start ? start - wall.hour : 24 - wall.hour + start;
+
+  // Seconds of real time to elapse to reach start:00:00 in that zone.
+  const elapsedSeconds = hoursUntilStart * 3600 - wall.minute * 60 - wall.second;
+  return new Date(Date.now() + elapsedSeconds * 1000);
 }
 
 /* ── SMTP Profile type ── */
