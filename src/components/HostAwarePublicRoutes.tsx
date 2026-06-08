@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate } from "react-router-dom";
 
 import LoadingScreen from "./LoadingScreen";
@@ -5,8 +6,13 @@ import { ExternalRedirect } from "./ExternalRedirect";
 import { useAuth } from "../contexts/AuthContext";
 import { useTenantAccess } from "../hooks/useTenantAccess";
 import { buildApexRedirectUrl } from "../lib/browserTenant";
-import { LandingPage } from "../pages/LandingPage";
-import { LoginPage } from "../pages/LoginPage";
+
+const LandingPage = lazy(() =>
+  import("../pages/LandingPage").then((m) => ({ default: m.LandingPage }))
+);
+const LoginPage = lazy(() =>
+  import("../pages/LoginPage").then((m) => ({ default: m.LoginPage }))
+);
 
 export const HomeRoute = () => {
   const { hostMode, loading } = useTenantAccess();
@@ -19,7 +25,11 @@ export const HomeRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  return <LandingPage />;
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <LandingPage />
+    </Suspense>
+  );
 };
 
 export const LoginRoute = () => {
@@ -61,9 +71,11 @@ export const LoginRoute = () => {
   }
 
   return (
-    <LoginPage
-      backTo={hostMode === "admin" ? apexHomeUrl : "/"}
-      backLabel={hostMode === "admin" ? "Back to Website" : "Back to Home"}
-    />
+    <Suspense fallback={<LoadingScreen />}>
+      <LoginPage
+        backTo={hostMode === "admin" ? apexHomeUrl : "/"}
+        backLabel={hostMode === "admin" ? "Back to Website" : "Back to Home"}
+      />
+    </Suspense>
   );
 };
