@@ -82,6 +82,7 @@ interface SmtpProfile {
   is_platform_profile: boolean;
   is_active: boolean;
   password_encrypted?: boolean;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   created_at: string;
   isPushed?: boolean;
   pushed_at?: string;
@@ -154,7 +155,7 @@ export const PhishingSmtpPage: React.FC = () => {
     setLoading(true);
     try {
       // Load company profiles — password column intentionally excluded
-      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, created_at';
+      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, visibility, created_at';
       const { data: companyProfiles } = await supabase
         .from('smtp_profiles')
         .select(SAFE_COLS)
@@ -162,13 +163,26 @@ export const PhishingSmtpPage: React.FC = () => {
         .eq('is_platform_profile', false)
         .order('created_at', { ascending: false });
 
-      // Load platform-pushed profiles
+      // Load accessible platform profiles: SHARED-with-us (via access rows) and
+      // GLOBAL (visible to all). RLS also enforces this server-side.
       const { data: accessRows } = await supabase
         .from('smtp_profile_company_access')
         .select('smtp_profile_id, pushed_at')
         .eq('company_id', user.company_id);
 
-      let platformProfiles: SmtpProfile[] = [];
+      const platformById = new Map<string, SmtpProfile>();
+
+      // GLOBAL platform profiles.
+      const { data: globalPP } = await supabase
+        .from('smtp_profiles')
+        .select(SAFE_COLS)
+        .eq('is_platform_profile', true)
+        .eq('visibility', 'GLOBAL');
+      (globalPP || []).forEach(p => {
+        platformById.set(p.id, { ...p, custom_headers: p.custom_headers || [], isPushed: true });
+      });
+
+      // SHARED platform profiles explicitly pushed to this company.
       if (accessRows && accessRows.length > 0) {
         const ids = accessRows.map(r => r.smtp_profile_id);
         const { data: pp } = await supabase
@@ -176,19 +190,19 @@ export const PhishingSmtpPage: React.FC = () => {
           .select(SAFE_COLS)
           .in('id', ids)
           .eq('is_platform_profile', true);
-        if (pp) {
-          platformProfiles = pp.map(p => ({
+        (pp || []).forEach(p => {
+          platformById.set(p.id, {
             ...p,
             custom_headers: p.custom_headers || [],
             isPushed: true,
             pushed_at: accessRows.find(r => r.smtp_profile_id === p.id)?.pushed_at,
-          }));
-        }
+          });
+        });
       }
 
       const all: SmtpProfile[] = [
         ...(companyProfiles || []).map(p => ({ ...p, custom_headers: p.custom_headers || [], isPushed: false })),
-        ...platformProfiles,
+        ...platformById.values(),
       ];
       setProfiles(all);
     } catch (err) { console.error(err); }

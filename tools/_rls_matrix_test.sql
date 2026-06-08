@@ -55,6 +55,16 @@ BEGIN
   RAISE NOTICE 'RLS ok  [%]: % rows', label, got;
 END $$;
 
+-- ── Seed SMTP profiles for visibility testing ──
+-- company-owned (Acme), platform GLOBAL, platform SHARED→Acme, platform PLATFORM_ONLY
+INSERT INTO smtp_profiles (id, company_id, name, host, username, password, from_address, from_name, is_platform_profile, visibility) VALUES
+  ('a0000000-0000-0000-0000-0000000000a1','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Acme own','h','u','p','f@a.io','A', false, 'PLATFORM_ONLY'),
+  ('a0000000-0000-0000-0000-0000000000b2', NULL,'Plat GLOBAL','h','u','p','f@p.io','P', true, 'GLOBAL'),
+  ('a0000000-0000-0000-0000-0000000000c3', NULL,'Plat SHARED','h','u','p','f@p.io','P', true, 'SHARED'),
+  ('a0000000-0000-0000-0000-0000000000d4', NULL,'Plat ONLY','h','u','p','f@p.io','P', true, 'PLATFORM_ONLY');
+INSERT INTO smtp_profile_company_access (smtp_profile_id, company_id) VALUES
+  ('a0000000-0000-0000-0000-0000000000c3','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+
 -- Impersonation helper (top-level): set role + JWT claims for a user id.
 -- (kept inline below since SET ROLE cannot run inside a function)
 
@@ -85,6 +95,8 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', false);
 SELECT pg_temp.expect('SELECT 1 FROM support_ticket',     2, 'CA-A sees both Acme tickets');
 SELECT pg_temp.expect('SELECT 1 FROM company_subdomains', 1, 'CA-A sees only Acme subdomain');
+-- SMTP: own (1) + platform GLOBAL (1) + platform SHARED→Acme (1) = 3; PLATFORM_ONLY hidden.
+SELECT pg_temp.expect('SELECT 1 FROM smtp_profiles',      3, 'CA-A sees own + GLOBAL + SHARED smtp (not PLATFORM_ONLY)');
 RESET ROLE;
 
 -- ═══════════════════════ COMPANY_ADMIN (Globex) — cross-tenant isolation ═══════════════════════
@@ -92,6 +104,8 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"55555555-5555-5555-5555-555555555555","role":"authenticated"}', false);
 SELECT pg_temp.expect('SELECT 1 FROM support_ticket',     1, 'CA-B sees only Globex ticket (no Acme leak)');
 SELECT pg_temp.expect('SELECT 1 FROM company_subdomains', 1, 'CA-B sees only Globex subdomain');
+-- SMTP: only the GLOBAL platform profile (no own, not SHARED→Acme, not PLATFORM_ONLY, not Acme-owned).
+SELECT pg_temp.expect('SELECT 1 FROM smtp_profiles',      1, 'CA-B sees only GLOBAL smtp (no Acme/SHARED/PLATFORM_ONLY leak)');
 RESET ROLE;
 
 -- ═══════════════════════ PLATFORM_ADMIN ═══════════════════════

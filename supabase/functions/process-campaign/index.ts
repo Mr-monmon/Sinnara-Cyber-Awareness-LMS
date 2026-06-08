@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { assertSmtpProfileAccessible } from "../_shared/phishingAccess.ts";
 
 /* Inlined Sentry reporter (kept in-file so the function deploys as a single module). */
 async function captureException(
@@ -375,8 +376,10 @@ Deno.serve(async (req) => {
   const isCron     = bearer.length > 0 &&
     (bearer === SERVICE_ROLE_KEY || jwtRole(bearer) === "service_role");
 
-  // For non-cron callers, capture company scope for query restriction below.
+  // For non-cron callers, capture role + company scope for query restriction and
+  // the test-send authorization checks below. Cron is treated as platform-level.
   let callerCompanyId: string | null = null;
+  let callerRole: string = isCron ? "SERVICE_ROLE" : "";
 
   if (!isCron) {
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -388,9 +391,11 @@ Deno.serve(async (req) => {
     }
     const { data: caller } = await supabase
       .from("users").select("role, company_id").eq("id", user.id).single();
-    if (!caller || caller.role === "EMPLOYEE") {
+    // Read-only / non-privileged roles may never drive sends (campaign drain or test send).
+    if (!caller || caller.role === "EMPLOYEE" || caller.role === "REVIEWER") {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
     }
+    callerRole = caller.role as string;
     // Non-PLATFORM_ADMIN callers are scoped to their own company only.
     if (caller.role !== "PLATFORM_ADMIN") {
       callerCompanyId = caller.company_id as string | null;
@@ -405,17 +410,53 @@ Deno.serve(async (req) => {
       try {
         const isCampaignTest = !!(body.test_subject || body.test_html);
         const isPlatformDefault = body.test_smtp_profile_id === "platform_default";
-        // For a real SMTP profile, default to the PROFILE's own sender (empty
-        // here → sendEmail uses profile.from_address/from_name). Only the
-        // platform-default path falls back to the platform sender.
+        const isPlatformAdmin = callerRole === "PLATFORM_ADMIN" || callerRole === "SERVICE_ROLE";
+
+        // ── Authorization: enforce the SAME tenant rules as campaign launch ──
+        if (isPlatformDefault) {
+          // The platform default sender may only be exercised by platform admins.
+          if (!isPlatformAdmin) {
+            return new Response(JSON.stringify({ success: false, error: "Not authorized to use the platform default sender" }), { status: 403, headers: corsHeaders });
+          }
+        } else {
+          const profileId = String(body.test_smtp_profile_id);
+          if (isPlatformAdmin) {
+            // Platform admins may test platform profiles; reject company-owned ones
+            // to avoid sending as another tenant from the platform console.
+            const { data: prof } = await supabase
+              .from("smtp_profiles")
+              .select("id, is_platform_profile")
+              .eq("id", profileId)
+              .single();
+            if (!prof || prof.is_platform_profile !== true) {
+              return new Response(JSON.stringify({ success: false, error: "SMTP profile is not accessible" }), { status: 403, headers: corsHeaders });
+            }
+          } else {
+            // Company roles: the profile must be own-company OR a platform profile
+            // that is GLOBAL / SHARED with their company. Never another tenant's.
+            if (!callerCompanyId) {
+              return new Response(JSON.stringify({ success: false, error: "Caller has no associated company" }), { status: 403, headers: corsHeaders });
+            }
+            const allowed = await assertSmtpProfileAccessible(supabase, profileId, callerCompanyId);
+            if (!allowed) {
+              return new Response(JSON.stringify({ success: false, error: "SMTP profile is not accessible to your company" }), { status: 403, headers: corsHeaders });
+            }
+          }
+        }
+
+        // Sender spoofing guard: a custom from_address/from_name is honoured ONLY
+        // for the platform-default sender (platform admin). For a real profile the
+        // send always uses the profile's own authenticated sender (empty here →
+        // sendEmail resolves profile.from_address/from_name).
+        const allowCustomFrom = isPlatformDefault; // already gated to platform admin above
         const result = await sendEmail({
           to:              String(body.test_to),
           subject:         body.test_subject ? String(body.test_subject) : "Awareone SMTP Test",
           html:            body.test_html
             ? String(body.test_html)
             : "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
-          from_address:    body.test_from_address ? String(body.test_from_address) : (isPlatformDefault ? "noreply@awareone.io" : ""),
-          from_name:       body.test_from_name ? String(body.test_from_name) : (isPlatformDefault ? "Awareone Security" : ""),
+          from_address:    allowCustomFrom && body.test_from_address ? String(body.test_from_address) : (isPlatformDefault ? "noreply@awareone.io" : ""),
+          from_name:       allowCustomFrom && body.test_from_name ? String(body.test_from_name) : (isPlatformDefault ? "Awareone Security" : ""),
           smtp_profile_id: isPlatformDefault ? null : String(body.test_smtp_profile_id),
         });
         if (!result.success) {

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sanitizeRedirectUrl } from "../_shared/urlSafety.ts";
 
 /*
   serve-landing-page (P-3)
@@ -110,19 +111,18 @@ function buildInterceptor(campaignId: string, recipientId: string, redirectUrl: 
 </script>`;
 }
 
+// Safe default redirect destination when the configured URL is missing/unsafe.
+const SAFE_REDIRECT_FALLBACK = "https://www.google.com";
+
 /**
- * Validate a server-side redirect URL.
- * Only allows http:// and https:// destinations — never javascript:, data:,
- * file:, or any other scheme that could execute code or access local resources.
+ * Validate a server-side redirect URL using the shared SSRF / open-redirect
+ * validator. Beyond scheme checks it blocks localhost, private/link-local IPs,
+ * cloud metadata hosts, *.local / *.internal domains, and embedded credentials.
+ * http is permitted (admin-configured landing redirects may legitimately be
+ * plain http); everything unsafe falls back to a benign search page.
  */
 function sanitizeRedirect(value: string): string {
-  const fallback = "https://www.google.com";
-  if (!value) return fallback;
-  try {
-    const u = new URL(value);
-    if (u.protocol === "https:" || u.protocol === "http:") return value;
-  } catch { /* invalid URL */ }
-  return fallback;
+  return sanitizeRedirectUrl(value ?? "", SAFE_REDIRECT_FALLBACK, { allowHttp: true });
 }
 
 function injectInterceptor(html: string, interceptor: string): string {
