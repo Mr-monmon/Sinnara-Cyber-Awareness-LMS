@@ -1,11 +1,27 @@
-import { PlatformDashboard } from "./platform-admin/PlatformDashboard";
-import { CompanyDashboard } from "./company-admin/CompanyDashboard";
-import { LandingPage } from "./LandingPage";
-import { EmployeeDashboard } from "./employee/EmployeeDashboard";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { useEffect, useState } from "react";
 import { PolicyConsentModal } from "../components/PolicyConsentModal";
+import LoadingScreen from "../components/LoadingScreen";
 import { supabase } from "../lib/supabase";
+
+const PlatformDashboard = lazy(() =>
+  import("./platform-admin/PlatformDashboard").then((m) => ({
+    default: m.PlatformDashboard,
+  }))
+);
+const CompanyDashboard = lazy(() =>
+  import("./company-admin/CompanyDashboard").then((m) => ({
+    default: m.CompanyDashboard,
+  }))
+);
+const EmployeeDashboard = lazy(() =>
+  import("./employee/EmployeeDashboard").then((m) => ({
+    default: m.EmployeeDashboard,
+  }))
+);
+const LandingPage = lazy(() =>
+  import("./LandingPage").then((m) => ({ default: m.LandingPage }))
+);
 
 const MainDashboard = () => {
   const { user } = useAuth();
@@ -54,7 +70,7 @@ const MainDashboard = () => {
           }}
         />
       )}
-      {dashboard}
+      <Suspense fallback={<LoadingScreen />}>{dashboard}</Suspense>
     </>
   );
 };

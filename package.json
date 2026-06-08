@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:schema-alignment": "node tools/verify-schema-alignment.mjs",
+    "verify:freshdb": "bash tools/freshdb-migrate-check.sh",
+    "verify:rls-matrix": "bash tools/rls-matrix-check.sh",
     "preview:worker": "npm run build && npx wrangler dev",
     "deploy:worker": "npm run build && npx wrangler deploy"
   },

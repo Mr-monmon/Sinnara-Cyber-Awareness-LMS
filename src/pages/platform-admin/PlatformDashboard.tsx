@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   Building2, Users, BookOpen, FileText, BarChart3,
   CreditCard, History, Shield, ChevronRight,
@@ -7,31 +7,33 @@ import {
   Target, MousePointer, Send as SendIcon, Eye, LayoutTemplate, Activity,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
-import { CompaniesPage }              from "./CompaniesPage";
-import { CoursesPage }                from "./CoursesPage";
-import { ExamsPage }                  from "./ExamsPage";
-import { PublicSubmissionsPage }      from "./PublicSubmissionsPage";
-import { UsersManagementPage }        from "./UsersManagementPage";
-import { SubscriptionsPage }          from "./SubscriptionsPage";
-import { AnalyticsPage }              from "./AnalyticsPage";
-import { AuditLogsPage }              from "./AuditLogsPage";
-import { CertificateTemplatesPage }   from "./CertificateTemplatesPage";
-import { PhishingCampaignResultsPage } from "./PhishingCampaignResultsPage";
-import { PhishingDomainsPage }        from "./PhishingDomainsPage";
-import { PhishingSmtpAdminPage }      from "./PhishingSmtpAdminPage";
-import { PhishingLandingPagesAdminPage } from "./PhishingLandingPagesAdminPage";
-import { PhishingScenariosPage }      from "./PhishingScenariosPage";
-import { PhishingCompanyLimitsPage }  from "./PhishingCompanyLimitsPage";
-import { PhishingMonitoringPage }     from "./PhishingMonitoringPage";
-import { PhishingManagementPage }     from "./PhishingManagementPage";
-import { DemoRequestsPage }           from "./DemoRequestsPage";
-import { PartnersManagementPage }     from "./PartnersManagementPage";
-import { FraudAlertsManagementPage }  from "./FraudAlertsManagementPage";
+import LoadingScreen from "../../components/LoadingScreen";
 import { supabase }                   from "../../lib/supabase";
-import SupportRequestsPage            from "./SupportRequestsPage";
-import EmailPage                      from "./EmailPage";
-import { EmailQueuePage }             from "./EmailQueuePage";
-import { ErrorLogsPage }              from "./ErrorLogsPage";
+
+const CompaniesPage              = lazy(() => import("./CompaniesPage").then(m => ({ default: m.CompaniesPage })));
+const CoursesPage                = lazy(() => import("./CoursesPage").then(m => ({ default: m.CoursesPage })));
+const ExamsPage                  = lazy(() => import("./ExamsPage").then(m => ({ default: m.ExamsPage })));
+const PublicSubmissionsPage      = lazy(() => import("./PublicSubmissionsPage").then(m => ({ default: m.PublicSubmissionsPage })));
+const UsersManagementPage        = lazy(() => import("./UsersManagementPage").then(m => ({ default: m.UsersManagementPage })));
+const SubscriptionsPage          = lazy(() => import("./SubscriptionsPage").then(m => ({ default: m.SubscriptionsPage })));
+const AnalyticsPage              = lazy(() => import("./AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
+const AuditLogsPage              = lazy(() => import("./AuditLogsPage").then(m => ({ default: m.AuditLogsPage })));
+const CertificateTemplatesPage   = lazy(() => import("./CertificateTemplatesPage").then(m => ({ default: m.CertificateTemplatesPage })));
+const PhishingCampaignResultsPage = lazy(() => import("./PhishingCampaignResultsPage").then(m => ({ default: m.PhishingCampaignResultsPage })));
+const PhishingDomainsPage        = lazy(() => import("./PhishingDomainsPage").then(m => ({ default: m.PhishingDomainsPage })));
+const PhishingSmtpAdminPage      = lazy(() => import("./PhishingSmtpAdminPage").then(m => ({ default: m.PhishingSmtpAdminPage })));
+const PhishingLandingPagesAdminPage = lazy(() => import("./PhishingLandingPagesAdminPage").then(m => ({ default: m.PhishingLandingPagesAdminPage })));
+const PhishingScenariosPage      = lazy(() => import("./PhishingScenariosPage").then(m => ({ default: m.PhishingScenariosPage })));
+const PhishingCompanyLimitsPage  = lazy(() => import("./PhishingCompanyLimitsPage").then(m => ({ default: m.PhishingCompanyLimitsPage })));
+const PhishingMonitoringPage     = lazy(() => import("./PhishingMonitoringPage").then(m => ({ default: m.PhishingMonitoringPage })));
+const PhishingManagementPage     = lazy(() => import("./PhishingManagementPage").then(m => ({ default: m.PhishingManagementPage })));
+const DemoRequestsPage           = lazy(() => import("./DemoRequestsPage").then(m => ({ default: m.DemoRequestsPage })));
+const PartnersManagementPage     = lazy(() => import("./PartnersManagementPage").then(m => ({ default: m.PartnersManagementPage })));
+const FraudAlertsManagementPage  = lazy(() => import("./FraudAlertsManagementPage").then(m => ({ default: m.FraudAlertsManagementPage })));
+const SupportRequestsPage        = lazy(() => import("./SupportRequestsPage"));
+const EmailPage                  = lazy(() => import("./EmailPage"));
+const EmailQueuePage             = lazy(() => import("./EmailQueuePage").then(m => ({ default: m.EmailQueuePage })));
+const ErrorLogsPage              = lazy(() => import("./ErrorLogsPage").then(m => ({ default: m.ErrorLogsPage })));
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -663,7 +665,7 @@ export const PlatformDashboard = () => {
 
   return (
     <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
-      {renderContent()}
+      <Suspense fallback={<LoadingScreen />}>{renderContent()}</Suspense>
     </DashboardLayout>
   );
 };

@@ -12,6 +12,15 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sanitizeRedirectUrl } from "../_shared/urlSafety.ts";
+import {
+  assertGroupsOwnedByCompany,
+  assertLandingPageAccessible,
+  assertScenarioAccessible,
+  assertSmtpProfileAccessible,
+  checkLimitsFailClosed,
+  normalizeTargets,
+} from "../_shared/phishingAccess.ts";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -141,6 +150,41 @@ Deno.serve(async (req) => {
 
   const companyId = rq.company_id as string;
 
+  // ── Cross-tenant ownership validation ──
+  // Every resource referenced by the request must belong to / be accessible for
+  // the REQUEST's company. A platform admin runs this conversion on the
+  // company's behalf, so the resources must still be the company's own (or
+  // platform resources shared with it) — never another tenant's. Reject on any
+  // mismatch with a safe message.
+  if (groupIds.length > 0 && !(await assertGroupsOwnedByCompany(db, groupIds, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "One or more target groups do not belong to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+  }
+
+  if (deptIds.length > 0) {
+    const { data: ownedDepts, error: deptErr } = await db
+      .from("departments")
+      .select("id")
+      .in("id", deptIds)
+      .eq("company_id", companyId);
+    if (deptErr || !ownedDepts || ownedDepts.length !== deptIds.length) {
+      return new Response(JSON.stringify({ success: false, error: "One or more target departments do not belong to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+    }
+  }
+
+  const reqSmtpProfileId  = (rq.smtp_profile_id as string | null) ?? null;
+  const reqLandingPageId  = (rq.landing_page_id as string | null) ?? null;
+  const reqScenarioId     = (rq.scenario_id as string | null) ?? null;
+
+  if (!(await assertSmtpProfileAccessible(db, reqSmtpProfileId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "The SMTP profile is not accessible to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+  }
+  if (!(await assertLandingPageAccessible(db, reqLandingPageId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "The landing page is not accessible to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+  }
+  if (!(await assertScenarioAccessible(db, reqScenarioId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "The scenario is not accessible to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+  }
+
   // ── Resolve targets: phishing groups take precedence, else departments ──
   let targets: TargetInfo[] = [];
   if (groupIds.length > 0) {
@@ -177,26 +221,20 @@ Deno.serve(async (req) => {
     });
   }
 
-  // De-duplicate by email
-  const seen = new Set<string>();
-  targets = targets.filter(t => {
-    const key = (t.email || "").toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // De-duplicate by normalized lowercase email (first occurrence wins).
+  targets = normalizeTargets(targets);
 
   if (targets.length === 0) {
     return new Response(JSON.stringify({ success: false, error: "The selected groups/departments have no members to target." }), { status: 400, headers: corsHeaders });
   }
 
-  // ── Quota check ──
-  const { data: limitCheck } = await db.rpc("check_phishing_limits", {
-    p_company_id: companyId, p_target_count: targets.length,
-  });
-  if (limitCheck && !(limitCheck as Record<string, unknown>).allowed) {
-    const reason = (limitCheck as Record<string, unknown>).reason as string ?? "Quota exceeded";
-    return new Response(JSON.stringify({ success: false, error: `Campaign blocked: ${reason}`, code: "QUOTA_EXCEEDED" }), { status: 403, headers: corsHeaders });
+  // ── Quota check (FAIL CLOSED — create nothing if the check cannot run) ──
+  const limitCheck = await checkLimitsFailClosed(db, companyId, targets.length);
+  if (!limitCheck.ok) {
+    return new Response(
+      JSON.stringify({ success: false, error: limitCheck.error, code: limitCheck.status === 403 ? "QUOTA_EXCEEDED" : "QUOTA_CHECK_FAILED" }),
+      { status: limitCheck.status, headers: corsHeaders },
+    );
   }
 
   // ── Company name + custom vars ──
@@ -215,6 +253,10 @@ Deno.serve(async (req) => {
   const campaignScheduledAt = isScheduled ? new Date(scheduledRaw!).toISOString() : null;
   const status = campaignScheduledAt ? "SCHEDULED" : "RUNNING";
 
+  // Validate the request's redirect URL against open-redirect / SSRF abuse;
+  // fall back to a known-safe destination when it is unsafe.
+  const safeRedirectUrl = sanitizeRedirectUrl(String(rq.redirect_url || ""), "https://www.google.com");
+
   // ── Create campaign ──
   const { data: camp, error: campErr } = await db
     .from("phishing_campaigns")
@@ -227,7 +269,7 @@ Deno.serve(async (req) => {
       landing_page_id:      rq.landing_page_id ?? null,
       group_ids:            groupIds,
       // Stored so phishing-track can resolve the redirect server-side (open-redirect defence).
-      redirect_url:         String(rq.redirect_url || "https://www.google.com"),
+      redirect_url:         safeRedirectUrl,
       emails_per_minute:    Number(rq.emails_per_minute ?? 10),
       business_hours_only:  Boolean(rq.business_hours_only ?? false),
       business_hours_start: Number(rq.business_hours_start ?? 9),
@@ -269,7 +311,7 @@ Deno.serve(async (req) => {
   const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(rq.emails_per_minute ?? 10), 1);
   const baseTime         = campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : Date.now();
-  const finalRedirectUrl = String(rq.redirect_url || "https://www.google.com");
+  const finalRedirectUrl = safeRedirectUrl;
   const smtpId           = rq.smtp_profile_id ? String(rq.smtp_profile_id) : null;
   const fromAddr         = String(rq.from_address || "noreply@awareone.io");
   const fromNm           = String(rq.from_name    || "AwareOne Security");

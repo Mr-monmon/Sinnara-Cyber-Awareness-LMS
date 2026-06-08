@@ -12,6 +12,15 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sanitizeRedirectUrl } from "../_shared/urlSafety.ts";
+import {
+  assertGroupsOwnedByCompany,
+  assertLandingPageAccessible,
+  assertScenarioAccessible,
+  assertSmtpProfileAccessible,
+  checkLimitsFailClosed,
+  normalizeTargets,
+} from "../_shared/phishingAccess.ts";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -159,44 +168,28 @@ Deno.serve(async (req) => {
     }
 
     // Verify every group belongs to the caller's company (prevent cross-tenant group abuse).
-    const { data: ownedGroups, error: grpErr } = await db
-      .from("phishing_groups")
-      .select("id")
-      .in("id", group_ids as string[])
-      .eq("company_id", companyId);
-
-    if (grpErr) {
-      return new Response(JSON.stringify({ success: false, error: "Failed to validate target groups" }), { status: 500, headers: corsHeaders });
-    }
-    if (!ownedGroups || ownedGroups.length !== (group_ids as string[]).length) {
+    const groupsOk = await assertGroupsOwnedByCompany(db, group_ids as string[], companyId);
+    if (!groupsOk) {
       return new Response(JSON.stringify({ success: false, error: "One or more groups do not belong to your company" }), { status: 403, headers: corsHeaders });
     }
   }
 
-  // Verify SMTP profile ownership (if provided and not the platform default).
-  if (smtp_profile_id && typeof smtp_profile_id === "string") {
-    const { data: smtpOwner } = await db
-      .from("smtp_profiles")
-      .select("id, is_platform_profile")
-      .eq("id", smtp_profile_id)
-      .single();
+  // Verify SMTP profile accessibility (company-owned OR platform profile; null → allowed).
+  const smtpId = (smtp_profile_id && typeof smtp_profile_id === "string") ? smtp_profile_id : null;
+  if (!(await assertSmtpProfileAccessible(db, smtpId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "SMTP profile is not accessible to your company" }), { status: 403, headers: corsHeaders });
+  }
 
-    if (!smtpOwner) {
-      return new Response(JSON.stringify({ success: false, error: "SMTP profile not found" }), { status: 403, headers: corsHeaders });
-    }
-    if (!smtpOwner.is_platform_profile) {
-      // Company-owned profile: must belong to the caller's company.
-      const { data: smtpCompany } = await db
-        .from("smtp_profiles")
-        .select("id")
-        .eq("id", smtp_profile_id)
-        .eq("company_id", companyId)
-        .single();
+  // Verify landing page accessibility (company-owned OR GLOBAL/SHARED platform page; null → allowed).
+  const landingPageId = (landing_page_id && typeof landing_page_id === "string") ? landing_page_id : null;
+  if (!(await assertLandingPageAccessible(db, landingPageId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "Landing page is not accessible to your company" }), { status: 403, headers: corsHeaders });
+  }
 
-      if (!smtpCompany) {
-        return new Response(JSON.stringify({ success: false, error: "SMTP profile does not belong to your company" }), { status: 403, headers: corsHeaders });
-      }
-    }
+  // Verify scenario accessibility (global/platform scenario; null → allowed).
+  const scenarioId = (scenario_id && typeof scenario_id === "string") ? scenario_id : null;
+  if (!(await assertScenarioAccessible(db, scenarioId, companyId))) {
+    return new Response(JSON.stringify({ success: false, error: "Scenario is not accessible to your company" }), { status: 403, headers: corsHeaders });
   }
 
   // ── Draft: create campaign record only ──
@@ -230,8 +223,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: true, campaign_id: camp.id, status: "DRAFT" }), { headers: corsHeaders });
   }
 
-  // ── Load group members ──
-  const { data: members, error: membersErr } = await db
+  // ── Load group members (de-duplicated by normalized lowercase email) ──
+  const { data: rawMembers, error: membersErr } = await db
     .from("phishing_group_members")
     .select("email, first_name, last_name, position, department")
     .in("group_id", group_ids as string[]);
@@ -240,22 +233,19 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: "Failed to load group members: " + membersErr.message }), { status: 500, headers: corsHeaders });
   }
 
-  const targetCount = members?.length ?? 0;
+  const members = normalizeTargets(rawMembers ?? []);
+  const targetCount = members.length;
   if (targetCount === 0) {
     return new Response(JSON.stringify({ success: false, error: "Selected groups have no members. Add members to the groups first." }), { status: 400, headers: corsHeaders });
   }
 
-  // ── Quota check (server-side enforcement) ──
-  const { data: limitCheck, error: limitErr } = await db.rpc("check_phishing_limits", {
-    p_company_id:   companyId,
-    p_target_count: targetCount,
-  });
-
-  if (limitErr) {
-    console.error("[launch-phishing-campaign] quota check error:", limitErr.message);
-  } else if (limitCheck && !(limitCheck as Record<string, unknown>).allowed) {
-    const reason = (limitCheck as Record<string, unknown>).reason as string ?? "Quota exceeded";
-    return new Response(JSON.stringify({ success: false, error: `Campaign blocked: ${reason}`, code: "QUOTA_EXCEEDED" }), { status: 403, headers: corsHeaders });
+  // ── Quota check (server-side enforcement — FAIL CLOSED) ──
+  const limitCheck = await checkLimitsFailClosed(db, companyId, targetCount);
+  if (!limitCheck.ok) {
+    return new Response(
+      JSON.stringify({ success: false, error: limitCheck.error, code: limitCheck.status === 403 ? "QUOTA_EXCEEDED" : "QUOTA_CHECK_FAILED" }),
+      { status: limitCheck.status, headers: corsHeaders },
+    );
   }
 
   // ── Load company name and custom variables in parallel ──
@@ -274,6 +264,10 @@ Deno.serve(async (req) => {
   const campaignScheduledAt = (launch_type === "scheduled" && scheduled_at) ? String(scheduled_at) : null;
   const status = campaignScheduledAt ? "SCHEDULED" : "RUNNING";
 
+  // Validate the operator-supplied redirect URL against open-redirect / SSRF
+  // abuse; fall back to a known-safe destination when it is unsafe.
+  const safeRedirectUrl = sanitizeRedirectUrl(String(redirect_url || ""), "https://www.google.com");
+
   // ── Create campaign record ──
   const { data: camp, error: campErr } = await db
     .from("phishing_campaigns")
@@ -287,7 +281,7 @@ Deno.serve(async (req) => {
       scenario_id:              scenario_id ?? null,
       // Stored so phishing-track can resolve the post-click/submit redirect
       // server-side (open-redirect defence) instead of trusting the query param.
-      redirect_url:             String(redirect_url || "https://www.google.com"),
+      redirect_url:             safeRedirectUrl,
       emails_per_minute:        Number(emails_per_minute ?? 10),
       random_delay_enabled:     Boolean(random_delay),
       random_delay_max_seconds: Number(random_delay_max_seconds ?? 60),
@@ -306,7 +300,7 @@ Deno.serve(async (req) => {
   }
 
   // ── Insert targets ──
-  const targetsInsert = (members ?? []).map(m => ({
+  const targetsInsert = members.map(m => ({
     campaign_id: camp.id,
     email:       m.email,
     first_name:  m.first_name  || "",
@@ -338,8 +332,7 @@ Deno.serve(async (req) => {
   const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(emails_per_minute ?? 10), 1);
   const baseTime         = campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : Date.now();
-  const finalRedirectUrl = String(redirect_url || "https://www.google.com");
-  const smtpId           = smtp_profile_id ? String(smtp_profile_id) : null;
+  const finalRedirectUrl = safeRedirectUrl;
   const fromAddr         = String(from_address || "noreply@awareone.io");
   const fromNm           = String(from_name    || "AwareOne Security");
   const emailSubjectStr  = String(email_subject);

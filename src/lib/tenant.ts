@@ -1,6 +1,12 @@
 export const ADMIN_HOST_SUBDOMAIN = "ta7kom-core";
 const RESERVED_APEX_SUBDOMAINS = new Set(["www"]);
-const TENANT_SUBDOMAIN_PATTERN = /^[a-z]+$/;
+// Subdomains that must never resolve to a tenant (platform/system names).
+const RESERVED_TENANT_SUBDOMAINS = new Set([
+  "app", "admin", "api", "www", "mail", "support",
+  "platform", "dashboard", "login", ADMIN_HOST_SUBDOMAIN,
+]);
+// Lowercase letters/digits with internal hyphens only — no leading/trailing hyphen.
+const TENANT_SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const IPV4_ADDRESS_PATTERN =
   /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 
@@ -29,8 +35,11 @@ export const isLocalHostname = (hostname: string) => {
   );
 };
 
+// Strict: the input must already be lowercase (matches the DB CHECK constraint
+// `subdomain = lower(subdomain)`); hostnames from the browser are lowercased.
 export const isValidTenantSubdomain = (subdomain: string) =>
-  TENANT_SUBDOMAIN_PATTERN.test(subdomain);
+  TENANT_SUBDOMAIN_PATTERN.test(subdomain) &&
+  !RESERVED_TENANT_SUBDOMAINS.has(subdomain);
 
 const getSubdomainHostMode = (candidateSubdomain?: string): HostAccessMode => {
   if (!candidateSubdomain || RESERVED_APEX_SUBDOMAINS.has(candidateSubdomain)) {
