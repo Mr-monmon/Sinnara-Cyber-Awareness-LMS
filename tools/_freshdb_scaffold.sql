@@ -27,9 +27,22 @@ CREATE TABLE IF NOT EXISTS auth.users (
   email text,
   created_at timestamptz DEFAULT now()
 );
-CREATE OR REPLACE FUNCTION auth.uid()  RETURNS uuid  LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
-CREATE OR REPLACE FUNCTION auth.role() RETURNS text  LANGUAGE sql STABLE AS $$ SELECT NULL::text $$;
-CREATE OR REPLACE FUNCTION auth.jwt()  RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT '{}'::jsonb $$;
+-- Mirror Supabase's real implementations: resolve identity from the
+-- `request.jwt.claims` GUC so RLS tests can impersonate a user by setting it
+-- (SELECT set_config('request.jwt.claims', '{"sub":"...","role":"..."}', true)).
+CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
+$$;
+CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+  SELECT NULLIF(auth.jwt() ->> 'sub', '')::uuid
+$$;
+CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT auth.jwt() ->> 'role'
+$$;
+-- Supabase grants anon/authenticated access to the auth helper schema so RLS
+-- policies (which call auth.uid()/auth.jwt()) work under those roles.
+GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION auth.uid(), auth.jwt(), auth.role() TO anon, authenticated, service_role;
 
 -- ── storage schema + stubs ──
 CREATE SCHEMA IF NOT EXISTS storage;
