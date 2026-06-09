@@ -42,7 +42,9 @@ interface RiskRow {
   exam_risk: number;
   phishing_risk: number;
   risk_score: number;
-  risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT_EVIDENCE";
+  assessed_risk_score: number | null;
+  assessed: boolean;
   total_assigned: number;
   completed: number;
   completion_pct: number;
@@ -53,10 +55,11 @@ interface RiskRow {
 }
 
 const LEVEL_CONFIG = {
-  CRITICAL: { color: T.red,    bg: T.redBg,    border: T.redBorder,    icon: AlertTriangle, label: "Critical" },
-  HIGH:     { color: T.orange, bg: T.orangeBg, border: T.orangeBorder, icon: TrendingDown,  label: "High"     },
-  MEDIUM:   { color: T.yellow, bg: T.yellowBg, border: T.yellowBorder, icon: Shield,        label: "Medium"   },
-  LOW:      { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  icon: CheckCircle,   label: "Low"      },
+  CRITICAL:             { color: T.red,    bg: T.redBg,    border: T.redBorder,    icon: AlertTriangle, label: "Critical"      },
+  HIGH:                 { color: T.orange, bg: T.orangeBg, border: T.orangeBorder, icon: TrendingDown,  label: "High"          },
+  MEDIUM:               { color: T.yellow, bg: T.yellowBg, border: T.yellowBorder, icon: Shield,        label: "Medium"        },
+  LOW:                  { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  icon: CheckCircle,   label: "Low"           },
+  INSUFFICIENT_EVIDENCE:{ color: T.textMuted, bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)", icon: Shield, label: "Not Assessed" },
 };
 
 function RiskBadge({ level }: { level: RiskRow["risk_level"] }) {
@@ -139,13 +142,19 @@ export function RiskScorePage() {
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
 
+  const assessedRows = rows.filter(r => r.assessed);
+  const notAssessed = rows.filter(r => !r.assessed);
   const stats = {
     total: rows.length,
     critical: rows.filter(r => r.risk_level === "CRITICAL").length,
     high: rows.filter(r => r.risk_level === "HIGH").length,
     medium: rows.filter(r => r.risk_level === "MEDIUM").length,
     low: rows.filter(r => r.risk_level === "LOW").length,
-    avgScore: rows.length ? Math.round(rows.reduce((s, r) => s + r.risk_score, 0) / rows.length) : 0,
+    notAssessed: notAssessed.length,
+    coverageRate: rows.length ? Math.round((assessedRows.length / rows.length) * 100) : 0,
+    avgScore: assessedRows.length
+      ? Math.round(assessedRows.reduce((s, r) => s + (r.assessed_risk_score ?? r.risk_score), 0) / assessedRows.length)
+      : 0,
   };
 
   function toggleSort(key: SortKey) {
@@ -193,12 +202,14 @@ export function RiskScorePage() {
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
         {([
-          { label: "Total Employees", value: stats.total,    color: T.text,   bg: "rgba(255,255,255,0.04)", border: T.border },
-          { label: "Critical Risk",   value: stats.critical, color: T.red,    bg: T.redBg,    border: T.redBorder    },
-          { label: "High Risk",       value: stats.high,     color: T.orange, bg: T.orangeBg, border: T.orangeBorder },
-          { label: "Medium Risk",     value: stats.medium,   color: T.yellow, bg: T.yellowBg, border: T.yellowBorder },
-          { label: "Low Risk",        value: stats.low,      color: T.green,  bg: T.greenBg,  border: T.greenBorder  },
-          { label: "Avg Risk Score",  value: stats.avgScore, color: T.text,   bg: "rgba(255,255,255,0.04)", border: T.border },
+          { label: "Total Employees", value: stats.total,       color: T.text,    bg: "rgba(255,255,255,0.04)", border: T.border },
+          { label: "Critical Risk",   value: stats.critical,    color: T.red,     bg: T.redBg,    border: T.redBorder    },
+          { label: "High Risk",       value: stats.high,        color: T.orange,  bg: T.orangeBg, border: T.orangeBorder },
+          { label: "Medium Risk",     value: stats.medium,      color: T.yellow,  bg: T.yellowBg, border: T.yellowBorder },
+          { label: "Low Risk",        value: stats.low,         color: T.green,   bg: T.greenBg,  border: T.greenBorder  },
+          { label: "Not Assessed",    value: stats.notAssessed, color: T.textMuted, bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)" },
+          { label: "Evidence Coverage", value: `${stats.coverageRate}%`, color: T.text, bg: "rgba(255,255,255,0.04)", border: T.border },
+          { label: "Avg Risk (assessed)", value: stats.avgScore, color: T.text,   bg: "rgba(255,255,255,0.04)", border: T.border },
         ] as const).map(card => (
           <div key={card.label} style={{
             padding: "14px 16px", borderRadius: 10,
@@ -257,6 +268,7 @@ export function RiskScorePage() {
           <option value="HIGH">High</option>
           <option value="MEDIUM">Medium</option>
           <option value="LOW">Low</option>
+          <option value="INSUFFICIENT_EVIDENCE">Not Assessed</option>
         </select>
       </div>
 
@@ -329,8 +341,12 @@ export function RiskScorePage() {
 
                 {/* Risk score */}
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: cfg.color }}>{row.risk_score}</div>
-                  <div style={{ fontSize: 10, color: T.textMuted }}>/ 100</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: cfg.color }}>
+                    {row.risk_level === "INSUFFICIENT_EVIDENCE" ? "—" : row.risk_score}
+                  </div>
+                  <div style={{ fontSize: 10, color: T.textMuted }}>
+                    {row.risk_level === "INSUFFICIENT_EVIDENCE" ? "no evidence" : "/ 100"}
+                  </div>
                 </div>
 
                 {/* Course completion */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Globe, Plus, Edit2, Trash2, X, Check, Loader2, AlertCircle,
   Copy, Eye, Code, Download, Link
@@ -166,10 +166,7 @@ export const PhishingLandingPagesPage: React.FC = () => {
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
 
-  useEffect(() => { if (user?.company_id) loadPages(); }, [user]);
-  useEffect(() => { setPreviewHtml(form.html_content); }, [form.html_content]);
-
-  const loadPages = async () => {
+  const loadPages = useCallback(async () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
@@ -178,7 +175,10 @@ export const PhishingLandingPagesPage: React.FC = () => {
       setPages(data || []);
     } catch (err) { console.error('[LandingPages] load', err); }
     finally { setLoading(false); }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { loadPages(); }, [loadPages]);
+  useEffect(() => { setPreviewHtml(form.html_content); }, [form.html_content]);
 
   const openCreate = () => {
     setEditPage(null);

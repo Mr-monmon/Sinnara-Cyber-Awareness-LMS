@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Server, Plus, Edit2, Trash2, Lock, Eye, EyeOff,
   Send, X, Check, Loader2, AlertCircle, ChevronDown, ChevronUp
@@ -80,6 +80,7 @@ interface SmtpProfile {
   ignore_cert_errors: boolean;
   custom_headers: { key: string; value: string }[];
   is_platform_profile: boolean;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   is_active: boolean;
   password_encrypted?: boolean;
   created_at: string;
@@ -147,14 +148,12 @@ export const PhishingSmtpPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => { if (user?.company_id) loadProfiles(); }, [user]);
-
-  const loadProfiles = async () => {
+  const loadProfiles = useCallback(async () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
       // Load company profiles — password column intentionally excluded
-      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, created_at';
+      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
       const { data: companyProfiles } = await supabase
         .from('smtp_profiles')
         .select(SAFE_COLS)
@@ -162,38 +161,56 @@ export const PhishingSmtpPage: React.FC = () => {
         .eq('is_platform_profile', false)
         .order('created_at', { ascending: false });
 
-      // Load platform-pushed profiles
+      // Load SHARED platform profiles (pushed to this company via access rows)
       const { data: accessRows } = await supabase
         .from('smtp_profile_company_access')
         .select('smtp_profile_id, pushed_at')
         .eq('company_id', user.company_id);
 
-      let platformProfiles: SmtpProfile[] = [];
+      // Load GLOBAL platform profiles (open to every company — no access row needed)
+      const { data: globalPP } = await supabase
+        .from('smtp_profiles')
+        .select(SAFE_COLS)
+        .eq('is_platform_profile', true)
+        .eq('visibility', 'GLOBAL');
+
+      const profileMap = new Map<string, SmtpProfile>();
+
+      // Add GLOBAL profiles first
+      (globalPP || []).forEach(p => {
+        profileMap.set(p.id, { ...p, custom_headers: p.custom_headers || [], isPushed: true });
+      });
+
+      // Add SHARED profiles (may overlap with GLOBAL if visibility changed — Map deduplicates)
       if (accessRows && accessRows.length > 0) {
         const ids = accessRows.map(r => r.smtp_profile_id);
-        const { data: pp } = await supabase
+        const { data: sharedPP } = await supabase
           .from('smtp_profiles')
           .select(SAFE_COLS)
           .in('id', ids)
           .eq('is_platform_profile', true);
-        if (pp) {
-          platformProfiles = pp.map(p => ({
-            ...p,
-            custom_headers: p.custom_headers || [],
-            isPushed: true,
-            pushed_at: accessRows.find(r => r.smtp_profile_id === p.id)?.pushed_at,
-          }));
-        }
+        (sharedPP || []).forEach(p => {
+          if (!profileMap.has(p.id)) {
+            profileMap.set(p.id, {
+              ...p,
+              custom_headers: p.custom_headers || [],
+              isPushed: true,
+              pushed_at: accessRows.find(r => r.smtp_profile_id === p.id)?.pushed_at,
+            });
+          }
+        });
       }
 
       const all: SmtpProfile[] = [
         ...(companyProfiles || []).map(p => ({ ...p, custom_headers: p.custom_headers || [], isPushed: false })),
-        ...platformProfiles,
+        ...Array.from(profileMap.values()),
       ];
       setProfiles(all);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const openCreate = () => {
     setEditProfile(null);

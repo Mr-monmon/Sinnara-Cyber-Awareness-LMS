@@ -1,4 +1,11 @@
 import { jsPDF } from 'jspdf';
+import {
+  calculateCampaignMetrics,
+  summarizeTargets,
+  methodologyNotes,
+  type QueueStats,
+  type TargetStats,
+} from './phishingMetrics';
 
 export interface CampaignReportTarget {
   email: string;
@@ -8,6 +15,8 @@ export interface CampaignReportTarget {
   clicked_at?: string | null;
   submitted_at?: string | null;
   reported_at?: string | null;
+  credentials_entered?: boolean | null;
+  reported?: boolean | null;
 }
 
 export interface CampaignReportData {
@@ -21,10 +30,13 @@ export interface CampaignReportData {
   linksClicked: number;
   credentialsSubmitted: number;
   emailsReported: number;
+  // Optional queue detail for canonical metrics
+  queuedEmails?: number;
+  failedEmails?: number;
+  pendingEmails?: number;
+  skippedEmails?: number;
   targets: CampaignReportTarget[];
 }
-
-const pct = (a: number, b: number): number => (b > 0 ? Math.round((a / b) * 100) : 0);
 
 const fmtTimestamp = (iso?: string | null): string => {
   if (!iso) return '—';
@@ -63,6 +75,24 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   const contentW = pageW - marginX * 2;
   let y = 48;
 
+  // Build canonical metrics from queue stats + deduplicated targets
+  const queueStats: QueueStats = {
+    queued:  data.queuedEmails  ?? data.emailsSent,
+    sent:    data.emailsSent,
+    failed:  data.failedEmails  ?? 0,
+    pending: data.pendingEmails ?? 0,
+    skipped: data.skippedEmails ?? 0,
+  };
+  const targetRows: TargetStats[] = data.targets.map(t => ({
+    email:               t.email,
+    opened_at:           t.opened_at,
+    clicked_at:          t.clicked_at,
+    credentials_entered: t.credentials_entered ?? (t.submitted_at ? true : null),
+    reported_at:         t.reported_at,
+  }));
+  const dedupedTargets = summarizeTargets(targetRows);
+  const m = calculateCampaignMetrics(queueStats, dedupedTargets);
+
   /* ── Header ── */
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
@@ -91,15 +121,16 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   doc.line(marginX, y, pageW - marginX, y);
   y += 22;
 
-  /* ── Summary metrics ── */
-  const sent = data.emailsSent;
-  const metrics: Array<{ label: string; value: number; pctOf: boolean }> = [
-    { label: 'Targets', value: data.totalTargets, pctOf: false },
-    { label: 'Sent', value: data.emailsSent, pctOf: false },
-    { label: 'Opened', value: data.emailsOpened, pctOf: true },
-    { label: 'Clicked', value: data.linksClicked, pctOf: true },
-    { label: 'Credentials', value: data.credentialsSubmitted, pctOf: true },
-    { label: 'Reported', value: data.emailsReported, pctOf: true },
+  /* ── Summary metrics (8-column) ── */
+  const summaryMetrics: Array<{ label: string; value: number; sub: string }> = [
+    { label: 'Targets',   value: m.targeted,   sub: 'Unique recipients' },
+    { label: 'Queued',    value: m.queued,      sub: 'Emails queued' },
+    { label: 'Sent',      value: m.sent,        sub: 'Emails sent' },
+    { label: 'Failed',    value: m.failed,      sub: `Fail (${m.failRate}% of queued)` },
+    { label: 'Opened',    value: m.opened,      sub: `${m.openRate}% of sent` },
+    { label: 'Clicked',   value: m.clicked,     sub: `${m.clickRate}% of sent` },
+    { label: 'Submitted', value: m.submitted,   sub: `${m.submitRate}% of sent` },
+    { label: 'Reported',  value: m.reported,    sub: `${m.reportRate}% of sent` },
   ];
 
   doc.setFont('helvetica', 'bold');
@@ -108,33 +139,42 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   doc.text('Summary', marginX, y);
   y += 14;
 
-  const colW = contentW / metrics.length;
-  metrics.forEach((m, i) => {
+  const colW = contentW / summaryMetrics.length;
+  summaryMetrics.forEach((sm, i) => {
     const cx = marginX + i * colW;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
+    doc.setFontSize(14);
     doc.setTextColor(20, 20, 20);
-    doc.text(String(m.value), cx, y + 4);
+    doc.text(String(sm.value), cx, y + 4);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(7);
     doc.setTextColor(110, 110, 110);
-    const sub = m.pctOf ? `${m.label} (${pct(m.value, sent)}%)` : m.label;
-    doc.text(sub, cx, y + 18);
+    doc.text(sm.sub, cx, y + 16);
   });
-  y += 36;
+  y += 34;
 
-  /* ── Funnel bars ── */
+  /* ── Susceptibility headline ── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(220, 50, 50);
+  doc.text(
+    `Susceptibility: ${m.susceptibilityRate}% of targeted users clicked or submitted credentials  |  Reported by ${m.reportByTargetRate}% of targeted users`,
+    marginX, y,
+  );
+  y += 20;
+
+  /* ── Funnel bars (rates of delivered / sent emails) ── */
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
-  doc.text('Engagement Funnel', marginX, y);
+  doc.text('Engagement Funnel (rates of sent emails)', marginX, y);
   y += 14;
 
-  const funnel: Array<{ label: string; value: number; rgb: [number, number, number] }> = [
-    { label: 'Opened', value: data.emailsOpened, rgb: [167, 139, 250] },
-    { label: 'Clicked', value: data.linksClicked, rgb: [251, 146, 60] },
-    { label: 'Submitted', value: data.credentialsSubmitted, rgb: [248, 113, 113] },
-    { label: 'Reported', value: data.emailsReported, rgb: [52, 211, 153] },
+  const funnel: Array<{ label: string; value: number; rate: number; rgb: [number, number, number] }> = [
+    { label: 'Opened',    value: m.opened,    rate: m.openRate,   rgb: [167, 139, 250] },
+    { label: 'Clicked',   value: m.clicked,   rate: m.clickRate,  rgb: [251, 146, 60] },
+    { label: 'Submitted', value: m.submitted, rate: m.submitRate, rgb: [248, 113, 113] },
+    { label: 'Reported',  value: m.reported,  rate: m.reportRate, rgb: [52, 211, 153] },
   ];
 
   const labelW = 70;
@@ -142,23 +182,40 @@ export function generateCampaignPdf(data: CampaignReportData): void {
   const barMaxW = contentW - labelW - 60;
   const barH = 11;
   funnel.forEach((f) => {
-    const p = pct(f.value, sent);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(70, 70, 70);
     doc.text(f.label, marginX, y + barH - 2);
-    // track
     doc.setFillColor(235, 235, 235);
     doc.rect(barX, y, barMaxW, barH, 'F');
-    // value bar
-    const w = Math.max(0, (p / 100) * barMaxW);
+    const w = Math.max(0, (f.rate / 100) * barMaxW);
     if (w > 0) {
       doc.setFillColor(f.rgb[0], f.rgb[1], f.rgb[2]);
       doc.rect(barX, y, w, barH, 'F');
     }
     doc.setTextColor(70, 70, 70);
-    doc.text(`${f.value} (${p}%)`, barX + barMaxW + 6, y + barH - 2);
+    doc.text(`${f.value} (${f.rate}%)`, barX + barMaxW + 6, y + barH - 2);
     y += barH + 6;
+  });
+  y += 16;
+
+  /* ── Methodology ── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Methodology', marginX, y);
+  y += 14;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(95, 95, 95);
+  methodologyNotes.forEach((note) => {
+    const lines = doc.splitTextToSize(`•  ${note}`, contentW) as string[];
+    lines.forEach((ln) => {
+      if (y + 12 > pageH - 40) { doc.addPage(); y = 48; }
+      doc.text(ln, marginX, y);
+      y += 11;
+    });
   });
   y += 14;
 
@@ -227,6 +284,23 @@ export function generateCampaignPdf(data: CampaignReportData): void {
       cx += cols[ci].w;
     });
     y += rowH;
+  });
+
+  /* ── Methodology notes ── */
+  y += 10;
+  if (y + 80 > pageH - 40) { doc.addPage(); y = 48; }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Reporting Methodology', marginX, y);
+  y += 12;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  methodologyNotes.forEach(note => {
+    if (y + 12 > pageH - 40) { doc.addPage(); y = 48; }
+    doc.text(`• ${note}`, marginX + 4, y);
+    y += 12;
   });
 
   const filename = `phishing-results-${sanitize(data.name)}-${new Date()

@@ -242,9 +242,12 @@ export function AdvancedAnalyticsPage() {
 
     // ── Process risk rows ──────────────────────────
     if (riskRows && riskRows.length > 0) {
-      // Overview
+      // Overview — use assessed rows only for risk/exam averages
       const total = riskRows.length;
-      const avgRisk = riskRows.reduce((s, r) => s + Number(r.risk_score), 0) / total;
+      const assessedRiskRows = riskRows.filter(r => r.assessed !== false);
+      const avgRisk = assessedRiskRows.length
+        ? assessedRiskRows.reduce((s, r) => s + Number(r.assessed_risk_score ?? r.risk_score), 0) / assessedRiskRows.length
+        : 0;
       const avgExam = riskRows.reduce((s, r) => s + Number(r.avg_exam_pct), 0) / total;
       const totalAssigned = riskRows.reduce((s, r) => s + Number(r.total_assigned), 0);
       const totalCompleted = riskRows.reduce((s, r) => s + Number(r.completed), 0);
@@ -261,17 +264,22 @@ export function AdvancedAnalyticsPage() {
         critical_count: criticalCount,
       });
 
-      // Risk distribution
-      const levels = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-      const levelColors = { CRITICAL: T.red, HIGH: T.orange, MEDIUM: T.yellow, LOW: T.green };
+      // Risk distribution — include INSUFFICIENT_EVIDENCE
+      const levels = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INSUFFICIENT_EVIDENCE"];
+      const levelColors: Record<string, string> = {
+        CRITICAL: T.red, HIGH: T.orange, MEDIUM: T.yellow, LOW: T.green,
+        INSUFFICIENT_EVIDENCE: "#64748b",
+      };
       setRiskDist(levels.map(lv => ({
-        level: lv,
+        level: lv === "INSUFFICIENT_EVIDENCE" ? "Not Assessed" : lv,
         count: riskRows.filter(r => r.risk_level === lv).length,
-        color: levelColors[lv as keyof typeof levelColors],
+        color: levelColors[lv],
       })));
 
-      // Department stats
+      // Department stats — use assessed employees only for avg risk
       const deptMap = new Map<string, DeptStat>();
+      const deptAssessed = new Map<string, number>(); // dept_id → assessed risk sum
+      const deptAssessedCount = new Map<string, number>();
       for (const r of riskRows) {
         const did = r.department_id ?? "__none__";
         const dname = r.department_name ?? "No Department";
@@ -282,21 +290,30 @@ export function AdvancedAnalyticsPage() {
             avg_risk_score: 0, avg_exam_pct: 0,
             phishing_clicked: 0, phishing_total: 0,
           });
+          deptAssessed.set(did, 0);
+          deptAssessedCount.set(did, 0);
         }
         const d = deptMap.get(did)!;
         d.employee_count++;
         d.completed += Number(r.completed);
         d.total_assigned += Number(r.total_assigned);
-        d.avg_risk_score += Number(r.risk_score);
+        if (r.assessed !== false && r.assessed_risk_score != null) {
+          deptAssessed.set(did, (deptAssessed.get(did) ?? 0) + Number(r.assessed_risk_score));
+          deptAssessedCount.set(did, (deptAssessedCount.get(did) ?? 0) + 1);
+        }
         d.avg_exam_pct += Number(r.avg_exam_pct);
         d.phishing_clicked += Number(r.phishing_clicked);
         d.phishing_total += Number(r.phishing_total);
       }
-      const depts = Array.from(deptMap.values()).map(d => ({
-        ...d,
-        avg_risk_score: Math.round(d.avg_risk_score / d.employee_count),
-        avg_exam_pct: Math.round(d.avg_exam_pct / d.employee_count),
-      })).sort((a, b) => b.avg_risk_score - a.avg_risk_score);
+      const depts = Array.from(deptMap.values()).map(d => {
+        const ac = deptAssessedCount.get(d.department_id) ?? 0;
+        const as_ = deptAssessed.get(d.department_id) ?? 0;
+        return {
+          ...d,
+          avg_risk_score: ac > 0 ? Math.round(as_ / ac) : 0,
+          avg_exam_pct: Math.round(d.avg_exam_pct / d.employee_count),
+        };
+      }).sort((a, b) => b.avg_risk_score - a.avg_risk_score);
       setDeptStats(depts);
     } else {
       setOverview({ total_employees: 0, completion_pct: 0, avg_exam_score: 0, avg_risk_score: 0, phishing_click_rate: 0, critical_count: 0 });

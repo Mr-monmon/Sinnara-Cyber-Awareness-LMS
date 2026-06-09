@@ -473,9 +473,20 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
         <StatCard icon={ClipboardCheck} color={T.purple} bg={T.purpleBg}           label="Exam Attempts" value={exams.length} delay="0.13s" />
         <StatCard icon={Award}          color={T.gold}   bg={T.goldBg}             label="Certificates" value={certificates.length} delay="0.17s" />
         {riskSummary && (() => {
-          const riskColor = riskSummary.risk_level === 'CRITICAL' ? '#f87171' : riskSummary.risk_level === 'HIGH' ? T.orange : riskSummary.risk_level === 'MEDIUM' ? '#fbbf24' : T.green;
-          const riskBg = riskSummary.risk_level === 'CRITICAL' ? T.redBg : riskSummary.risk_level === 'HIGH' ? T.orangeBg : riskSummary.risk_level === 'MEDIUM' ? T.goldBg : T.greenBg;
-          return <StatCard icon={AlertTriangle} color={riskColor} bg={riskBg} label={`Risk Score — ${riskSummary.risk_level}`} value={riskSummary.risk_score} delay="0.21s" />;
+          const isUnassessed = riskSummary.risk_level === 'INSUFFICIENT_EVIDENCE';
+          const riskColor = isUnassessed ? '#94a3b8'
+            : riskSummary.risk_level === 'CRITICAL' ? '#f87171'
+            : riskSummary.risk_level === 'HIGH' ? T.orange
+            : riskSummary.risk_level === 'MEDIUM' ? '#fbbf24'
+            : T.green;
+          const riskBg = isUnassessed ? 'rgba(148,163,184,0.10)'
+            : riskSummary.risk_level === 'CRITICAL' ? T.redBg
+            : riskSummary.risk_level === 'HIGH' ? T.orangeBg
+            : riskSummary.risk_level === 'MEDIUM' ? T.goldBg
+            : T.greenBg;
+          const riskLabel = isUnassessed ? 'Risk — Not Assessed' : `Risk Score — ${riskSummary.risk_level}`;
+          const riskValue = isUnassessed ? '—' : riskSummary.risk_score;
+          return <StatCard icon={AlertTriangle} color={riskColor} bg={riskBg} label={riskLabel} value={riskValue} delay="0.21s" />;
         })()}
       </div>
 

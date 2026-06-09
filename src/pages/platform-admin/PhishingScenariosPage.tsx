@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Crosshair, Plus, Edit2, Trash2, X, Check, ToggleLeft, ToggleRight, Tag } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -241,16 +241,16 @@ export const PhishingScenariosPage: React.FC = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'email' | 'landing'>('email');
 
-  useEffect(() => { fetchScenarios(); }, []);
-
-  const fetchScenarios = async () => {
+  const fetchScenarios = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.from('phishing_scenarios').select('*').order('sort_order');
     const list = data || [];
     setScenarios(list);
     if (list.length === 0) await seedScenarios();
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => { fetchScenarios(); }, [fetchScenarios]);
 
   const seedScenarios = async () => {
     await supabase.from('phishing_scenarios').insert(SEEDS as Scenario[]);
