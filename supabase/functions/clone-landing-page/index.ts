@@ -1,11 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAndRef } from "../_shared/httpError.ts";
+import { corsHeaders as buildCors } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// CORS computed per-request inside the handler so ALLOWED_ORIGINS (when set)
+// can reflect the calling SPA origin. Falls back to "*" when unset.
 
 const SUPABASE_URL        = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY   = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -689,6 +687,7 @@ function buildTrackingScript(): string {
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
+  const corsHeaders = { ...buildCors(req, { methods: "POST, OPTIONS" }), "Content-Type": "application/json" };
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   // Verify caller is an authenticated admin (company or platform)
@@ -865,7 +864,7 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Clone failed" }),
+      JSON.stringify(logAndRef("[clone-landing-page]", err, "Clone failed. Please try again.")),
       { status: 500, headers: corsHeaders }
     );
   }

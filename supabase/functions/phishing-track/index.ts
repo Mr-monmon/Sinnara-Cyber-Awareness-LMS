@@ -1,4 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders as buildCors } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rateLimit.ts";
+
+// Abuse guard for this PUBLIC, unauthenticated endpoint. A caller who harvests
+// campaign/recipient tokens could otherwise spam tracking events or POST submit
+// bodies without limit. 120 hits / 60s / IP is far above any legitimate
+// recipient's traffic (a real victim produces a handful of hits) but throttles
+// a single-host flood. Best-effort per-isolate L1 control — see rateLimit.ts and
+// docs/SECURITY_HARDENING.md for the L2 (gateway/WAF) recommendation.
+const TRACK_RATE_LIMIT = 120;
+const TRACK_RATE_WINDOW_MS = 60_000;
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -334,13 +345,17 @@ Deno.serve(async (req) => {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "unknown";
   const ua = req.headers.get("user-agent") ?? "";
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type",
-  };
+  // Public endpoint: wildcard CORS is required (recipients arrive from any
+  // origin / mail client) and safe (no cookies, no tenant data returned).
+  const corsHeaders = buildCors(req, { methods: "GET, POST, OPTIONS", headers: "content-type", publicWildcard: true });
 
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+
+  // Best-effort per-IP flood guard. When exceeded we still serve a benign
+  // response (pixel / redirect) but SKIP all database side effects, so a flood
+  // cannot amplify into unbounded inserts. Legitimate recipients never approach
+  // this ceiling.
+  const within = rateLimit(`pt:${ip}`, TRACK_RATE_LIMIT, TRACK_RATE_WINDOW_MS).allowed;
 
   if (!t) {
     const errId = `PT-${Date.now().toString(36).toUpperCase()}-NOTYPE`;
@@ -353,7 +368,7 @@ Deno.serve(async (req) => {
   }
 
   if (t === "open") {
-    logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
+    if (within) logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
     return new Response(TRANSPARENT_GIF, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
@@ -365,7 +380,7 @@ Deno.serve(async (req) => {
     // <img src="{{.TrackingURL}}">. Such an image load must be recorded as an
     // OPEN, not a click, otherwise every open inflates the click count.
     if (looksLikeImageRequest(req)) {
-      logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
+      if (within) logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
       return new Response(TRANSPARENT_GIF, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
@@ -385,12 +400,18 @@ Deno.serve(async (req) => {
         decodedUrl = atob(padded);
       } catch { decodedUrl = ""; }
     }
+    // Over the flood ceiling: skip the DB read + write entirely and send the
+    // recipient to a safe default rather than amplifying load.
+    if (!within) return Response.redirect(SAFE_DEFAULT_REDIRECT, 302);
     const redirectUrl = await resolveRedirect(campaign_id, recipient_id, decodedUrl);
     logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});
     return Response.redirect(redirectUrl, 302);
   }
 
   if (t === "submit" && req.method === "POST") {
+    // Over the flood ceiling: do not read the body or write anything; send the
+    // recipient onward to a safe default.
+    if (!within) return Response.redirect(SAFE_DEFAULT_REDIRECT, 302);
     let body: Record<string, unknown> = {};
     try {
       body = await req.json();
@@ -417,7 +438,7 @@ Deno.serve(async (req) => {
   if (t === "report") {
     // Recipient reported the email as phishing (e.g. "Report" button / mailbox plugin).
     // Independent of the funnel — feeds reporting_rate, never alters open/click/submit status.
-    logEvent({ campaign_id, recipient_id, event_type: "EMAIL_REPORTED", ip, ua }).catch(() => {});
+    if (within) logEvent({ campaign_id, recipient_id, event_type: "EMAIL_REPORTED", ip, ua }).catch(() => {});
     if (req.method === "GET") {
       return new Response(TRANSPARENT_GIF, {
         status: 200,
