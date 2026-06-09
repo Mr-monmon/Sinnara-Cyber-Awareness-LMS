@@ -73,17 +73,30 @@ ORDER BY ordinal_position;
 -- A3. Does anything depend on the view? A plain DROP would fail if so.
 --     Expect ZERO rows. If rows are returned, STOP and review before dropping
 --     (do NOT blindly add CASCADE — investigate what those dependents are).
+--
+--     How this works: pg_depend rows where refobjid = the view's OID record
+--     objects that REFERENCE the view (i.e., depend ON it). For each such
+--     dependency we join pg_rewrite to find the view/rule that holds it, then
+--     resolve that to its parent relation via r.ev_class. This correctly
+--     surfaces other views whose definitions call employee_risk_scores — it
+--     does NOT surface the tables that employee_risk_scores itself queries.
 SELECT DISTINCT
-  dependent.relname AS dependent_object,
-  dependent.relkind AS dependent_kind
-FROM pg_depend d
-JOIN pg_rewrite r        ON r.oid = d.objid
-JOIN pg_class   src      ON src.oid = r.ev_class
-JOIN pg_class   dependent ON dependent.oid = d.refobjid
-JOIN pg_namespace n      ON n.oid = src.relnamespace
-WHERE n.nspname = 'public'
-  AND src.relname = 'employee_risk_scores'
-  AND dependent.relname <> 'employee_risk_scores';
+  dependent_ns.nspname                        AS dependent_schema,
+  dependent_rel.relname                       AS dependent_name,
+  CASE dependent_rel.relkind
+    WHEN 'v' THEN 'view'
+    WHEN 'r' THEN 'table'
+    WHEN 'm' THEN 'materialized view'
+    ELSE dependent_rel.relkind::text
+  END                                         AS dependent_type
+FROM pg_depend        d
+JOIN pg_rewrite       r              ON r.oid  = d.objid
+                                    AND d.classid = 'pg_rewrite'::regclass
+JOIN pg_class         dependent_rel  ON dependent_rel.oid = r.ev_class
+JOIN pg_namespace     dependent_ns   ON dependent_ns.oid  = dependent_rel.relnamespace
+WHERE d.refobjid = 'public.employee_risk_scores'::regclass
+  AND dependent_rel.oid <> 'public.employee_risk_scores'::regclass
+ORDER BY dependent_schema, dependent_name;
 
 
 /* ============================================================================
