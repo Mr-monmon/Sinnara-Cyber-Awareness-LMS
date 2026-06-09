@@ -115,6 +115,11 @@ export function RiskScorePage() {
   const [sortKey, setSortKey] = useState<SortKey>("risk_score");
   const [sortAsc, setSortAsc] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
+
+  // Reset to the first page whenever the result set changes.
+  useEffect(() => { setPage(0); }, [search, deptFilter, levelFilter, sortKey, sortAsc]);
 
   const load = useCallback(async () => {
     if (!user?.company_id) return;
@@ -146,6 +151,10 @@ export function RiskScorePage() {
       if (typeof av === "string") return sortAsc ? av.localeCompare(bv as string) : (bv as string).localeCompare(av);
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   const assessedRows = rows.filter(r => r.risk_level !== "INSUFFICIENT_EVIDENCE");
   const stats = {
@@ -315,7 +324,7 @@ export function RiskScorePage() {
           </div>
         )}
 
-        {filtered.map(row => {
+        {paged.map(row => {
           const isExpanded = expanded === row.employee_id;
           const cfg = LEVEL_CONFIG[row.risk_level];
           return (
@@ -473,8 +482,30 @@ export function RiskScorePage() {
       </div>
 
       {filtered.length > 0 && (
-        <div style={{ marginTop: 12, fontSize: 12, color: T.textMuted, textAlign: "right" }}>
-          Showing {filtered.length} of {rows.length} employees
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: T.textMuted }}>
+            Showing {safePage * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE + PAGE_SIZE, filtered.length)} of {filtered.length}
+            {filtered.length !== rows.length ? ` (filtered from ${rows.length})` : ""} employees
+          </div>
+          {pageCount > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={safePage === 0}
+                style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: safePage === 0 ? T.textMuted : T.text, cursor: safePage === 0 ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "inherit" }}
+              >
+                Previous
+              </button>
+              <span style={{ fontSize: 12, color: T.textMuted }}>Page {safePage + 1} of {pageCount}</span>
+              <button
+                onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))}
+                disabled={safePage >= pageCount - 1}
+                style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: safePage >= pageCount - 1 ? T.textMuted : T.text, cursor: safePage >= pageCount - 1 ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "inherit" }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
 

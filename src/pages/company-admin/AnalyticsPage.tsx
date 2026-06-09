@@ -287,6 +287,9 @@ export const AnalyticsPage: React.FC = () => {
   const [courseStats, setCourseStats] = useState<CourseStats | null>(null);
   const [examStats, setExamStats]     = useState<ExamStats | null>(null);
   const [loading, setLoading]         = useState(true);
+  const [perfSearch, setPerfSearch]   = useState('');
+  const [perfPage, setPerfPage]       = useState(0);
+  const PERF_PAGE_SIZE = 25;
 
   useEffect(() => {
     loadAnalytics();
@@ -377,6 +380,14 @@ export const AnalyticsPage: React.FC = () => {
           const latest = empResults.filter(r => r.exam_id === postExam.id).sort((a, b) => b.completed_at.localeCompare(a.completed_at))[0];
           if (latest) postScore = Math.round(latest.percentage);
         }
+        // Fallback when no dedicated PRE/POST assessment exams are configured: use the
+        // employee's earliest exam sitting as "pre" and latest as "post" so the columns
+        // and improvement reflect real progress instead of always showing a dash.
+        if (preScore === undefined && postScore === undefined && empResults.length > 0) {
+          const chrono = [...empResults].sort((a, b) => a.completed_at.localeCompare(b.completed_at));
+          preScore = Math.round(chrono[0].percentage);
+          if (chrono.length > 1) postScore = Math.round(chrono[chrono.length - 1].percentage);
+        }
         const empCourses = coursesByEmp.get(emp.id) ?? [];
         const coursesCompleted = empCourses.filter(c => c.completed_at !== null).length;
         const examsCompleted   = empResults.length;
@@ -407,6 +418,17 @@ export const AnalyticsPage: React.FC = () => {
   const empWithPost = performance.filter(p => p.postScore !== undefined);
   const passedCount = empWithPost.filter(p => p.status === 'Passed').length;
   const passRate    = empWithPost.length > 0 ? Math.round((passedCount / empWithPost.length) * 100) : 0;
+
+  // Employee Performance table — search + client-side pagination (scales to 1000s of rows).
+  const perfFiltered = perfSearch.trim()
+    ? performance.filter(p => {
+        const q = perfSearch.toLowerCase();
+        return (p.employee.full_name || '').toLowerCase().includes(q) || (p.employee.email || '').toLowerCase().includes(q);
+      })
+    : performance;
+  const perfPageCount = Math.max(1, Math.ceil(perfFiltered.length / PERF_PAGE_SIZE));
+  const perfSafePage  = Math.min(perfPage, perfPageCount - 1);
+  const perfPaged     = perfFiltered.slice(perfSafePage * PERF_PAGE_SIZE, perfSafePage * PERF_PAGE_SIZE + PERF_PAGE_SIZE);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -461,7 +483,15 @@ export const AnalyticsPage: React.FC = () => {
 
       {/* ── Employee Performance Table ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.30s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-        <SectionHeader icon={Users} color={T.purple} title="Employee Performance" badge={`${performance.length} employees`} />
+        <SectionHeader icon={Users} color={T.purple} title="Employee Performance" badge={`${perfFiltered.length} employees`} />
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}` }}>
+          <input
+            value={perfSearch}
+            onChange={e => { setPerfSearch(e.target.value); setPerfPage(0); }}
+            placeholder="Search employee by name or email…"
+            style={{ width: '100%', maxWidth: 320, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.white, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+          />
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="aw-ca-table">
             <thead>
@@ -476,7 +506,7 @@ export const AnalyticsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {performance.map(perf => {
+              {perfPaged.map(perf => {
                 const imp  = perf.improvement;
                 const cfg  = statusCfg(perf.status);
                 const initials = (perf.employee.full_name || '?').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
@@ -527,12 +557,28 @@ export const AnalyticsPage: React.FC = () => {
                   </tr>
                 );
               })}
-              {performance.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: T.textMuted }}>No employee data available yet.</td></tr>
+              {perfFiltered.length === 0 && (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: T.textMuted }}>{performance.length === 0 ? 'No employee data available yet.' : 'No employees match your search.'}</td></tr>
               )}
             </tbody>
           </table>
         </div>
+        {perfFiltered.length > 0 && (
+          <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: T.textMuted }}>
+              Showing {perfSafePage * PERF_PAGE_SIZE + 1}–{Math.min(perfSafePage * PERF_PAGE_SIZE + PERF_PAGE_SIZE, perfFiltered.length)} of {perfFiltered.length}
+            </span>
+            {perfPageCount > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => setPerfPage(p => Math.max(0, p - 1))} disabled={perfSafePage === 0}
+                  style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: perfSafePage === 0 ? T.textMuted : T.white, cursor: perfSafePage === 0 ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Previous</button>
+                <span style={{ fontSize: 12, color: T.textMuted }}>Page {perfSafePage + 1} of {perfPageCount}</span>
+                <button onClick={() => setPerfPage(p => Math.min(perfPageCount - 1, p + 1))} disabled={perfSafePage >= perfPageCount - 1}
+                  style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: perfSafePage >= perfPageCount - 1 ? T.textMuted : T.white, cursor: perfSafePage >= perfPageCount - 1 ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Next</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Course completion detail lists ── */}

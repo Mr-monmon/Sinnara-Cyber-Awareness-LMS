@@ -240,6 +240,19 @@ export function AdvancedAnalyticsPage() {
       .order("created_at", { ascending: false })
       .limit(8);
 
+    // 3b. Per-target rows for those campaigns — used to count UNIQUE engagement.
+    //     The denormalized counters on phishing_campaigns (emails_opened, links_clicked)
+    //     count raw events (repeat opens of the tracking pixel), so dividing them by the
+    //     number of unique targets can exceed 100%. Counting distinct targets that have a
+    //     non-null opened_at / clicked_at keeps every rate within 0–100%.
+    const campaignIds = (campaigns ?? []).map((c: { id: string }) => c.id);
+    const { data: phishTargets } = campaignIds.length
+      ? await supabase
+          .from("phishing_campaign_targets")
+          .select("campaign_id, opened_at, clicked_at, credentials_entered, reported_at")
+          .in("campaign_id", campaignIds)
+      : { data: [] as Array<{ campaign_id: string; opened_at: string | null; clicked_at: string | null; credentials_entered: boolean | null; reported_at: string | null }> };
+
     // ── Process risk rows ──────────────────────────
     if (riskRows && riskRows.length > 0) {
       // Overview — use assessed rows only for risk/exam averages
@@ -248,7 +261,13 @@ export function AdvancedAnalyticsPage() {
       const avgRisk = assessedRiskRows.length
         ? assessedRiskRows.reduce((s, r) => s + Number(r.assessed_risk_score ?? r.risk_score), 0) / assessedRiskRows.length
         : 0;
-      const avgExam = riskRows.reduce((s, r) => s + Number(r.avg_exam_pct), 0) / total;
+      // Average exam score only over employees who actually sat an exam.
+      // Averaging across the whole headcount (including people who never took an
+      // exam, scored as 0) drags the figure down to a misleading near-zero value.
+      const examTakers = riskRows.filter(r => Number(r.avg_exam_pct) > 0);
+      const avgExam = examTakers.length
+        ? examTakers.reduce((s, r) => s + Number(r.avg_exam_pct), 0) / examTakers.length
+        : 0;
       const totalAssigned = riskRows.reduce((s, r) => s + Number(r.total_assigned), 0);
       const totalCompleted = riskRows.reduce((s, r) => s + Number(r.completed), 0);
       const totalPhishTargeted = riskRows.reduce((s, r) => s + Number(r.phishing_total), 0);
@@ -339,14 +358,31 @@ export function AdvancedAnalyticsPage() {
 
     // ── Process phishing campaigns ─────────────────
     if (campaigns) {
-      setPhishingTrends(campaigns.map((c: { name: string; total_queue_size?: number | null; total_targets?: number | null; emails_opened?: number | null; links_clicked?: number | null; credentials_entered?: number | null; emails_reported?: number | null }) => {
-        // TICKET campaigns have no queue, so fall back to total_targets; otherwise
-        // the denominator is 0 and the click rate is forced to 0% regardless of clicks.
-        const targets = c.total_queue_size || c.total_targets || 0;
-        const opened  = c.emails_opened ?? 0;
-        const clicked = c.links_clicked ?? 0;
-        const creds   = c.credentials_entered ?? 0;
-        const reported = c.emails_reported ?? 0;
+      // Aggregate UNIQUE engagement per campaign from the per-target rows.
+      const uniqueByCampaign = new Map<string, { opened: number; clicked: number; creds: number; reported: number; targeted: number }>();
+      for (const t of (phishTargets ?? [])) {
+        const agg = uniqueByCampaign.get(t.campaign_id) ?? { opened: 0, clicked: 0, creds: 0, reported: 0, targeted: 0 };
+        agg.targeted += 1;
+        if (t.opened_at) agg.opened += 1;
+        if (t.clicked_at) agg.clicked += 1;
+        if (t.credentials_entered) agg.creds += 1;
+        if (t.reported_at) agg.reported += 1;
+        uniqueByCampaign.set(t.campaign_id, agg);
+      }
+
+      setPhishingTrends(campaigns.map((c: { id: string; name: string; total_queue_size?: number | null; total_targets?: number | null; emails_opened?: number | null; links_clicked?: number | null; credentials_entered?: number | null; emails_reported?: number | null }) => {
+        const u = uniqueByCampaign.get(c.id);
+        // Denominator = number of unique targeted users. Prefer the actual target-row count;
+        // fall back to the stored total_targets (TICKET campaigns may have no per-target rows).
+        const targets = u?.targeted || c.total_targets || c.total_queue_size || 0;
+        // Numerators = unique targets engaged. Fall back to the denormalized counters only
+        // when no per-target rows exist, and clamp to targets so a rate can never exceed 100%.
+        const clamp = (n: number) => Math.min(n, targets);
+        const opened   = u ? u.opened   : clamp(c.emails_opened ?? 0);
+        const clicked  = u ? u.clicked  : clamp(c.links_clicked ?? 0);
+        const creds    = u ? u.creds    : clamp(c.credentials_entered ?? 0);
+        const reported = u ? u.reported : clamp(c.emails_reported ?? 0);
+        const rate = (n: number) => (targets > 0 ? Math.round((n / targets) * 100) : 0);
         return {
           campaign_name: c.name,
           total_targets: targets,
@@ -354,10 +390,10 @@ export function AdvancedAnalyticsPage() {
           clicked,
           creds,
           reported,
-          open_rate:   targets > 0 ? Math.round((opened   / targets) * 100) : 0,
-          click_rate:  targets > 0 ? Math.round((clicked  / targets) * 100) : 0,
-          cred_rate:   targets > 0 ? Math.round((creds    / targets) * 100) : 0,
-          report_rate: targets > 0 ? Math.round((reported / targets) * 100) : 0,
+          open_rate:   rate(opened),
+          click_rate:  rate(clicked),
+          cred_rate:   rate(creds),
+          report_rate: rate(reported),
         };
       }));
     }
@@ -467,13 +503,13 @@ export function AdvancedAnalyticsPage() {
       {/* KPI Overview */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         {[
-          { label: "Total Employees",   value: ov.total_employees,          unit: "",   color: T.text,   icon: Users,          bg: "rgba(255,255,255,0.04)", border: T.border },
-          { label: "Course Completion", value: ov.completion_pct,           unit: "%",  color: T.green,  icon: BookOpen,       bg: T.greenBg,  border: T.greenBorder  },
-          { label: "Avg Exam Score",    value: ov.avg_exam_score,           unit: "%",  color: T.blue,   icon: ClipboardCheck, bg: T.blueBg,   border: "rgba(68,136,255,0.22)"  },
-          { label: "Avg Risk Score",    value: ov.avg_risk_score,           unit: "/100", color: T.orange, icon: TrendingUp,     bg: T.orangeBg, border: T.orangeBorder },
-          { label: "Phishing Click Rate", value: ov.phishing_click_rate,   unit: "%",  color: T.red,    icon: Shield,         bg: T.redBg,    border: T.redBorder    },
-          { label: "Critical Risk",     value: ov.critical_count,           unit: " employees", color: T.red, icon: AlertTriangle, bg: T.redBg, border: T.redBorder },
-        ].map(({ label, value, unit, color, icon: Icon, bg, border }) => (
+          { label: "Total Employees",   value: ov.total_employees,          unit: "",   sub: "in this company",        color: T.text,   icon: Users,          bg: "rgba(255,255,255,0.04)", border: T.border },
+          { label: "Course Completion", value: ov.completion_pct,           unit: "%",  sub: "of assigned courses",    color: T.green,  icon: BookOpen,       bg: T.greenBg,  border: T.greenBorder  },
+          { label: "Avg Exam Score",    value: ov.avg_exam_score,           unit: "%",  sub: "best attempt, exam-takers", color: T.blue, icon: ClipboardCheck, bg: T.blueBg,   border: "rgba(68,136,255,0.22)"  },
+          { label: "Avg Risk Score",    value: ov.avg_risk_score,           unit: "/100", sub: "assessed employees",   color: T.orange, icon: TrendingUp,     bg: T.orangeBg, border: T.orangeBorder },
+          { label: "Phishing Click Rate", value: ov.phishing_click_rate,   unit: "%",  sub: "clicks ÷ targeted",      color: T.red,    icon: Shield,         bg: T.redBg,    border: T.redBorder    },
+          { label: "Critical Risk",     value: ov.critical_count,           unit: " employees", sub: "score ≥ 70",     color: T.red, icon: AlertTriangle, bg: T.redBg, border: T.redBorder },
+        ].map(({ label, value, unit, sub, color, icon: Icon, bg, border }) => (
           <div key={label} style={{ padding: "14px 16px", borderRadius: 10, background: bg, border: `1px solid ${border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <Icon size={13} color={color} />
@@ -482,6 +518,7 @@ export function AdvancedAnalyticsPage() {
             <div style={{ fontSize: 22, fontWeight: 800, color }}>
               {value}<span style={{ fontSize: 12, fontWeight: 500, color: T.textMuted }}>{unit}</span>
             </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -561,7 +598,7 @@ export function AdvancedAnalyticsPage() {
       {/* Row 2: Course Performance */}
       <Section title="Course Completion Rate" icon={BookOpen} color={T.green} onExport={exportCourses}>
         {courseStats.length === 0 ? (
-          <div style={{ color: T.textMuted, fontSize: 13, textAlign: "center", padding: 20 }}>No course data yet.</div>
+          <div style={{ color: T.textMuted, fontSize: 13, textAlign: "center", padding: 20 }}>No course enrollments recorded yet. Assign courses to employees to track completion here.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {courseStats.map(c => (
