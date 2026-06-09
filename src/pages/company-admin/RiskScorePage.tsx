@@ -42,9 +42,9 @@ interface RiskRow {
   exam_risk: number;
   phishing_risk: number;
   risk_score: number;
+  assessed_risk_score?: number | null;
   risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT_EVIDENCE";
-  assessed_risk_score: number | null;
-  assessed: boolean;
+  assessed?: boolean;
   total_assigned: number;
   completed: number;
   completion_pct: number;
@@ -54,12 +54,16 @@ interface RiskRow {
   phishing_creds_entered: number;
 }
 
-const LEVEL_CONFIG = {
-  CRITICAL:             { color: T.red,    bg: T.redBg,    border: T.redBorder,    icon: AlertTriangle, label: "Critical"      },
-  HIGH:                 { color: T.orange, bg: T.orangeBg, border: T.orangeBorder, icon: TrendingDown,  label: "High"          },
-  MEDIUM:               { color: T.yellow, bg: T.yellowBg, border: T.yellowBorder, icon: Shield,        label: "Medium"        },
-  LOW:                  { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  icon: CheckCircle,   label: "Low"           },
-  INSUFFICIENT_EVIDENCE:{ color: T.textMuted, bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)", icon: Shield, label: "Not Assessed" },
+const T_INSUFF = "#94a3b8";
+const T_INSUFF_BG = "rgba(148,163,184,0.08)";
+const T_INSUFF_BORDER = "rgba(148,163,184,0.22)";
+
+const LEVEL_CONFIG: Record<RiskRow["risk_level"], { color: string; bg: string; border: string; icon: React.ElementType; label: string }> = {
+  CRITICAL:             { color: T.red,    bg: T.redBg,         border: T.redBorder,     icon: AlertTriangle, label: "Critical" },
+  HIGH:                 { color: T.orange, bg: T.orangeBg,      border: T.orangeBorder,  icon: TrendingDown,  label: "High"     },
+  MEDIUM:               { color: T.yellow, bg: T.yellowBg,      border: T.yellowBorder,  icon: Shield,        label: "Medium"   },
+  LOW:                  { color: T.green,  bg: T.greenBg,       border: T.greenBorder,   icon: CheckCircle,   label: "Low"      },
+  INSUFFICIENT_EVIDENCE:{ color: T_INSUFF, bg: T_INSUFF_BG,     border: T_INSUFF_BORDER, icon: Shield,        label: "No Data"  },
 };
 
 function RiskBadge({ level }: { level: RiskRow["risk_level"] }) {
@@ -107,7 +111,7 @@ export function RiskScorePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
-  const [levelFilter, setLevelFilter] = useState<"all" | RiskRow["risk_level"]>("all");
+  const [levelFilter, setLevelFilter] = useState<"all" | RiskRow["risk_level"] | "assessed-only">("all");
   const [sortKey, setSortKey] = useState<SortKey>("risk_score");
   const [sortAsc, setSortAsc] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -132,7 +136,8 @@ export function RiskScorePage() {
       if (search && !r.full_name.toLowerCase().includes(search.toLowerCase()) &&
           !r.email.toLowerCase().includes(search.toLowerCase())) return false;
       if (deptFilter !== "all" && r.department_name !== deptFilter) return false;
-      if (levelFilter !== "all" && r.risk_level !== levelFilter) return false;
+      if (levelFilter === "assessed-only" && r.risk_level === "INSUFFICIENT_EVIDENCE") return false;
+      if (levelFilter !== "all" && levelFilter !== "assessed-only" && r.risk_level !== levelFilter) return false;
       return true;
     })
     .sort((a, b) => {
@@ -142,19 +147,16 @@ export function RiskScorePage() {
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
 
-  const assessedRows = rows.filter(r => r.assessed);
-  const notAssessed = rows.filter(r => !r.assessed);
+  const assessedRows = rows.filter(r => r.risk_level !== "INSUFFICIENT_EVIDENCE");
   const stats = {
     total: rows.length,
     critical: rows.filter(r => r.risk_level === "CRITICAL").length,
     high: rows.filter(r => r.risk_level === "HIGH").length,
     medium: rows.filter(r => r.risk_level === "MEDIUM").length,
     low: rows.filter(r => r.risk_level === "LOW").length,
-    notAssessed: notAssessed.length,
-    coverageRate: rows.length ? Math.round((assessedRows.length / rows.length) * 100) : 0,
-    avgScore: assessedRows.length
-      ? Math.round(assessedRows.reduce((s, r) => s + (r.assessed_risk_score ?? r.risk_score), 0) / assessedRows.length)
-      : 0,
+    insufficient: rows.filter(r => r.risk_level === "INSUFFICIENT_EVIDENCE").length,
+    // Average only over assessed employees — exclude INSUFFICIENT_EVIDENCE from the average
+    avgScore: assessedRows.length ? Math.round(assessedRows.reduce((s, r) => s + (r.assessed_risk_score ?? r.risk_score), 0) / assessedRows.length) : 0,
   };
 
   function toggleSort(key: SortKey) {
@@ -202,14 +204,13 @@ export function RiskScorePage() {
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
         {([
-          { label: "Total Employees", value: stats.total,       color: T.text,    bg: "rgba(255,255,255,0.04)", border: T.border },
-          { label: "Critical Risk",   value: stats.critical,    color: T.red,     bg: T.redBg,    border: T.redBorder    },
-          { label: "High Risk",       value: stats.high,        color: T.orange,  bg: T.orangeBg, border: T.orangeBorder },
-          { label: "Medium Risk",     value: stats.medium,      color: T.yellow,  bg: T.yellowBg, border: T.yellowBorder },
-          { label: "Low Risk",        value: stats.low,         color: T.green,   bg: T.greenBg,  border: T.greenBorder  },
-          { label: "Not Assessed",    value: stats.notAssessed, color: T.textMuted, bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)" },
-          { label: "Evidence Coverage", value: `${stats.coverageRate}%`, color: T.text, bg: "rgba(255,255,255,0.04)", border: T.border },
-          { label: "Avg Risk (assessed)", value: stats.avgScore, color: T.text,   bg: "rgba(255,255,255,0.04)", border: T.border },
+          { label: "Total Employees",      value: stats.total,       color: T.text,    bg: "rgba(255,255,255,0.04)", border: T.border       },
+          { label: "Critical Risk",        value: stats.critical,    color: T.red,     bg: T.redBg,     border: T.redBorder    },
+          { label: "High Risk",            value: stats.high,        color: T.orange,  bg: T.orangeBg,  border: T.orangeBorder },
+          { label: "Medium Risk",          value: stats.medium,      color: T.yellow,  bg: T.yellowBg,  border: T.yellowBorder },
+          { label: "Low Risk",             value: stats.low,         color: T.green,   bg: T.greenBg,   border: T.greenBorder  },
+          { label: "No Data",              value: stats.insufficient,color: T_INSUFF,  bg: T_INSUFF_BG, border: T_INSUFF_BORDER},
+          { label: "Avg Score (assessed)", value: stats.avgScore,    color: T.text,    bg: "rgba(255,255,255,0.04)", border: T.border },
         ] as const).map(card => (
           <div key={card.label} style={{
             padding: "14px 16px", borderRadius: 10,
@@ -264,11 +265,12 @@ export function RiskScorePage() {
           }}
         >
           <option value="all">All Risk Levels</option>
+          <option value="assessed-only">Assessed Only</option>
           <option value="CRITICAL">Critical</option>
           <option value="HIGH">High</option>
           <option value="MEDIUM">Medium</option>
           <option value="LOW">Low</option>
-          <option value="INSUFFICIENT_EVIDENCE">Not Assessed</option>
+          <option value="INSUFFICIENT_EVIDENCE">Insufficient Evidence</option>
         </select>
       </div>
 
@@ -341,12 +343,8 @@ export function RiskScorePage() {
 
                 {/* Risk score */}
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: cfg.color }}>
-                    {row.risk_level === "INSUFFICIENT_EVIDENCE" ? "—" : row.risk_score}
-                  </div>
-                  <div style={{ fontSize: 10, color: T.textMuted }}>
-                    {row.risk_level === "INSUFFICIENT_EVIDENCE" ? "no evidence" : "/ 100"}
-                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: cfg.color }}>{row.risk_score}</div>
+                  <div style={{ fontSize: 10, color: T.textMuted }}>/ 100</div>
                 </div>
 
                 {/* Course completion */}
@@ -482,24 +480,31 @@ export function RiskScorePage() {
 
       {/* Legend */}
       <div style={{
-        marginTop: 20, padding: "12px 16px", borderRadius: 10,
+        marginTop: 20, padding: "14px 16px", borderRadius: 10,
         background: T.bgCard, border: `1px solid ${T.border}`,
-        display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center",
+        display: "flex", flexDirection: "column", gap: 10,
       }}>
-        <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Score formula:</span>
-        <span style={{ fontSize: 11, color: T.orange }}>Courses (0–40)</span>
-        <span style={{ fontSize: 11, color: T.textMuted }}>+</span>
-        <span style={{ fontSize: 11, color: T.yellow }}>Exams (0–40)</span>
-        <span style={{ fontSize: 11, color: T.textMuted }}>+</span>
-        <span style={{ fontSize: 11, color: T.red }}>Phishing (0–20)</span>
-        <span style={{ fontSize: 11, color: T.textMuted }}>=</span>
-        <span style={{ fontSize: 11, color: T.text }}>Risk Score (0–100). Higher = more risk.</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 16 }}>
+        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Score formula:</span>
+          <span style={{ fontSize: 11, color: T.orange }}>Course incompletion (0–40)</span>
+          <span style={{ fontSize: 11, color: T.textMuted }}>+</span>
+          <span style={{ fontSize: 11, color: T.yellow }}>Exam failure (0–40)</span>
+          <span style={{ fontSize: 11, color: T.textMuted }}>+</span>
+          <span style={{ fontSize: 11, color: T.red }}>Phishing susceptibility (0–20)</span>
+          <span style={{ fontSize: 11, color: T.textMuted }}>=</span>
+          <span style={{ fontSize: 11, color: T.text }}>Risk Score (0–100). Higher = more risk.</span>
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map(l => (
             <span key={l} style={{ fontSize: 11, color: LEVEL_CONFIG[l].color }}>
               {LEVEL_CONFIG[l].label}: {l === "CRITICAL" ? "≥70" : l === "HIGH" ? "≥40" : l === "MEDIUM" ? "≥20" : "<20"}
             </span>
           ))}
+          <span style={{ fontSize: 11, color: T_INSUFF }}>Insufficient Evidence: no activity recorded yet (excluded from company averages)</span>
+        </div>
+        <div style={{ fontSize: 11, color: T.textMuted, borderTop: `1px solid ${T.border}`, paddingTop: 8 }}>
+          Phishing component: click risk (up to 8 pts) + credential submission risk (up to 12 pts).
+          Employees with no data in a component score 0 for that component (benefit of the doubt — they have not yet been tested).
         </div>
       </div>
 

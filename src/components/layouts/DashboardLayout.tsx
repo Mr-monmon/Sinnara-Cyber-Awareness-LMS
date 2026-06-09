@@ -228,6 +228,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       "analytics": "reports",
       "advanced-analytics": "reports",
       "risk-scores": "reports",
+      "compliance": "reports",
     };
     const parent = parentMap[activePage];
     if (parent)
@@ -361,18 +362,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           section: "Overview",
         },
         {
-          id: "platform-users",
-          label: "Platform Users",
-          icon: UserCog,
-          section: "Administration",
-        },
-        {
           id: "employees",
           label: "Employees",
           icon: Users,
           section: "People",
         },
         { id: "departments", label: "Departments", icon: FolderTree },
+        ...(user?.role === "COMPANY_SUPER_ADMIN"
+          ? [{ id: "platform-users", label: "Platform Users", icon: UserCog }]
+          : []),
         {
           id: "course-assignment",
           label: "Course Assignment",
@@ -388,7 +386,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           id: "phishing-campaigns",
           label: "Phishing Simulation",
           icon: Shield,
-          section: "Phishing",
+          section: "Phishing Simulation",
           children: phishingMode === "TICKET"
             ? [
                 { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
@@ -397,10 +395,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             : [
                 { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
                 { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
-                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
                 { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
                 { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
                 { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
+                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
                 { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
                 { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
               ],
@@ -426,13 +424,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               label: "Risk Scores",
               icon: Activity,
             },
+            {
+              id: "compliance",
+              label: "Compliance Readiness",
+              icon: FileCheck,
+            },
           ],
-        },
-        {
-          id: "compliance",
-          label: "Compliance Report",
-          icon: FileCheck,
-          section: "System",
         },
         {
           id: "support-requests",
@@ -463,10 +460,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             : [
                 { id: "phishing-dashboard",       label: "Dashboard",         icon: BarChart3  },
                 { id: "phishing-campaigns",       label: "Campaigns",         icon: Target     },
-                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
                 { id: "phishing-groups",          label: "Target Groups",     icon: Users      },
                 { id: "phishing-landing",         label: "Landing Pages",     icon: Globe      },
                 { id: "phishing-email-templates", label: "Email Templates",   icon: Mail       },
+                { id: "phishing-smtp",            label: "SMTP Profiles",     icon: Server     },
                 { id: "phishing-variables",       label: "Custom Variables",  icon: Variable   },
                 { id: "phishing-alerts",          label: "Alerts",            icon: Bell       },
               ],
