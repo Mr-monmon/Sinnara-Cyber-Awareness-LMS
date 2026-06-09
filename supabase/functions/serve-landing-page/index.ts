@@ -111,6 +111,9 @@ function buildInterceptor(campaignId: string, recipientId: string, redirectUrl: 
 </script>`;
 }
 
+// Safe default redirect destination when the configured URL is missing/unsafe.
+const SAFE_REDIRECT_FALLBACK = "https://www.google.com";
+
 /**
  * Validate a server-side redirect URL.
  * Blocks private IPs, loopback, metadata endpoints, embedded credentials,

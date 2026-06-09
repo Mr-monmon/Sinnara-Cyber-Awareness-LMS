@@ -379,6 +379,8 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const handleSelectCampaign = async (id: string) => { setSelectedCampaign(id); await loadDeptStats(id); };
 
   const exportCSV = () => {
+    // Canonical figures (same methodology as the PDF): delivered rates use SENT
+    // emails, susceptibility uses TARGETED users. Headers state the denominator.
     const rows = campaigns.map(c => {
       const targets = c.total_queue_size || c.total_targets || 0;
       const launchDate = c.launched_at || c.launch_date;
@@ -539,9 +541,9 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         <MetricCard icon={Shield}           color={remainingQuota > 0 ? T.accent : T.red} bg={remainingQuota > 0 ? 'rgba(200,255,0,0.08)' : T.redBg} border={remainingQuota > 0 ? 'rgba(200,255,0,0.20)' : T.redBorder} label="Campaigns Remaining" sub={`of ${quota?.annual_quota || 0} annual quota`} value={`${remainingQuota}`} />
-        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="employees clicked links"    value={`${avgClickRate}%`} />
-        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="employees reported phishing" value={`${avgReportRate}%`} />
-        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="entered credentials"         value={`${avgCredRate}%`} />
+        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="of targeted users (weighted)"   value={`${avgClickRate}%`} />
+        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="of targeted users (weighted)"   value={`${avgReportRate}%`} />
+        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="of targeted users (weighted)"   value={`${avgCredRate}%`} />
       </div>
 
       {/* ── Charts row ── */}

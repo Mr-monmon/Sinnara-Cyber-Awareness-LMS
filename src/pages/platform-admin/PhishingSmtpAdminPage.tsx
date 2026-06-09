@@ -89,6 +89,7 @@ interface SmtpProfile {
   visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   is_active: boolean;
   password_encrypted?: boolean;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   created_at: string;
   pushed_companies?: { company_id: string; pushed_at: string }[];
 }

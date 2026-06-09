@@ -197,6 +197,26 @@ export function generateCampaignPdf(data: CampaignReportData): void {
     doc.text(`${f.value} (${f.rate}%)`, barX + barMaxW + 6, y + barH - 2);
     y += barH + 6;
   });
+  y += 16;
+
+  /* ── Methodology ── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Methodology', marginX, y);
+  y += 14;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(95, 95, 95);
+  methodologyNotes.forEach((note) => {
+    const lines = doc.splitTextToSize(`•  ${note}`, contentW) as string[];
+    lines.forEach((ln) => {
+      if (y + 12 > pageH - 40) { doc.addPage(); y = 48; }
+      doc.text(ln, marginX, y);
+      y += 11;
+    });
+  });
   y += 14;
 
   /* ── Per-target table ── */

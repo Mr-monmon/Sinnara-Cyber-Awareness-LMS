@@ -47,6 +47,9 @@ interface Control {
   status: Status;
   evidence: string[];
   recommendation?: string;
+  framework: string;       // human framework name
+  frameworkId: string;     // FrameworkId
+  disclaimer: string;
 }
 
 interface Stats {
@@ -54,6 +57,7 @@ interface Stats {
   trainedEmployees: number;
   completionRate: number;
   avgScore: number;
+  hasAssessmentData: boolean;
   certificatesIssued: number;
   recentLogins: number;
   auditEventsLast90: number;
@@ -245,6 +249,7 @@ export const ComplianceReportPage: React.FC = () => {
         trainedEmployees,
         completionRate,
         avgScore,
+        hasAssessmentData: bestByEmployee.size > 0,
         certificatesIssued: certificatesIssued ?? 0,
         recentLogins: recentLogins ?? 0,
         auditEventsLast90: auditEventsLast90 ?? 0,
@@ -366,7 +371,7 @@ export const ComplianceReportPage: React.FC = () => {
       ctx.fillText(`${overall}%`, cx, cy + 4);
       ctx.font = "10px Helvetica";
       ctx.fillStyle = "#64748b";
-      ctx.fillText("compliant", cx, cy + 20);
+      ctx.fillText("readiness", cx, cy + 20);
 
       const chartDataUrl = chartCanvas.toDataURL("image/png");
       doc.addImage(chartDataUrl, "PNG", margin, y, 110, 110);
@@ -425,6 +430,15 @@ export const ComplianceReportPage: React.FC = () => {
         doc.text(`${fs.label}: ${fs.score}% (${fs.assessedCount}/${fs.controlCount} controls assessed)`, margin + 6, y);
         y += 14;
       });
+
+      // Scoring methodology note.
+      y += 4;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text("Readiness scoring: COMPLIANT=100, PARTIAL=50, NON_COMPLIANT=0; NOT_ASSESSED excluded from the score.", margin + 6, y);
+      y += 12;
+      doc.setFont("helvetica", "normal");
 
       y += 10;
       doc.setDrawColor(220, 220, 220);
@@ -639,10 +653,21 @@ export const ComplianceReportPage: React.FC = () => {
         <StatCard label="Phishing Campaigns" value={stats.phishingCampaignsRun} hint="Completed simulations" />
       </div>
 
-      {/* Controls */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {controls.map(c => (
-          <div key={c.code} style={{ padding: "18px 22px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+      {/* Evidence cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        <StatCard label="Training Coverage" value={`${stats.completionRate}%`} hint={`${stats.trainedEmployees}/${stats.totalEmployees} employees`} />
+        <StatCard label="Phishing Resilience" value={stats.phishingCampaigns > 0 ? `${100 - stats.phishingSusceptibilityRate}%` : "—"} hint={stats.phishingCampaigns > 0 ? `${stats.phishingSusceptibilityRate}% susceptibility` : "no campaigns yet"} />
+        <StatCard label="Assessment" value={stats.hasAssessmentData ? `${stats.avgScore}%` : "—"} hint={stats.hasAssessmentData ? "avg best score" : "no results yet"} />
+        <StatCard label="Certificates" value={stats.certificatesIssued} hint="Issued to date" />
+        <StatCard label="Audit Evidence" value={stats.auditEventsLast90} hint="events · last 90 days" />
+      </div>
+
+      {/* Controls grouped by framework */}
+      {Object.entries(byFramework).map(([framework, list]) => (
+      <div key={framework} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: T.white, letterSpacing: "0.3px", marginTop: 6 }}>{framework}</div>
+        {list.map((c, idx) => (
+          <div key={`${c.frameworkId}-${c.code}-${idx}`} style={{ padding: "18px 22px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
               <StatusBadge status={c.status} />
               <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: "0.5px" }}>{c.code}</span>
@@ -669,6 +694,7 @@ export const ComplianceReportPage: React.FC = () => {
           </div>
         ))}
       </div>
+      ))}
 
       {/* Disclaimer */}
       <div style={{ padding: "12px 16px", background: T.blueBg, border: `1px solid ${T.border}`, borderRadius: 10, display: "flex", gap: 10, alignItems: "flex-start" }}>

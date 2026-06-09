@@ -83,6 +83,7 @@ interface SmtpProfile {
   visibility?: string;
   is_active: boolean;
   password_encrypted?: boolean;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   created_at: string;
   isPushed?: boolean;
   pushed_at?: string;
