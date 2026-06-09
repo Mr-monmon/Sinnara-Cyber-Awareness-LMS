@@ -351,10 +351,13 @@ export const PhishingMonitoringPage: React.FC = () => {
       linksClicked: selected.links_clicked,
       credentialsSubmitted: selected.credentials_entered ?? selected.data_submitted ?? 0,
       emailsReported: selected.emails_reported,
-      queuedEmails: qTotal,
-      failedEmails: qByStatus['FAILED'] ?? 0,
-      pendingEmails: qByStatus['PENDING'] ?? 0,
-      skippedEmails: qByStatus['SKIPPED'] ?? 0,
+      queue: {
+        queued:  qTotal,
+        sent:    qByStatus['SENT']    ?? selected.emails_sent,
+        failed:  qByStatus['FAILED']  ?? 0,
+        pending: qByStatus['PENDING'] ?? 0,
+        skipped: qByStatus['SKIPPED'] ?? 0,
+      },
       targets: targets.map(t => ({
         email: t.email,
         name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
