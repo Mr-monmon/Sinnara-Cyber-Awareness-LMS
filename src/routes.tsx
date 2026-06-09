@@ -3,6 +3,7 @@ import { Navigate, RouteObject } from "react-router-dom";
 
 import { HomeRoute, LoginRoute } from "./components/HostAwarePublicRoutes";
 import { RouteShell } from "./components/RouteShell";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import LoadingScreen from "./components/LoadingScreen";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -33,6 +34,7 @@ const withSuspense = (node: React.ReactNode) => (
 const routes: RouteObject[] = [
   {
     element: <RouteShell />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { path: "/", element: <HomeRoute /> },
       { path: "/assessment", element: withSuspense(<PublicAssessment />) },
