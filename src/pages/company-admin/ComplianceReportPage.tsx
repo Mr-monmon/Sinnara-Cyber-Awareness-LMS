@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Download, ShieldCheck, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import jsPDF from "jspdf";
 import { supabase } from "../../lib/supabase";
@@ -136,9 +136,7 @@ export const ComplianceReportPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
 
-  useEffect(() => { load(); }, [user]);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
@@ -258,7 +256,9 @@ export const ComplianceReportPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { load(); }, [load]);
 
   const statsToSignals = (s: Stats): ComplianceSignals => ({
     totalEmployees:       s.totalEmployees,

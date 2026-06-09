@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Users, Plus, Edit2, Trash2, ArrowLeft, Upload,
   Download, X, Check, Loader2, AlertCircle, UserPlus, Search,
@@ -125,9 +125,7 @@ export const PhishingGroupsPage: React.FC = () => {
   const [syncResult, setSyncResult] = useState<{ inserted: number } | null>(null);
   const [alreadySyncedIds, setAlreadySyncedIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => { if (user?.company_id) loadGroups(); }, [user]);
-
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     if (!user?.company_id) return;
     setLoadingGroups(true);
     try {
@@ -135,7 +133,9 @@ export const PhishingGroupsPage: React.FC = () => {
       setGroups(data || []);
     } catch (err) { console.error(err); }
     finally { setLoadingGroups(false); }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { loadGroups(); }, [loadGroups]);
 
   const loadMembers = async (groupId: string) => {
     setLoadingMembers(true);

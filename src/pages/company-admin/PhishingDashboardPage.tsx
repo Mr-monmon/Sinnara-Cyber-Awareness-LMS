@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Shield, Target, TrendingUp, AlertCircle, Plus, Download,
   Calendar, Users, MousePointerClick, Flag, KeyRound,
@@ -349,9 +349,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const [loading, setLoading]       = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
 
-  useEffect(() => { loadData(); }, [user]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user?.company_id) return;
     try {
       const year = new Date().getFullYear();
@@ -367,7 +365,9 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
       if (latest) { setSelectedCampaign(latest.id); await loadDeptStats(latest.id); }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const loadDeptStats = async (campaignId: string) => {
     const { data } = await supabase.from('department_vulnerability_stats')

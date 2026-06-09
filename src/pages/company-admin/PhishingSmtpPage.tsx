@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Server, Plus, Edit2, Trash2, Lock, Eye, EyeOff,
   Send, X, Check, Loader2, AlertCircle, ChevronDown, ChevronUp
@@ -148,9 +148,7 @@ export const PhishingSmtpPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => { if (user?.company_id) loadProfiles(); }, [user]);
-
-  const loadProfiles = async () => {
+  const loadProfiles = useCallback(async () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
@@ -210,7 +208,9 @@ export const PhishingSmtpPage: React.FC = () => {
       setProfiles(all);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, [user?.company_id]);
+
+  useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const openCreate = () => {
     setEditProfile(null);

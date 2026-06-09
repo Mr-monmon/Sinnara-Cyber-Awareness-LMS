@@ -318,7 +318,7 @@ export const PhishingMonitoringPage: React.FC = () => {
   /* ── Initial load + auto-refresh ── */
   useEffect(() => {
     loadCampaigns(false);
-  }, []);
+  }, [loadCampaigns]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
