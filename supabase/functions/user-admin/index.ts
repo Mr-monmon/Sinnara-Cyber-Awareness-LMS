@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAndRef } from "../_shared/httpError.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -454,8 +455,6 @@ Deno.serve(async (req) => {
         return json({ success: false, error: `Unknown action: ${action}` });
     }
   } catch (err) {
-    return json(
-      { success: false, error: err instanceof Error ? err.message : "Internal server error" },
-    );
+    return json({ success: false, ...logAndRef("[user-admin] unhandled exception", err) });
   }
 });

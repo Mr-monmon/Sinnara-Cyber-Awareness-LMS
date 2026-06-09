@@ -15,13 +15,8 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { corsHeaders as buildCors } from "../_shared/cors.ts";
+import { safeErrorResponse } from "../_shared/httpError.ts";
 
 /* ── Decode encryption key — supports both hex (64 chars) and base64url (43 chars) ── */
 function decodeKey(keyStr: string): Uint8Array {
@@ -72,6 +67,8 @@ async function encryptPassword(plaintext: string): Promise<{ ciphertext: string;
 }
 
 Deno.serve(async (req) => {
+  // Authenticated SPA endpoint: honour the ALLOWED_ORIGINS allowlist when set.
+  const corsHeaders = { ...buildCors(req, { methods: "POST, OPTIONS" }), "Content-Type": "application/json" };
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
@@ -213,8 +210,10 @@ Deno.serve(async (req) => {
       .single();
 
     if (error) {
-      console.error("[save-smtp-profile] update error:", error.message);
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+      return safeErrorResponse("[save-smtp-profile] update error", error, {
+        message: "Could not save the SMTP profile. Please try again.",
+        headers: corsHeaders,
+      });
     }
     savedId = data!.id;
   } else {
@@ -229,8 +228,10 @@ Deno.serve(async (req) => {
       .single();
 
     if (error) {
-      console.error("[save-smtp-profile] insert error:", error.message);
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+      return safeErrorResponse("[save-smtp-profile] insert error", error, {
+        message: "Could not create the SMTP profile. Please try again.",
+        headers: corsHeaders,
+      });
     }
     savedId = data!.id;
   }
@@ -245,8 +246,9 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ profile: saved }), { status: 200, headers: corsHeaders });
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Internal server error";
-    console.error("[save-smtp-profile] unhandled exception:", msg);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
+    // corsHeaders is computed at the top of the handler; reuse the same allowlist
+    // posture for the failure response.
+    const headers = { ...buildCors(req, { methods: "POST, OPTIONS" }), "Content-Type": "application/json" };
+    return safeErrorResponse("[save-smtp-profile] unhandled exception", err, { headers });
   }
 });

@@ -14,6 +14,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isServiceRoleRequest } from "../_shared/auth.ts";
+import { safeErrorResponse } from "../_shared/httpError.ts";
 
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -81,8 +82,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ activated }), { headers: corsHeaders });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Worker error";
-    console.error("[process-scheduled-campaigns]", msg);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
+    // This is a service-role/cron worker; still avoid leaking internal error
+    // text to any caller. Full detail is logged, client sees a generic message.
+    return safeErrorResponse("[process-scheduled-campaigns]", err, { headers: corsHeaders });
   }
 });

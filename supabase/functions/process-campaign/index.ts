@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { assertSmtpProfileAccessible } from "../_shared/phishingAccess.ts";
+import { safeErrorResponse } from "../_shared/httpError.ts";
+import { corsHeaders as buildCors } from "../_shared/cors.ts";
 
 /* Inlined Sentry reporter (kept in-file so the function deploys as a single module). */
 async function captureException(
@@ -46,12 +48,9 @@ const SUPABASE_ANON_KEY  = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ZEPTO_TOKEN        = Deno.env.get("ZEPTOMAIL_TOKEN") ?? "";
 
-const corsHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// CORS is computed per-request inside the handler so the ALLOWED_ORIGINS
+// allowlist (when configured) can reflect the caller's origin. The cron caller
+// sends no Origin header and ignores CORS entirely, so this is transparent to it.
 
 /* ── Timezone helpers ── */
 // Read the current wall-clock time in the given IANA timezone. Returns whole
@@ -355,6 +354,7 @@ async function sendEmail(params: {
 
 /* ── Main handler ── */
 Deno.serve(async (req) => {
+  const corsHeaders = { ...buildCors(req, { methods: "POST, OPTIONS" }), "Content-Type": "application/json" };
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   // Two callers are allowed:
@@ -806,8 +806,10 @@ Deno.serve(async (req) => {
     const msg = err instanceof Error
       ? err.message
       : (e?.message || e?.details || e?.hint || (e?.code ? `Database error ${e.code}` : "Worker error"));
+    // Full detail goes to the logs + Sentry; the HTTP body returns only a generic
+    // message + reference code so DB/driver internals are not disclosed to callers.
     console.error("[process-campaign]", msg, JSON.stringify(err));
     await captureException(err, { function: "process-campaign" });
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
+    return safeErrorResponse("[process-campaign]", err, { headers: corsHeaders });
   }
 });

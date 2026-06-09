@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sanitizeRedirectUrl } from "../_shared/urlSafety.ts";
+import { logAndRef } from "../_shared/httpError.ts";
 import {
   assertGroupsOwnedByCompany,
   assertLandingPageAccessible,
@@ -446,8 +447,9 @@ Deno.serve(async (req) => {
   }), { headers: corsHeaders });
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Internal server error";
-    console.error("[launch-phishing-campaign] unhandled exception:", msg);
-    return new Response(JSON.stringify({ success: false, error: msg }), { status: 500, headers: corsHeaders });
+    return new Response(
+      JSON.stringify({ success: false, ...logAndRef("[launch-phishing-campaign] unhandled exception", err) }),
+      { status: 500, headers: corsHeaders },
+    );
   }
 });

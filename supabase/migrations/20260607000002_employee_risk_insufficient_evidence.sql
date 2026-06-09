@@ -14,7 +14,13 @@
     - risk_level: INSUFFICIENT_EVIDENCE replaces LOW when no data present
 */
 
-CREATE OR REPLACE VIEW employee_risk_scores AS
+-- The prior view (20260515000002) has a different column order. CREATE OR
+-- REPLACE VIEW cannot rename/reorder existing columns, so drop first. No
+-- database object depends on this view (it is read only by the frontend), so
+-- a plain DROP is safe and avoids CASCADE side effects.
+DROP VIEW IF EXISTS employee_risk_scores;
+
+CREATE VIEW employee_risk_scores AS
 WITH
 
 -- 1. Course completion per employee
