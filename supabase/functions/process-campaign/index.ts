@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { assertSmtpProfileAccessible } from "../_shared/phishingAccess.ts";
 
 /* Inlined Sentry reporter (kept in-file so the function deploys as a single module). */
 async function captureException(
@@ -375,8 +376,9 @@ Deno.serve(async (req) => {
   const isCron     = bearer.length > 0 &&
     (bearer === SERVICE_ROLE_KEY || jwtRole(bearer) === "service_role");
 
-  // For non-cron callers, capture company scope for query restriction below.
+  // For non-cron callers, capture company scope and role for access checks.
   let callerCompanyId: string | null = null;
+  let callerRole: string | null = null;
 
   if (!isCron) {
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -388,9 +390,10 @@ Deno.serve(async (req) => {
     }
     const { data: caller } = await supabase
       .from("users").select("role, company_id").eq("id", user.id).single();
-    if (!caller || caller.role === "EMPLOYEE") {
+    if (!caller || caller.role === "EMPLOYEE" || caller.role === "REVIEWER") {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
     }
+    callerRole = caller.role as string;
     // Non-PLATFORM_ADMIN callers are scoped to their own company only.
     if (caller.role !== "PLATFORM_ADMIN") {
       callerCompanyId = caller.company_id as string | null;
@@ -403,19 +406,42 @@ Deno.serve(async (req) => {
     // ── Test-send path: send a single test email via a stored SMTP profile ──
     if (body.test_smtp_profile_id && body.test_to) {
       try {
+        // Cron callers cannot use test-send (makes no sense for a scheduled batch).
+        if (isCron) {
+          return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403, headers: corsHeaders });
+        }
         const isCampaignTest = !!(body.test_subject || body.test_html);
         const isPlatformDefault = body.test_smtp_profile_id === "platform_default";
-        // For a real SMTP profile, default to the PROFILE's own sender (empty
-        // here → sendEmail uses profile.from_address/from_name). Only the
-        // platform-default path falls back to the platform sender.
+
+        // Authorization gate:
+        //   platform_default → only PLATFORM_ADMIN may use the platform sender.
+        //   real SMTP profile → the profile must be accessible to the caller's company.
+        if (isPlatformDefault) {
+          if (callerRole !== "PLATFORM_ADMIN") {
+            return new Response(JSON.stringify({ success: false, error: "Forbidden: platform default requires platform admin" }), { status: 403, headers: corsHeaders });
+          }
+        } else {
+          if (!callerCompanyId) {
+            return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403, headers: corsHeaders });
+          }
+          const accessible = await assertSmtpProfileAccessible(supabase, String(body.test_smtp_profile_id), callerCompanyId);
+          if (!accessible) {
+            return new Response(JSON.stringify({ success: false, error: "Forbidden: SMTP profile not accessible" }), { status: 403, headers: corsHeaders });
+          }
+        }
+
+        // Custom from_address/from_name is only accepted when using platform_default
+        // (already gated to PLATFORM_ADMIN above). Company profiles always send from
+        // their own stored sender address — no spoofing allowed.
+        const allowCustomFrom = isPlatformDefault;
         const result = await sendEmail({
           to:              String(body.test_to),
           subject:         body.test_subject ? String(body.test_subject) : "Awareone SMTP Test",
           html:            body.test_html
             ? String(body.test_html)
             : "<p>This is a test email from your Awareone SMTP profile. If you received this, the profile is configured correctly.</p>",
-          from_address:    body.test_from_address ? String(body.test_from_address) : (isPlatformDefault ? "noreply@awareone.io" : ""),
-          from_name:       body.test_from_name ? String(body.test_from_name) : (isPlatformDefault ? "Awareone Security" : ""),
+          from_address:    allowCustomFrom && body.test_from_address ? String(body.test_from_address) : (isPlatformDefault ? "noreply@awareone.io" : ""),
+          from_name:       allowCustomFrom && body.test_from_name ? String(body.test_from_name) : (isPlatformDefault ? "Awareone Security" : ""),
           smtp_profile_id: isPlatformDefault ? null : String(body.test_smtp_profile_id),
         });
         if (!result.success) {

@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PhishingCampaignQuota, PhishingCampaign, PhishingCampaignRequest } from '../../lib/types';
 import { generateCampaignPdf } from '../../lib/campaignReport';
+import { calculateCampaignMetrics, methodologyNotes, type QueueStats } from '../../lib/phishingMetrics';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -379,21 +380,32 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
 
   const exportCSV = () => {
     const rows = campaigns.map(c => {
-      const total = c.total_queue_size || c.total_targets || 0;
+      const targets = c.total_queue_size || c.total_targets || 0;
       const launchDate = c.launched_at || c.launch_date;
+      const qs: QueueStats = { queued: targets, sent: c.emails_sent, failed: 0, pending: 0, skipped: 0 };
+      const m = calculateCampaignMetrics(qs, Array.from({ length: targets }, (_, i) => ({
+        email: `target${i}@placeholder.invalid`,
+        clicked_at: i < c.links_clicked ? '1' : null,
+        credentials_entered: i < (c.credentials_entered ?? 0) ? true : null,
+        reported_at: i < c.emails_reported ? '1' : null,
+        opened_at: i < c.emails_opened ? '1' : null,
+      })));
       return {
-        'Campaign':   c.name,
-        'Status':     c.status,
-        'Launch Date': launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
-        'Targets':    total,
-        'Sent':       c.emails_sent,
-        'Open %':     total > 0 ? Math.round((c.emails_opened       / total) * 100) : 0,
-        'Click %':    total > 0 ? Math.round((c.links_clicked        / total) * 100) : 0,
-        'Cred %':     total > 0 ? Math.round((c.credentials_entered  / total) * 100) : 0,
-        'Report %':   total > 0 ? Math.round((c.emails_reported      / total) * 100) : 0,
+        'Campaign':                    c.name,
+        'Status':                      c.status,
+        'Launch Date':                 launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
+        'Targets':                     targets,
+        'Sent':                        c.emails_sent,
+        'Open % (of sent)':            m.openRate,
+        'Click % (of sent)':           m.clickRate,
+        'Submit % (of sent)':          m.submitRate,
+        'Report % (of sent)':          m.reportRate,
+        'Susceptibility % (of targeted)': m.susceptibilityRate,
       };
     });
-    const csv = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
+    const methodologyHeader = methodologyNotes.map(n => `# ${n}`).join('\n');
+    const csvBody = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
+    const csv = `${methodologyHeader}\n\n${csvBody}`;
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url; a.download = `phishing-analytics-${new Date().toISOString().split('T')[0]}.csv`;
@@ -405,21 +417,26 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const exportCampaignPdf = async (c: PhishingCampaign) => {
     setExportingId(c.id);
     try {
-      const { data, error } = await supabase
-        .from('phishing_campaign_targets')
-        .select('email, first_name, last_name, status, opened_at, clicked_at, submitted_at, reported_at')
-        .eq('campaign_id', c.id);
-      if (error) throw error;
-      const rows = (data ?? []) as Array<{
-        email: string;
-        first_name: string | null;
-        last_name: string | null;
-        status: string;
-        opened_at: string | null;
-        clicked_at: string | null;
-        submitted_at: string | null;
-        reported_at: string | null;
+      // Fetch targets and queue status counts in parallel
+      const [targetsRes, queueRes] = await Promise.all([
+        supabase
+          .from('phishing_campaign_targets')
+          .select('email, first_name, last_name, status, opened_at, clicked_at, credentials_entered, reported_at')
+          .eq('campaign_id', c.id),
+        supabase
+          .from('campaign_email_queue')
+          .select('status')
+          .eq('campaign_id', c.id),
+      ]);
+      if (targetsRes.error) throw targetsRes.error;
+      const rows = (targetsRes.data ?? []) as Array<{
+        email: string; first_name: string | null; last_name: string | null; status: string;
+        opened_at: string | null; clicked_at: string | null; credentials_entered: boolean | null; reported_at: string | null;
       }>;
+      const qRows = (queueRes.data ?? []) as Array<{ status: string }>;
+      const qByStatus = qRows.reduce<Record<string, number>>((acc, r) => {
+        acc[r.status] = (acc[r.status] ?? 0) + 1; return acc;
+      }, {});
       generateCampaignPdf({
         name: c.name,
         status: c.status,
@@ -430,13 +447,17 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         linksClicked: c.links_clicked,
         credentialsSubmitted: c.credentials_entered ?? 0,
         emailsReported: c.emails_reported,
+        queuedEmails:  qByStatus['QUEUED']  ?? qByStatus['PENDING'] ?? c.emails_sent,
+        failedEmails:  qByStatus['FAILED']  ?? 0,
+        pendingEmails: qByStatus['PENDING'] ?? 0,
+        skippedEmails: qByStatus['SKIPPED'] ?? 0,
         targets: rows.map(t => ({
           email: t.email,
           name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
           status: t.status,
           opened_at: t.opened_at,
           clicked_at: t.clicked_at,
-          submitted_at: t.submitted_at,
+          credentials_entered: t.credentials_entered,
           reported_at: t.reported_at,
         })),
       });

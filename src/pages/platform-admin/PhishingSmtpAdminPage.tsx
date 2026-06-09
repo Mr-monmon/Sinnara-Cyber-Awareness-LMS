@@ -86,6 +86,7 @@ interface SmtpProfile {
   ignore_cert_errors: boolean;
   custom_headers: { key: string; value: string }[];
   is_platform_profile: boolean;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   is_active: boolean;
   password_encrypted?: boolean;
   created_at: string;
@@ -161,11 +162,13 @@ export const PhishingSmtpAdminPage: React.FC = () => {
         .eq('smtp_profile_id', pushModal.profile.id)
         .eq('company_id', companyId);
       if (error) throw error;
-      setPushStatus(prev => {
-        const next = { ...prev };
-        delete next[companyId];
-        return next;
-      });
+      const nextStatus = { ...pushStatus };
+      delete nextStatus[companyId];
+      setPushStatus(nextStatus);
+      // If no more grants remain and profile was SHARED, fall back to PLATFORM_ONLY
+      if (Object.keys(nextStatus).length === 0 && pushModal.profile.visibility === 'SHARED') {
+        await supabase.from('smtp_profiles').update({ visibility: 'PLATFORM_ONLY' }).eq('id', pushModal.profile.id);
+      }
       loadAll();
     } catch (err: unknown) {
       console.error('[SmtpAdmin] revoke', err);
@@ -178,7 +181,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, password_encrypted, created_at';
+      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
       const [profilesRes, companiesRes] = await Promise.all([
         supabase.from('smtp_profiles').select(SAFE_COLS).eq('is_platform_profile', true).order('created_at', { ascending: false }),
         supabase.from('companies').select('id, name, is_active').order('name'),
@@ -299,11 +302,11 @@ export const PhishingSmtpAdminPage: React.FC = () => {
         smtp_profile_id: pushModal.profile!.id,
         company_id,
       }));
-      // Upsert to handle already-pushed
       const { error } = await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
       if (error) throw error;
+      // Set visibility to SHARED so company SMTP pages can see the access rows
+      await supabase.from('smtp_profiles').update({ visibility: 'SHARED' }).eq('id', pushModal.profile!.id);
       loadAll();
-      // Refresh push status
       const { data: access } = await supabase.from('smtp_profile_company_access').select('company_id, pushed_at').eq('smtp_profile_id', pushModal.profile!.id);
       const status: Record<string, string> = {};
       (access || []).forEach(r => { status[r.company_id] = r.pushed_at; });
@@ -315,19 +318,36 @@ export const PhishingSmtpAdminPage: React.FC = () => {
 
   const pushToAll = async () => {
     if (!pushModal.profile) return;
-    const all = new Set(companies.map(c => c.id));
-    setSelectedCompanies(all);
+    setSelectedCompanies(new Set(companies.map(c => c.id)));
     setPushing(true);
     try {
       const rows = companies.map(c => ({ smtp_profile_id: pushModal.profile!.id, company_id: c.id }));
       const { error } = await supabase.from('smtp_profile_company_access').upsert(rows, { onConflict: 'smtp_profile_id,company_id' });
       if (error) throw error;
+      // GLOBAL: every company may use it — no per-company access rows needed from now on
+      await supabase.from('smtp_profiles').update({ visibility: 'GLOBAL' }).eq('id', pushModal.profile!.id);
       loadAll();
       const { data: access } = await supabase.from('smtp_profile_company_access').select('company_id, pushed_at').eq('smtp_profile_id', pushModal.profile!.id);
       const status: Record<string, string> = {};
       (access || []).forEach(r => { status[r.company_id] = r.pushed_at; });
       setPushStatus(status);
     } catch (err) { console.error('[SmtpAdmin] pushAll', err); alert('Push failed: ' + getErrorMessage(err)); }
+    finally { setPushing(false); }
+  };
+
+  const makePlatformOnly = async () => {
+    if (!pushModal.profile) return;
+    if (!confirm('Revoke all company access and make this profile Platform Only? All companies will lose access.')) return;
+    setPushing(true);
+    try {
+      // Remove all access grants first, then set visibility
+      await supabase.from('smtp_profile_company_access').delete().eq('smtp_profile_id', pushModal.profile.id);
+      const { error } = await supabase.from('smtp_profiles').update({ visibility: 'PLATFORM_ONLY' }).eq('id', pushModal.profile.id);
+      if (error) throw error;
+      setPushStatus({});
+      setSelectedCompanies(new Set());
+      loadAll();
+    } catch (err) { console.error('[SmtpAdmin] makePlatformOnly', err); alert('Failed: ' + getErrorMessage(err)); }
     finally { setPushing(false); }
   };
 
@@ -631,12 +651,13 @@ export const PhishingSmtpAdminPage: React.FC = () => {
               })}
             </div>
 
-            <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10, flexShrink: 0 }}>
-              <button onClick={() => setPushModal({ open: false, profile: null })} style={{ flex: 1, padding: '10px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Close</button>
-              <button onClick={pushToAll} disabled={pushing} style={{ padding: '10px 16px', borderRadius: 10, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange, cursor: pushing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13 }}>Push to All</button>
+            <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+              <button onClick={() => setPushModal({ open: false, profile: null })} style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Close</button>
+              <button onClick={makePlatformOnly} disabled={pushing} style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(148,163,184,0.10)', border: `1px solid rgba(148,163,184,0.25)`, color: T.textMuted, cursor: pushing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12 }}>Platform Only</button>
+              <button onClick={pushToAll} disabled={pushing} style={{ padding: '10px 16px', borderRadius: 10, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange, cursor: pushing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13 }}>Push to All (Global)</button>
               <button onClick={pushToSelected} disabled={pushing || selectedCompanies.size === 0}
                 style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 10, background: selectedCompanies.size > 0 ? T.purple : 'rgba(255,255,255,0.04)', color: selectedCompanies.size > 0 ? T.white : T.textMuted, border: 'none', cursor: (pushing || selectedCompanies.size === 0) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, opacity: pushing ? 0.7 : 1 }}>
-                {pushing ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Pushing…</> : <><Send size={13} /> Push to Selected</>}
+                {pushing ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Pushing…</> : <><Send size={13} /> Push to Selected (Shared)</>}
               </button>
             </div>
           </div>

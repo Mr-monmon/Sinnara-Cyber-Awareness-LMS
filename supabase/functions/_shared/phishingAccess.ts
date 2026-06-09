@@ -48,7 +48,8 @@ export async function assertGroupsOwnedByCompany(
 /**
  * True when the SMTP profile is accessible to the company: null id → no profile
  * selected (allowed); otherwise the profile must be company-owned OR a platform
- * profile (is_platform_profile = true). Fails closed on query error.
+ * profile with GLOBAL visibility OR a SHARED platform profile with an explicit
+ * access grant for this company. Fails closed on query error.
  */
 export async function assertSmtpProfileAccessible(
   db: SupabaseClient,
@@ -58,12 +59,31 @@ export async function assertSmtpProfileAccessible(
   if (!smtpProfileId) return true;
   const { data, error } = await db
     .from("smtp_profiles")
-    .select("id, company_id, is_platform_profile")
+    .select("id, company_id, is_platform_profile, visibility")
     .eq("id", smtpProfileId)
     .single();
   if (error || !data) return false;
-  if (data.is_platform_profile === true) return true;
-  return data.company_id === companyId;
+
+  // Company-owned profile.
+  if (data.is_platform_profile !== true) return data.company_id === companyId;
+
+  // Platform profile: GLOBAL is open to all companies.
+  if (data.visibility === "GLOBAL") return true;
+
+  // SHARED platform profile: requires an explicit access grant.
+  if (data.visibility === "SHARED") {
+    const { data: grant, error: grantErr } = await db
+      .from("smtp_profile_company_access")
+      .select("id")
+      .eq("smtp_profile_id", smtpProfileId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (grantErr) return false;
+    return !!grant;
+  }
+
+  // PLATFORM_ONLY: not accessible to companies.
+  return false;
 }
 
 /**
