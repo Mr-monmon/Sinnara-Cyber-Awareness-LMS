@@ -287,9 +287,12 @@ export const ExamAttemptsAnalytics: React.FC<Props> = ({ companyId }) => {
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [employees, setEmployees]       = useState<Array<{ id: string; name: string }>>([]);
   const [selectedExam, setSelectedExam] = useState('all');
+  const [logPage, setLogPage]           = useState(0);
+  const LOG_PAGE_SIZE = 25;
 
   useEffect(() => { loadEmployees(); }, [companyId]);
   useEffect(() => { loadAttempts(); }, [companyId, selectedEmployee, selectedExam]);
+  useEffect(() => { setLogPage(0); }, [companyId, selectedEmployee, selectedExam, attempts.length]);
 
   const loadEmployees = async () => {
     const { data } = await supabase.from('users').select('id,full_name').eq('company_id', companyId).eq('role', 'EMPLOYEE').order('full_name');
@@ -314,9 +317,14 @@ export const ExamAttemptsAnalytics: React.FC<Props> = ({ companyId }) => {
   const uniqueEmps     = new Set(attempts.map(a => a.employee_id)).size;
   const uniqueExams    = [...new Set(attempts.map(a => a.exam_id))];
 
-  /* ── Improvement per employee+exam ── */
+  /* ── Improvement per employee+exam ──
+     Sort chronologically by completion time so improvement = (latest − earliest).
+     Sorting by attempt_number was unreliable: when attempt_number is stored newest-first
+     the subtraction runs backwards and a genuine gain (20% → 33%) shows as −13%. */
   const calcImprovement = (empId: string, examId: string) => {
-    const sorted = attempts.filter(a => a.employee_id === empId && a.exam_id === examId).sort((a, b) => a.attempt_number - b.attempt_number);
+    const sorted = attempts
+      .filter(a => a.employee_id === empId && a.exam_id === examId)
+      .sort((a, b) => a.completed_at.localeCompare(b.completed_at));
     if (sorted.length < 2) return null;
     return sorted[sorted.length - 1].percentage - sorted[0].percentage;
   };
@@ -353,6 +361,10 @@ export const ExamAttemptsAnalytics: React.FC<Props> = ({ companyId }) => {
       <span style={{ fontSize: 13, color: T.textMuted }}>Loading analytics…</span>
     </div>
   );
+
+  const logPageCount = Math.max(1, Math.ceil(attempts.length / LOG_PAGE_SIZE));
+  const logSafePage  = Math.min(logPage, logPageCount - 1);
+  const logPaged     = attempts.slice(logSafePage * LOG_PAGE_SIZE, logSafePage * LOG_PAGE_SIZE + LOG_PAGE_SIZE);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -459,7 +471,7 @@ export const ExamAttemptsAnalytics: React.FC<Props> = ({ companyId }) => {
               </tr>
             </thead>
             <tbody>
-              {attempts.map(attempt => {
+              {logPaged.map(attempt => {
                 const improvement = calcImprovement(attempt.employee_id, attempt.exam_id);
                 return (
                   <tr key={attempt.result_id}>
@@ -510,6 +522,20 @@ export const ExamAttemptsAnalytics: React.FC<Props> = ({ companyId }) => {
             </div>
           )}
         </div>
+        {attempts.length > 0 && logPageCount > 1 && (
+          <div style={{ padding: '12px 18px', borderTop: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: T.textMuted }}>
+              Showing {logSafePage * LOG_PAGE_SIZE + 1}–{Math.min(logSafePage * LOG_PAGE_SIZE + LOG_PAGE_SIZE, attempts.length)} of {attempts.length}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => setLogPage(p => Math.max(0, p - 1))} disabled={logSafePage === 0}
+                style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: logSafePage === 0 ? T.textMuted : T.white, cursor: logSafePage === 0 ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Previous</button>
+              <span style={{ fontSize: 12, color: T.textMuted }}>Page {logSafePage + 1} of {logPageCount}</span>
+              <button onClick={() => setLogPage(p => Math.min(logPageCount - 1, p + 1))} disabled={logSafePage >= logPageCount - 1}
+                style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: logSafePage >= logPageCount - 1 ? T.textMuted : T.white, cursor: logSafePage >= logPageCount - 1 ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Next</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

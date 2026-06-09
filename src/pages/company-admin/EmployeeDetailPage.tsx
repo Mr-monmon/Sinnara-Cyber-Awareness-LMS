@@ -341,15 +341,19 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
   };
 
   const loadExams = async () => {
-    const { data } = await supabase.from("exam_results").select("*, exams(title, passing_score)").eq("employee_id", employeeId).order("completed_at", { ascending: false });
+    // Fetch oldest-first so attempt #1 is the earliest sitting; number per-exam, then
+    // reverse for display (newest attempt at the top of the table).
+    const { data } = await supabase.from("exam_results").select("*, exams(title, passing_score)").eq("employee_id", employeeId).order("completed_at", { ascending: true });
     if (!data) return;
     const counts = new Map<string, number>();
-    setExams(data.map((r: Record<string, unknown> & { exams?: { title?: string } }) => {
+    const numbered = data.map((r: Record<string, unknown> & { exams?: { title?: string } }) => {
       const examId = r.exam_id as string;
       const c = (counts.get(examId) || 0) + 1;
       counts.set(examId, c);
       return { exam_name: r.exams?.title || "Unknown", attempt_number: c, score: (r.percentage as number) || 0, passed: (r.passed as boolean) || false, completed_at: r.completed_at as string };
-    }));
+    });
+    numbered.reverse();
+    setExams(numbered);
   };
 
   const loadCerts = async () => {
@@ -425,6 +429,31 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
   const inProgressCourses = courses.filter(c => c.status === "IN_PROGRESS").length;
   const notStarted        = courses.length - completedCourses - inProgressCourses;
   const avgProgress       = courses.length > 0 ? courses.reduce((s, c) => s + c.progress_percentage, 0) / courses.length : 0;
+
+  /* Assessment slots.
+     The dedicated users.pre_assessment_score / post_assessment_score columns are not
+     populated for most employees, which left this card permanently empty even when the
+     employee had real exam attempts. Fall back to the actual exam history: earliest
+     attempt as the "first" sitting and latest attempt as the "latest" sitting. */
+  const earliestExam = exams.length ? exams[exams.length - 1] : null; // exams is newest-first
+  const latestExam   = exams.length ? exams[0] : null;
+  const assessmentItems: { label: string; score: number | null; date: string | null; note?: string }[] =
+    employee.pre_assessment_score !== null || employee.post_assessment_score !== null
+      ? [
+          { label: 'Pre-Assessment',  score: employee.pre_assessment_score,  date: employee.pre_assessment_date },
+          { label: 'Post-Assessment', score: employee.post_assessment_score, date: employee.post_assessment_date },
+        ]
+      : exams.length >= 2
+        ? [
+            { label: 'First Assessment',  score: earliestExam!.score, date: earliestExam!.completed_at, note: earliestExam!.exam_name },
+            { label: 'Latest Assessment', score: latestExam!.score,   date: latestExam!.completed_at,   note: latestExam!.exam_name },
+          ]
+        : exams.length === 1
+          ? [{ label: 'Latest Assessment', score: latestExam!.score, date: latestExam!.completed_at, note: latestExam!.exam_name }]
+          : [
+              { label: 'Pre-Assessment',  score: null, date: null },
+              { label: 'Post-Assessment', score: null, date: null },
+            ];
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -527,18 +556,18 @@ export const EmployeeDetailPage: React.FC<EmployeeDetailPageProps> = ({ employee
             <ClipboardCheck size={15} style={{ color: T.accent }} /> Assessments
           </div>
           <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              { label: 'Pre-Assessment', score: employee.pre_assessment_score, date: employee.pre_assessment_date },
-              { label: 'Post-Assessment', score: employee.post_assessment_score, date: employee.post_assessment_date },
-            ].map(({ label, score, date }) => (
+            {assessmentItems.map(({ label, score, date, note }) => (
               <div key={label} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 14 }}>
-                <CircleProgress pct={score ?? 0} size={52} color={score ? (score >= 70 ? T.green : score >= 50 ? T.orange : T.red) : T.textMuted} label={score ? `${score.toFixed(0)}` : '—'} />
+                <CircleProgress pct={score ?? 0} size={52} color={score != null ? (score >= 70 ? T.green : score >= 50 ? T.orange : T.red) : T.textMuted} label={score != null ? `${score.toFixed(0)}` : '—'} />
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 700, color: T.white, margin: '0 0 4px' }}>{label}</p>
-                  {score
+                  {score != null
                     ? <p style={{ fontSize: 13, fontWeight: 800, color: T.accent, margin: '0 0 3px' }}>{score.toFixed(1)}%</p>
                     : <p style={{ fontSize: 12, color: T.textMuted, margin: '0 0 3px' }}>Not completed</p>
                   }
+                  {note && (
+                    <p style={{ fontSize: 11, color: T.textMuted, margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{note}</p>
+                  )}
                   {date && (
                     <p style={{ fontSize: 11, color: T.textMuted, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Calendar size={10} /> {fmt(date)}

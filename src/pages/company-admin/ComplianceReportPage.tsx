@@ -48,6 +48,11 @@ interface Stats {
   recentLogins: number;
   auditEventsLast90: number;
   trainingsLast90: number;
+  // Phishing simulation evidence
+  phishingCampaignsRun: number;
+  phishingEmployeesTargeted: number;
+  phishingClicked: number;
+  phishingReported: number;
 }
 
 const STATUS_CFG: Record<Status, { color: string; bg: string; border: string; label: string }> = {
@@ -193,6 +198,32 @@ export const ComplianceReportPage: React.FC = () => {
       const empScores = Array.from(bestByEmployee.values());
       const avgScore = empScores.length ? Math.round(empScores.reduce((a, b) => a + b, 0) / empScores.length) : 0;
 
+      // Phishing simulation evidence — query real campaigns + per-target engagement.
+      // (Previously the phishing control checked training activity, so it always reported
+      //  "Evidence Missing" even when simulations had been run.)
+      const { data: phishCampaigns } = await supabase
+        .from("phishing_campaigns")
+        .select("id, status, launched_at")
+        .eq("company_id", cid);
+      const phishCampaignIds = (phishCampaigns ?? []).map(c => c.id);
+      const campaignsRun = (phishCampaigns ?? []).filter(
+        c => c.launched_at != null || ["RUNNING", "COMPLETED", "PARTIAL_FAILURE", "PAUSED"].includes(c.status),
+      ).length;
+      const { data: phishTargets } = phishCampaignIds.length
+        ? await supabase
+            .from("phishing_campaign_targets")
+            .select("employee_id, clicked_at, reported_at")
+            .in("campaign_id", phishCampaignIds)
+        : { data: [] as Array<{ employee_id: string | null; clicked_at: string | null; reported_at: string | null }> };
+      const targetedEmployees = new Set<string>();
+      let phishingClicked = 0;
+      let phishingReported = 0;
+      for (const t of (phishTargets ?? [])) {
+        if (t.employee_id) targetedEmployees.add(t.employee_id);
+        if (t.clicked_at) phishingClicked += 1;
+        if (t.reported_at) phishingReported += 1;
+      }
+
       setCompanyName(company?.name ?? "Your Company");
       setStats({
         totalEmployees,
@@ -203,6 +234,10 @@ export const ComplianceReportPage: React.FC = () => {
         recentLogins: recentLogins ?? 0,
         auditEventsLast90: auditEventsLast90 ?? 0,
         trainingsLast90: trainingsLast90 ?? 0,
+        phishingCampaignsRun: campaignsRun,
+        phishingEmployeesTargeted: targetedEmployees.size,
+        phishingClicked,
+        phishingReported,
       });
     } finally {
       setLoading(false);
@@ -233,18 +268,31 @@ export const ComplianceReportPage: React.FC = () => {
         code: "NCA ECC 2-13-3",
         title: "Phishing Awareness and Simulation",
         description: "Employees shall be trained to recognise and resist phishing attacks, with documented simulations.",
-        status: noData ? "partial"
-          : s.trainingsLast90 >= Math.ceil(s.totalEmployees * 0.5) ? "compliant"
-          : "partial",
-        evidence: [
-          `${s.recentLogins} employee login events in last 30 days — indicates active platform engagement`,
-          "Phishing simulation campaign workflow is available in the platform",
-          "Fraud-alert awareness module available to all employees",
-          ...(s.trainingsLast90 > 0 ? [`${s.trainingsLast90} training activities recorded in the last 90 days`] : ["No phishing simulation results available — Evidence Missing for simulation data"]),
-        ],
-        recommendation: s.trainingsLast90 < Math.ceil(s.totalEmployees * 0.5)
-          ? "Run at least one phishing simulation campaign covering all employees this quarter and export results for audit evidence."
-          : undefined,
+        // Coverage = share of employees who have been included in at least one simulation.
+        status: (() => {
+          if (s.phishingCampaignsRun === 0) return "non-compliant";
+          const coverage = s.totalEmployees ? s.phishingEmployeesTargeted / s.totalEmployees : 0;
+          return coverage >= 0.9 ? "compliant" : "partial";
+        })(),
+        evidence: s.phishingCampaignsRun === 0
+          ? [
+              "Phishing simulation campaign workflow is available in the platform",
+              "Fraud-alert awareness module available to all employees",
+              "No phishing simulation campaigns have been run yet — Evidence Missing for simulation data",
+            ]
+          : [
+              `${s.phishingCampaignsRun} phishing simulation campaign${s.phishingCampaignsRun === 1 ? "" : "s"} run to date`,
+              `${s.phishingEmployeesTargeted} of ${s.totalEmployees} employees included in simulations (${s.totalEmployees ? Math.round((s.phishingEmployeesTargeted / s.totalEmployees) * 100) : 0}% coverage)`,
+              `${s.phishingClicked} link click${s.phishingClicked === 1 ? "" : "s"} and ${s.phishingReported} report${s.phishingReported === 1 ? "" : "s"} captured as auditable evidence`,
+              "Fraud-alert awareness module available to all employees",
+            ],
+        recommendation: (() => {
+          if (s.phishingCampaignsRun === 0) return "Run at least one phishing simulation campaign covering all employees this quarter and export results for audit evidence.";
+          const coverage = s.totalEmployees ? s.phishingEmployeesTargeted / s.totalEmployees : 0;
+          return coverage < 0.9
+            ? `Extend simulation coverage to the remaining ${s.totalEmployees - s.phishingEmployeesTargeted} employees. Target: ≥90% coverage.`
+            : undefined;
+        })(),
       },
       {
         code: "NCA ECC 4-1-2",
