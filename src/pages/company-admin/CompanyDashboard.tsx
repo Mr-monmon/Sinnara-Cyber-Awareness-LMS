@@ -2,8 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import {
   Users, TrendingUp, Award, AlertCircle,
   BookOpen, ClipboardCheck, BarChart2,
-  ChevronRight, Shield, Medal, Activity, FileCheck,
-  Server, Globe, Mail, Target, Bell, Variable,
+  ChevronRight, Shield, Medal, FileCheck,
 } from "lucide-react";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { useAuth } from "../../contexts/AuthContext";
@@ -286,23 +285,14 @@ export const CompanyDashboard = () => {
       { icon: AlertCircle,    color: T.orange,  bg: T.orangeBg,             border: T.orangeBorder,           label: 'Pending Assessments', sub: 'Employees with pending',  value: stats.pendingAssessments, pct: null },
     ] as const;
 
-    /* Quick actions */
+    /* Quick actions — pilot-focused, setup items moved to sidebar */
     const ACTIONS = [
-      { icon: Users,          color: T.accent,  page: 'employees',        label: 'Manage Employees',   sub: 'Add or edit employee accounts'   },
-      { icon: BookOpen,       color: T.green,   page: 'course-assignment', label: 'Assign Courses',     sub: 'Launch new training plans'       },
-      { icon: ClipboardCheck, color: T.gold,    page: 'exam-assignment',  label: 'Assign Exams',       sub: 'Schedule assessments'            },
-      { icon: BarChart2,      color: T.purple,  page: 'analytics',        label: 'View Analytics',     sub: 'Detailed performance reports'    },
-      { icon: Shield,         color: T.orange,  page: 'phishing-dashboard',        label: 'Phishing Dashboard',   sub: 'Campaign overview & analytics'     },
-      { icon: Target,         color: T.red,     page: 'phishing-campaigns',        label: 'Campaigns',            sub: 'Create & manage campaigns'         },
-      { icon: Server,         color: T.blue,    page: 'phishing-smtp',             label: 'SMTP Profiles',        sub: 'Sending server configs'            },
-      { icon: Users,          color: T.green,   page: 'phishing-groups',           label: 'Target Groups',        sub: 'Manage phishing targets'           },
-      { icon: Globe,          color: T.orange,  page: 'phishing-landing',          label: 'Landing Pages',        sub: 'Phishing landing page builder'     },
-      { icon: Mail,           color: T.purple,  page: 'phishing-email-templates',  label: 'Email Templates',      sub: 'Phishing email builder'            },
-      { icon: Variable,       color: T.gold,    page: 'phishing-variables',        label: 'Custom Variables',     sub: 'Template variable definitions'     },
-      { icon: Bell,           color: T.orange,  page: 'phishing-alerts',           label: 'Phishing Alerts',      sub: 'Real-time threat notifications'    },
-      { icon: Activity,       color: T.red,     page: 'risk-scores',        label: 'Risk Scores',       sub: 'Cyber risk per employee'         },
-      { icon: TrendingUp,     color: T.purple,  page: 'advanced-analytics', label: 'Advanced Reports',  sub: 'Departments, courses, phishing'  },
-      { icon: FileCheck,      color: T.green,   page: 'compliance',         label: 'Compliance Report', sub: 'NCA ECC + SAMA CSF mapping'      },
+      { icon: Users,          color: T.accent,  page: 'employees',          label: 'Add Employees',          sub: 'Add or manage employee accounts'      },
+      { icon: BookOpen,       color: T.green,   page: 'course-assignment',  label: 'Assign Course',          sub: 'Launch training plans'                },
+      { icon: ClipboardCheck, color: T.gold,    page: 'exam-assignment',    label: 'Assign Exam',            sub: 'Schedule assessments'                 },
+      { icon: Shield,         color: T.orange,  page: 'phishing-dashboard', label: 'Phishing Simulation',    sub: 'Dashboard & campaign analytics'       },
+      { icon: BarChart2,      color: T.purple,  page: 'advanced-analytics', label: 'View Reports',           sub: 'Departments, courses, risk scores'    },
+      { icon: FileCheck,      color: T.green,   page: 'compliance',         label: 'Compliance Readiness',   sub: 'NCA ECC · SAMA CSF · ISO 27001'       },
     ] as const;
 
     return (

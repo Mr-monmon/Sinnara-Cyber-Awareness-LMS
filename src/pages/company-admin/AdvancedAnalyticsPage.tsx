@@ -593,10 +593,13 @@ export function AdvancedAnalyticsPage() {
           <div style={{ color: T.textMuted, fontSize: 13, textAlign: "center", padding: 20 }}>No phishing campaigns yet.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
+            <div style={{ fontSize: 11, color: T.textMuted, padding: "0 0 10px", borderBottom: `1px solid ${T.border}`, marginBottom: 8 }}>
+              ℹ️ Rates shown are <strong style={{ color: T.textSub }}>by targeted users</strong> (denominator = total targets per campaign). For delivered-only rates, see the Phishing Dashboard.
+            </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {["Campaign", "Targets", "Opened", "Open%", "Clicked", "Click%", "Credentials", "Cred%", "Reported", "Report%"].map(h => (
+                  {["Campaign", "Targets", "Opened", "Open % (targets)", "Clicked", "Click % (targets)", "Credentials", "Cred % (targets)", "Reported", "Report % (targets)"].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: h === "Campaign" ? "left" : "right", color: T.textMuted, fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield, Target, TrendingUp, AlertCircle, Plus, Download,
   Calendar, Users, MousePointerClick, Flag, KeyRound,
@@ -8,7 +8,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PhishingCampaignQuota, PhishingCampaign, PhishingCampaignRequest } from '../../lib/types';
 import { generateCampaignPdf } from '../../lib/campaignReport';
-import { calculateCampaignMetrics, methodologyNotes, type QueueStats } from '../../lib/phishingMetrics';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -349,7 +348,9 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const [loading, setLoading]       = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  useEffect(() => { loadData(); }, [user]);
+
+  const loadData = async () => {
     if (!user?.company_id) return;
     try {
       const year = new Date().getFullYear();
@@ -365,9 +366,7 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
       if (latest) { setSelectedCampaign(latest.id); await loadDeptStats(latest.id); }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [user?.company_id]);
-
-  useEffect(() => { loadData(); }, [loadData]);
+  };
 
   const loadDeptStats = async (campaignId: string) => {
     const { data } = await supabase.from('department_vulnerability_stats')
@@ -379,35 +378,30 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const handleSelectCampaign = async (id: string) => { setSelectedCampaign(id); await loadDeptStats(id); };
 
   const exportCSV = () => {
-    // Canonical figures (same methodology as the PDF): delivered rates use SENT
-    // emails, susceptibility uses TARGETED users. Headers state the denominator.
     const rows = campaigns.map(c => {
-      const targets = c.total_queue_size || c.total_targets || 0;
+      const targets = c.total_targets || 0;
+      const sent    = c.emails_sent   || 0;
       const launchDate = c.launched_at || c.launch_date;
-      const qs: QueueStats = { queued: targets, sent: c.emails_sent, failed: 0, pending: 0, skipped: 0 };
-      const m = calculateCampaignMetrics(qs, Array.from({ length: targets }, (_, i) => ({
-        email: `target${i}@placeholder.invalid`,
-        clicked_at: i < c.links_clicked ? '1' : null,
-        credentials_entered: i < (c.credentials_entered ?? 0) ? true : null,
-        reported_at: i < c.emails_reported ? '1' : null,
-        opened_at: i < c.emails_opened ? '1' : null,
-      })));
+      const pct = (n: number, d: number) => d > 0 ? Math.round((n / d) * 100) : 0;
       return {
-        'Campaign':                    c.name,
-        'Status':                      c.status,
-        'Launch Date':                 launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
-        'Targets':                     targets,
-        'Sent':                        c.emails_sent,
-        'Open % (of sent)':            m.openRate,
-        'Click % (of sent)':           m.clickRate,
-        'Submit % (of sent)':          m.submitRate,
-        'Report % (of sent)':          m.reportRate,
-        'Susceptibility % (of targeted)': m.susceptibilityRate,
+        'Campaign':                   c.name,
+        'Status':                     c.status,
+        'Launch Date':                launchDate ? new Date(launchDate).toLocaleDateString() : 'N/A',
+        'Targeted Users':             targets,
+        'Sent Emails':                sent,
+        'Emails Opened':              c.emails_opened,
+        'Open % (by Sent)':           pct(c.emails_opened,       sent),
+        'Clicked Link':               c.links_clicked,
+        'Click % (by Sent)':          pct(c.links_clicked,       sent),
+        'Click % (by Targeted)':      pct(c.links_clicked,       targets),
+        'Credentials Submitted':      c.credentials_entered,
+        'Cred % (by Sent)':           pct(c.credentials_entered, sent),
+        'Emails Reported':            c.emails_reported,
+        'Report % (by Sent)':         pct(c.emails_reported,     sent),
+        'Report % (by Targeted)':     pct(c.emails_reported,     targets),
       };
     });
-    const methodologyHeader = methodologyNotes.map(n => `# ${n}`).join('\n');
-    const csvBody = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
-    const csv = `${methodologyHeader}\n\n${csvBody}`;
+    const csv = [Object.keys(rows[0] || {}).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url; a.download = `phishing-analytics-${new Date().toISOString().split('T')[0]}.csv`;
@@ -419,26 +413,21 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const exportCampaignPdf = async (c: PhishingCampaign) => {
     setExportingId(c.id);
     try {
-      // Fetch targets and queue status counts in parallel
-      const [targetsRes, queueRes] = await Promise.all([
-        supabase
-          .from('phishing_campaign_targets')
-          .select('email, first_name, last_name, status, opened_at, clicked_at, credentials_entered, reported_at')
-          .eq('campaign_id', c.id),
-        supabase
-          .from('campaign_email_queue')
-          .select('status')
-          .eq('campaign_id', c.id),
-      ]);
-      if (targetsRes.error) throw targetsRes.error;
-      const rows = (targetsRes.data ?? []) as Array<{
-        email: string; first_name: string | null; last_name: string | null; status: string;
-        opened_at: string | null; clicked_at: string | null; credentials_entered: boolean | null; reported_at: string | null;
+      const { data, error } = await supabase
+        .from('phishing_campaign_targets')
+        .select('email, first_name, last_name, status, opened_at, clicked_at, submitted_at, reported_at')
+        .eq('campaign_id', c.id);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        status: string;
+        opened_at: string | null;
+        clicked_at: string | null;
+        submitted_at: string | null;
+        reported_at: string | null;
       }>;
-      const qRows = (queueRes.data ?? []) as Array<{ status: string }>;
-      const qByStatus = qRows.reduce<Record<string, number>>((acc, r) => {
-        acc[r.status] = (acc[r.status] ?? 0) + 1; return acc;
-      }, {});
       generateCampaignPdf({
         name: c.name,
         status: c.status,
@@ -449,17 +438,13 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         linksClicked: c.links_clicked,
         credentialsSubmitted: c.credentials_entered ?? 0,
         emailsReported: c.emails_reported,
-        queuedEmails:  qByStatus['QUEUED']  ?? qByStatus['PENDING'] ?? c.emails_sent,
-        failedEmails:  qByStatus['FAILED']  ?? 0,
-        pendingEmails: qByStatus['PENDING'] ?? 0,
-        skippedEmails: qByStatus['SKIPPED'] ?? 0,
         targets: rows.map(t => ({
           email: t.email,
           name: [t.first_name, t.last_name].filter(Boolean).join(' ') || undefined,
           status: t.status,
           opened_at: t.opened_at,
           clicked_at: t.clicked_at,
-          credentials_entered: t.credentials_entered,
+          submitted_at: t.submitted_at,
           reported_at: t.reported_at,
         })),
       });
@@ -541,9 +526,9 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         <MetricCard icon={Shield}           color={remainingQuota > 0 ? T.accent : T.red} bg={remainingQuota > 0 ? 'rgba(200,255,0,0.08)' : T.redBg} border={remainingQuota > 0 ? 'rgba(200,255,0,0.20)' : T.redBorder} label="Campaigns Remaining" sub={`of ${quota?.annual_quota || 0} annual quota`} value={`${remainingQuota}`} />
-        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="of targeted users (weighted)"   value={`${avgClickRate}%`} />
-        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="of targeted users (weighted)"   value={`${avgReportRate}%`} />
-        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="of targeted users (weighted)"   value={`${avgCredRate}%`} />
+        <MetricCard icon={MousePointerClick} color={T.red}    bg={T.redBg}    border={T.redBorder}    label="Avg Click Rate"      sub="weighted by targeted users"    value={`${avgClickRate}%`} />
+        <MetricCard icon={Flag}              color={T.green}  bg={T.greenBg}  border={T.greenBorder}  label="Avg Reporting Rate"  sub="weighted by targeted users"    value={`${avgReportRate}%`} />
+        <MetricCard icon={KeyRound}          color={T.orange} bg={T.orangeBg} border={T.orangeBorder} label="Avg Credential Rate" sub="weighted by targeted users"    value={`${avgCredRate}%`} />
       </div>
 
       {/* ── Charts row ── */}
@@ -624,10 +609,10 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
           {/* Campaign metric mini cards */}
           <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
             {[
-              { icon: TrendingUp,        color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate',       sub: `${selectedData.emails_opened} opened`,                    value: `${selOpenRate}%`   },
-              { icon: MousePointerClick, color: T.red,   bg: T.redBg,    border: T.redBorder,    label: 'Click Rate',      sub: `${selectedData.links_clicked} clicked`,                   value: `${selClickRate}%`  },
-              { icon: KeyRound,          color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate', sub: `${selectedData.credentials_entered || 0} entered creds`,  value: `${selCredRate}%`   },
-              { icon: Flag,              color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Reporting Rate',  sub: `${selectedData.emails_reported} reported`,                value: `${selReportRate}%` },
+              { icon: TrendingUp,        color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate (by Sent)',       sub: `${selectedData.emails_opened} opened of ${selTotal} sent`,              value: `${selOpenRate}%`   },
+              { icon: MousePointerClick, color: T.red,   bg: T.redBg,    border: T.redBorder,    label: 'Click Rate (by Sent)',      sub: `${selectedData.links_clicked} clicked of ${selTotal} sent`,             value: `${selClickRate}%`  },
+              { icon: KeyRound,          color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate (by Sent)', sub: `${selectedData.credentials_entered || 0} submitted of ${selTotal} sent`, value: `${selCredRate}%`   },
+              { icon: Flag,              color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Report Rate (by Sent)',     sub: `${selectedData.emails_reported} reported of ${selTotal} sent`,          value: `${selReportRate}%` },
             ].map(({ icon: Icon, color, bg, border, label, sub, value }) => (
               <div key={label} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
@@ -747,28 +732,49 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         </div>
       )}
 
-      {/* ── Analytics guide ── */}
+      {/* ── Empty state when no campaigns yet ── */}
+      {campaigns.length === 0 && (
+        <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.20s' }}>
+          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <Shield size={40} style={{ color: T.textMuted, marginBottom: 14 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.white, marginBottom: 6 }}>No Phishing Campaigns Yet</div>
+            <div style={{ fontSize: 13, color: T.textBody, marginBottom: 20 }}>
+              Launch your first phishing simulation to start measuring employee awareness.
+            </div>
+            <button className="aw-ph-primary-btn" onClick={() => onNavigate?.('phishing-campaigns')}>
+              <Plus size={14} /> Create First Campaign
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Analytics guide / methodology ── */}
       <div className="aw-ph-card aw-fade-up" style={{ animationDelay: '0.28s', borderColor: 'rgba(200,255,0,0.14)' }}>
         <div className="aw-ph-card-header" style={{ background: 'rgba(200,255,0,0.03)' }}>
-          <Target size={14} style={{ color: T.accent }} /> Understanding Your Analytics
+          <Target size={14} style={{ color: T.accent }} /> Measurement Methodology
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-          {[
-            { icon: MousePointerClick, color: T.red,    title: 'Click Rate',            desc: 'Percentage of employees who clicked phishing links. Lower is better.' },
-            { icon: Flag,              color: T.green,  title: 'Reporting Rate',         desc: 'Percentage who reported the phishing attempt. Higher is better!' },
-            { icon: KeyRound,          color: T.orange, title: 'Credential Rate',        desc: 'Percentage who entered credentials on a fake page. Lower is better.' },
-            { icon: Building2,         color: T.purple, title: 'Department Vulnerability', desc: 'Identifies departments needing additional security training.' },
-          ].map(({ icon: Icon, color, title, desc }) => (
-            <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 7, background: `${color}12`, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon size={14} style={{ color }} />
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 4 }}>
+            {[
+              { icon: MousePointerClick, color: T.red,    title: 'Click Rate (by Sent)',            desc: 'Employees who clicked ÷ emails sent. Excludes failed deliveries.' },
+              { icon: Flag,              color: T.green,  title: 'Report Rate (by Sent)',           desc: 'Employees who reported ÷ emails sent. Higher is better.' },
+              { icon: KeyRound,          color: T.orange, title: 'Credential Rate (by Sent)',       desc: 'Credentials entered ÷ emails sent. Lower is better.' },
+              { icon: Building2,         color: T.purple, title: 'Aggregate (Company-Wide)',        desc: 'Rates are weighted: Σ(counts) ÷ Σ(denominators) across all campaigns.' },
+            ].map(({ icon: Icon, color, title, desc }) => (
+              <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ width: 30, height: 30, borderRadius: 7, background: `${color}12`, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={14} style={{ color }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.white, marginBottom: 3 }}>{title}</div>
+                  <div style={{ fontSize: 12, color: T.textBody, lineHeight: '18px' }}>{desc}</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T.white, marginBottom: 3 }}>{title}</div>
-                <div style={{ fontSize: 12, color: T.textBody, lineHeight: '18px' }}>{desc}</div>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: T.textMuted, borderTop: `1px solid ${T.borderFaint}`, paddingTop: 10 }}>
+            CSV export includes both "by sent" and "by targeted users" columns for each metric.
+          </div>
         </div>
       </div>
     </div>

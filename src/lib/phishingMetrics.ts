@@ -1,192 +1,299 @@
 /**
- * phishingMetrics — canonical phishing campaign metrics module.
+ * Canonical phishing metrics module.
  *
- * Denominator discipline:
- *   - Delivery rates (open, click, submit, report) use SENT emails as denominator
- *   - Queue rates (queued, failed) use QUEUED emails as denominator
- *   - Susceptibility (click, submit) uses TARGETED users (deduplicated recipients) as denominator
+ * All phishing rate calculations MUST go through this module to ensure
+ * consistent denominators across all pages, PDFs, and CSV exports.
  *
- * Aggregate calculations use weighted Σ(numerators) / Σ(denominators), never
- * the average of per-campaign percentages, to prevent small campaigns from
- * skewing results.
+ * Denominator rules:
+ *   - "Delivered" rates  → use sentEmails   (emails that left the queue)
+ *   - "Susceptibility"   → use targetedUsers (deduplicated campaign targets)
+ *   - "Send success/fail"→ use queuedEmails  (total rows in campaign_email_queue)
+ *   - Aggregate/company-wide → weighted sum: Σ(numerator) / Σ(denominator)
  */
 
-/** Zero-denominator safe percentage. Returns 0 (never NaN/Infinity). */
+/** Safe percentage helper — returns 0 for invalid denominators, rounds to 1 decimal. */
 export function safePct(numerator: number, denominator: number): number {
-  if (!denominator || denominator <= 0 || !Number.isFinite(denominator)) return 0;
-  if (!Number.isFinite(numerator) || numerator < 0) return 0;
+  if (!denominator || denominator <= 0 || !isFinite(denominator)) return 0;
   return Math.round((numerator / denominator) * 1000) / 10;
 }
 
-/** Email queue status totals for a campaign. */
-export interface QueueStats {
-  queued: number;
-  sent: number;
-  failed: number;
-  pending: number;
-  skipped: number;
-}
-
-/** Per-target engagement stats from phishing_campaign_targets rows. */
+/** Per-row target data from phishing_campaign_targets. */
 export interface TargetStats {
-  employee_id?: string | null;
   email: string;
   clicked_at?: string | null;
-  opened_at?: string | null;
   credentials_entered?: boolean | null;
   reported_at?: string | null;
+  opened_at?: string | null;
 }
 
-/** Fully-computed canonical metrics for a single campaign. */
-export interface CampaignMetrics {
-  // Counts
-  targeted: number;        // deduplicated recipients
-  queued: number;
-  sent: number;
-  failed: number;
-  pending: number;
-  skipped: number;
-  opened: number;
-  clicked: number;
-  submitted: number;
-  reported: number;
-
-  // Rates — delivery rates use SENT as denominator
-  openRate: number;        // % of sent
-  clickRate: number;       // % of sent
-  submitRate: number;      // % of sent
-  reportRate: number;      // % of sent
-
-  // Queue rates — use QUEUED as denominator
-  failRate: number;        // % of queued
-
-  // Susceptibility — use TARGETED users as denominator
-  susceptibilityRate: number;   // (clicked OR submitted) / targeted
-  reportByTargetRate: number;   // reported / targeted
-}
+/** Queue breakdown from campaign_email_queue grouped by status. */
+export type QueueStats = QueueCounts;
 
 /**
- * Deduplicate target rows by normalized email (lowercase + trim).
- * First occurrence wins. Rows with an empty email are dropped.
+ * Deduplicate target rows by email (case-insensitive) and drop rows with empty email.
+ * Returns a new array with normalised lowercase emails, first occurrence wins.
  */
 export function summarizeTargets(rows: TargetStats[]): TargetStats[] {
   const seen = new Set<string>();
-  const out: TargetStats[] = [];
+  const result: TargetStats[] = [];
   for (const row of rows) {
-    const email = (row.email ?? '').trim().toLowerCase();
-    if (!email || seen.has(email)) continue;
-    seen.add(email);
-    out.push({ ...row, email });
+    if (!row.email) continue;
+    const key = row.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ ...row, email: key });
   }
-  return out;
+  return result;
+}
+
+export interface CampaignMetrics {
+  /** Raw counts */
+  targetedUsers: number;
+  queuedEmails: number;
+  sentEmails: number;
+  failedEmails: number;
+  openedCount: number;
+  clickedCount: number;
+  submittedCount: number;
+  reportedCount: number;
+  susceptibleCount: number;
+  /** Rates (0–100, 1 decimal) */
+  openRate: number;           // opened / sent
+  clickRate: number;          // clicked / sent
+  credRate: number;           // submitted / sent
+  reportRate: number;         // reported / sent
+  failRate: number;           // failed / queued
+  susceptibilityRate: number; // unique(clicked|submitted) / targeted
 }
 
 /**
- * Compute canonical metrics from queue stats + deduplicated target rows.
- * Call summarizeTargets() on target rows before passing here.
+ * Compute per-campaign metrics from queue stats and deduplicated target rows.
+ * Calls summarizeTargets internally.
  */
-export function calculateCampaignMetrics(
-  queue: QueueStats,
-  targets: TargetStats[],
-): CampaignMetrics {
-  const targeted = targets.length;
-  const opened   = targets.filter(t => t.opened_at).length;
-  const clicked  = targets.filter(t => t.clicked_at).length;
-  const submitted = targets.filter(t => t.credentials_entered).length;
-  const reported  = targets.filter(t => t.reported_at).length;
-
-  const susceptible = targets.filter(t => t.clicked_at || t.credentials_entered).length;
-
+export function calculateCampaignMetrics(queue: QueueStats, rawTargets: TargetStats[]): CampaignMetrics {
+  const targets = summarizeTargets(rawTargets);
+  const targetedUsers = targets.length;
+  const openedCount    = targets.filter(t => t.opened_at).length;
+  const clickedCount   = targets.filter(t => t.clicked_at).length;
+  const submittedCount = targets.filter(t => t.credentials_entered).length;
+  const reportedCount  = targets.filter(t => t.reported_at).length;
+  const susceptibleCount = targets.filter(t => t.clicked_at || t.credentials_entered).length;
   return {
-    targeted,
-    queued:   queue.queued,
-    sent:     queue.sent,
-    failed:   queue.failed,
-    pending:  queue.pending,
-    skipped:  queue.skipped,
-    opened,
-    clicked,
-    submitted,
-    reported,
-
-    openRate:   safePct(opened,    queue.sent),
-    clickRate:  safePct(clicked,   queue.sent),
-    submitRate: safePct(submitted, queue.sent),
-    reportRate: safePct(reported,  queue.sent),
-
-    failRate:   safePct(queue.failed, queue.queued),
-
-    susceptibilityRate:  safePct(susceptible, targeted),
-    reportByTargetRate:  safePct(reported,    targeted),
+    targetedUsers,
+    queuedEmails:   queue.queued,
+    sentEmails:     queue.sent,
+    failedEmails:   queue.failed,
+    openedCount,
+    clickedCount,
+    submittedCount,
+    reportedCount,
+    susceptibleCount,
+    openRate:           safePct(openedCount,    queue.sent),
+    clickRate:          safePct(clickedCount,   queue.sent),
+    credRate:           safePct(submittedCount, queue.sent),
+    reportRate:         safePct(reportedCount,  queue.sent),
+    failRate:           safePct(queue.failed,   queue.queued),
+    susceptibilityRate: safePct(susceptibleCount, targetedUsers),
   };
 }
 
-/** Weighted aggregate across multiple campaigns. */
 export interface AggregateCampaignMetrics {
   totalTargeted: number;
-  totalQueued: number;
   totalSent: number;
-  totalFailed: number;
   totalOpened: number;
   totalClicked: number;
   totalSubmitted: number;
   totalReported: number;
-  // Weighted rates (Σnumerators / Σdenominators)
   openRate: number;
   clickRate: number;
-  submitRate: number;
+  credRate: number;
   reportRate: number;
   susceptibilityRate: number;
-  reportByTargetRate: number;
 }
 
 /**
- * Weighted aggregate: sums numerators and denominators separately before
- * dividing — never averages per-campaign percentages.
+ * Aggregate multiple campaign metrics using weighted sums.
+ * Never averages rates — always Σ(numerator) / Σ(denominator).
  */
-export function calculateAggregateCampaignMetrics(
-  campaigns: CampaignMetrics[],
-): AggregateCampaignMetrics {
-  let totalTargeted = 0, totalQueued = 0, totalSent = 0, totalFailed = 0;
-  let totalOpened = 0, totalClicked = 0, totalSubmitted = 0, totalReported = 0;
-  let totalSusceptible = 0;
-
-  for (const m of campaigns) {
-    totalTargeted  += m.targeted;
-    totalQueued    += m.queued;
-    totalSent      += m.sent;
-    totalFailed    += m.failed;
-    totalOpened    += m.opened;
-    totalClicked   += m.clicked;
-    totalSubmitted += m.submitted;
-    totalReported  += m.reported;
-    // Recover susceptible count from rate × targeted (integer, so safe)
-    totalSusceptible += Math.round((m.susceptibilityRate / 100) * m.targeted);
-  }
-
+export function calculateAggregateCampaignMetrics(metrics: CampaignMetrics[]): AggregateCampaignMetrics {
+  const t = metrics.reduce(
+    (acc, m) => ({
+      targeted:  acc.targeted  + m.targetedUsers,
+      sent:      acc.sent      + m.sentEmails,
+      opened:    acc.opened    + m.openedCount,
+      clicked:   acc.clicked   + m.clickedCount,
+      submitted: acc.submitted + m.submittedCount,
+      reported:  acc.reported  + m.reportedCount,
+      susceptible: acc.susceptible + m.susceptibleCount,
+    }),
+    { targeted: 0, sent: 0, opened: 0, clicked: 0, submitted: 0, reported: 0, susceptible: 0 },
+  );
   return {
-    totalTargeted,
-    totalQueued,
-    totalSent,
-    totalFailed,
-    totalOpened,
-    totalClicked,
-    totalSubmitted,
-    totalReported,
-    openRate:            safePct(totalOpened,      totalSent),
-    clickRate:           safePct(totalClicked,     totalSent),
-    submitRate:          safePct(totalSubmitted,   totalSent),
-    reportRate:          safePct(totalReported,    totalSent),
-    susceptibilityRate:  safePct(totalSusceptible, totalTargeted),
-    reportByTargetRate:  safePct(totalReported,    totalTargeted),
+    totalTargeted:  t.targeted,
+    totalSent:      t.sent,
+    totalOpened:    t.opened,
+    totalClicked:   t.clicked,
+    totalSubmitted: t.submitted,
+    totalReported:  t.reported,
+    openRate:           safePct(t.opened,     t.sent),
+    clickRate:          safePct(t.clicked,    t.sent),
+    credRate:           safePct(t.submitted,  t.sent),
+    reportRate:         safePct(t.reported,   t.sent),
+    susceptibilityRate: safePct(t.susceptible, t.targeted),
   };
 }
 
-/** Plain-language methodology notes for PDF/CSV export. */
-export const methodologyNotes: string[] = [
-  'Open, click, submit, and report rates are calculated as a percentage of successfully sent emails.',
-  'Susceptibility rate (click or credential submission) is calculated as a percentage of targeted users (unique recipients).',
-  'Aggregate rates use weighted totals (sum of numerators / sum of denominators), not averages of per-campaign percentages.',
-  'Failed emails are excluded from delivery rate denominators; they count toward the fail rate (% of queued).',
-  'Recipients are deduplicated by email address before engagement counts are tallied.',
-];
+export interface QueueCounts {
+  /** Total rows in campaign_email_queue — the canonical "queued" number. */
+  queued: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+}
+
+export interface CampaignEngagement {
+  opened: number;
+  clicked: number;
+  credentialsSubmitted: number;
+  reported: number;
+}
+
+export interface PhishingMetrics {
+  // Raw counts
+  targetedUsers: number;
+  queuedEmails: number;
+  sentEmails: number;
+  failedEmails: number;
+  pendingEmails: number;
+  skippedEmails: number;
+  opened: number;
+  clicked: number;
+  credentialsSubmitted: number;
+  reported: number;
+
+  // Delivery rates (denominator = queuedEmails)
+  sendSuccessRate: number;       // sent / queued
+  deliveryFailureRate: number;   // failed / queued
+
+  // Delivered engagement rates (denominator = sentEmails)
+  openRateDelivered: number;     // opened / sent
+  clickRateDelivered: number;    // clicked / sent
+  credRateDelivered: number;     // creds / sent
+  reportRateDelivered: number;   // reported / sent
+
+  // Target susceptibility (denominator = targetedUsers)
+  targetSusceptibilityRate: number; // unique (clicked OR submitted) / targeted
+}
+
+/** Build all derived rate fields. */
+export function buildMetrics(
+  targetedUsers: number,
+  queue: QueueCounts,
+  engagement: CampaignEngagement,
+  uniqueSusceptible?: number,
+): PhishingMetrics {
+  const { queued, sent, failed, pending, skipped } = queue;
+  const { opened, clicked, credentialsSubmitted, reported } = engagement;
+
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+
+  return {
+    targetedUsers,
+    queuedEmails: queued,
+    sentEmails: sent,
+    failedEmails: failed,
+    pendingEmails: pending,
+    skippedEmails: skipped,
+    opened,
+    clicked,
+    credentialsSubmitted,
+    reported,
+
+    sendSuccessRate:      pct(sent,   queued),
+    deliveryFailureRate:  pct(failed, queued),
+
+    openRateDelivered:  pct(opened,               sent),
+    clickRateDelivered: pct(clicked,              sent),
+    credRateDelivered:  pct(credentialsSubmitted, sent),
+    reportRateDelivered:pct(reported,             sent),
+
+    // If uniqueSusceptible not provided, fall back to (clicked + submitted) count
+    // — note this over-counts if someone did both; callers should pass real unique count
+    targetSusceptibilityRate: pct(
+      uniqueSusceptible ?? Math.max(clicked, credentialsSubmitted),
+      targetedUsers,
+    ),
+  };
+}
+
+/**
+ * Compute weighted aggregate rates across multiple campaigns.
+ * Uses Σ(numerator)/Σ(denominator) — not the average of per-campaign rates.
+ */
+export interface AggregatePhishingMetrics {
+  totalTargeted: number;
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalCreds: number;
+  totalReported: number;
+
+  /** Click rate by targeted users (weighted). */
+  clickRateByTargets: number;
+  /** Credential submission rate by targeted users (weighted). */
+  credRateByTargets: number;
+  /** Report rate by targeted users (weighted). */
+  reportRateByTargets: number;
+  /** Click rate by sent emails (weighted). */
+  clickRateDelivered: number;
+  /** Credential rate by sent emails (weighted). */
+  credRateDelivered: number;
+  /** Report rate by sent emails (weighted). */
+  reportRateDelivered: number;
+  /** Open rate by sent emails (weighted). */
+  openRateDelivered: number;
+}
+
+export interface CampaignSummary {
+  totalTargets: number;  // denominator for target-based rates
+  emailsSent: number;    // denominator for delivered rates
+  emailsOpened: number;
+  linksClicked: number;
+  credentialsSubmitted: number;
+  emailsReported: number;
+}
+
+export function aggregatePhishingMetrics(campaigns: CampaignSummary[]): AggregatePhishingMetrics {
+  const totals = campaigns.reduce(
+    (acc, c) => ({
+      targeted:  acc.targeted  + (c.totalTargets         ?? 0),
+      sent:      acc.sent      + (c.emailsSent           ?? 0),
+      opened:    acc.opened    + (c.emailsOpened         ?? 0),
+      clicked:   acc.clicked   + (c.linksClicked         ?? 0),
+      creds:     acc.creds     + (c.credentialsSubmitted ?? 0),
+      reported:  acc.reported  + (c.emailsReported       ?? 0),
+    }),
+    { targeted: 0, sent: 0, opened: 0, clicked: 0, creds: 0, reported: 0 },
+  );
+
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+
+  return {
+    totalTargeted: totals.targeted,
+    totalSent:     totals.sent,
+    totalOpened:   totals.opened,
+    totalClicked:  totals.clicked,
+    totalCreds:    totals.creds,
+    totalReported: totals.reported,
+
+    clickRateByTargets:  pct(totals.clicked,  totals.targeted),
+    credRateByTargets:   pct(totals.creds,    totals.targeted),
+    reportRateByTargets: pct(totals.reported, totals.targeted),
+
+    clickRateDelivered:  pct(totals.clicked,  totals.sent),
+    credRateDelivered:   pct(totals.creds,    totals.sent),
+    reportRateDelivered: pct(totals.reported, totals.sent),
+    openRateDelivered:   pct(totals.opened,   totals.sent),
+  };
+}
