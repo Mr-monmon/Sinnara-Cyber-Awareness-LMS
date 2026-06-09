@@ -3,12 +3,27 @@ import { createRoot } from "react-dom/client";
 import "./lib/sentry"; // Must be first — initialises Sentry before any other code runs
 import App from "./App.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { isChunkLoadError, reloadForFreshChunks } from "./lib/chunkReload";
 import { supabaseConfigured } from "./lib/supabase.ts";
 import "./i18n";
 import "./index.css";
 import "quill/dist/quill.snow.css";
 
 const root = document.getElementById("root");
+
+// Vite dispatches this when its preload helper can't load a chunk (stale deploy).
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  reloadForFreshChunks();
+});
+
+// Defensive: catch dynamic-import rejections that don't surface via vite:preloadError.
+window.addEventListener("unhandledrejection", (event) => {
+  if (isChunkLoadError(event.reason)) {
+    event.preventDefault();
+    reloadForFreshChunks();
+  }
+});
 
 function renderConfigError() {
   if (!root) return;

@@ -2,6 +2,7 @@ import { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronRight } from "lucide-react";
 import { logErrorToSupabase } from "../lib/errorLogger";
 import { captureException } from "../lib/sentry";
+import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunkReload";
 
 interface Props {
   children: ReactNode;
@@ -13,6 +14,7 @@ interface State {
   error: Error | null;
   errorInfo: ErrorInfo | null;
   showDetails: boolean;
+  isChunkError: boolean;
 }
 
 const T = {
@@ -30,13 +32,21 @@ const T = {
 };
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null, errorInfo: null, showDetails: false };
+  state: State = { hasError: false, error: null, errorInfo: null, showDetails: false, isChunkError: false };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    return { hasError: true, error, isChunkError: isChunkLoadError(error) };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // A stale-chunk failure after a deploy is an infrastructure/cache condition,
+    // not an application bug — try a one-time reload to fetch fresh assets and
+    // skip the noisy error reporting below.
+    if (isChunkLoadError(error)) {
+      console.warn("ErrorBoundary: stale chunk detected, reloading for fresh assets.", error);
+      reloadForFreshChunks();
+      return;
+    }
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
     void logErrorToSupabase(error, errorInfo.componentStack ?? undefined);
@@ -51,6 +61,27 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.hasError) return this.props.children;
+
+    // Stale-chunk recovery screen — a reload is already in flight (see componentDidCatch).
+    if (this.state.isChunkError) {
+      return (
+        <div style={{ minHeight: "100vh", background: T.bg, color: T.white, fontFamily: "'Inter', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ maxWidth: 440, width: "100%", background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, padding: 32, textAlign: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(200,255,0,0.10)", border: "1px solid rgba(200,255,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+              <RefreshCw size={26} style={{ color: T.accent }} />
+            </div>
+            <h1 style={{ fontSize: 19, fontWeight: 800, margin: "0 0 8px" }}>Updating to the latest version…</h1>
+            <p style={{ fontSize: 13.5, color: T.body, margin: "0 0 20px", lineHeight: 1.6 }}>
+              A new version of the app was deployed. We're refreshing automatically. If this screen stays, click below.
+            </p>
+            <button onClick={this.handleReload} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", background: T.accent, color: T.accentDark }}>
+              <RefreshCw size={14} /> Reload now
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     if (this.props.fallback) return this.props.fallback;
 
     const { error, errorInfo, showDetails } = this.state;
