@@ -80,10 +80,9 @@ interface SmtpProfile {
   ignore_cert_errors: boolean;
   custom_headers: { key: string; value: string }[];
   is_platform_profile: boolean;
-  visibility?: string;
+  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   is_active: boolean;
   password_encrypted?: boolean;
-  visibility?: 'GLOBAL' | 'SHARED' | 'PLATFORM_ONLY';
   created_at: string;
   isPushed?: boolean;
   pushed_at?: string;

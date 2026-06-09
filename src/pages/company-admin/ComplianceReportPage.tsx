@@ -276,6 +276,12 @@ export const ComplianceReportPage: React.FC = () => {
     certificatesIssued:   s.certificatesIssued,
   });
 
+  const FRAMEWORK_LABELS: Record<string, string> = {
+    ISO_27001_2022:  'ISO 27001:2022',
+    NCA_ECC_2_2024:  'NCA ECC 2-2024',
+    SAMA_CSF:        'SAMA CSF',
+  };
+
   const mapToLocal = (ev: ControlEvidence[]): Control[] =>
     ev.map(c => {
       const statusMap: Record<ControlStatus, Status> = {
@@ -290,6 +296,9 @@ export const ComplianceReportPage: React.FC = () => {
         description: c.evidence,
         status:      statusMap[c.status],
         evidence:    [c.evidence],
+        framework:   FRAMEWORK_LABELS[c.framework] ?? c.framework,
+        frameworkId: c.framework,
+        disclaimer:  STANDARD_DISCLAIMER,
       };
     });
 
@@ -568,6 +577,10 @@ export const ComplianceReportPage: React.FC = () => {
   const controls = mapToLocal(buildComplianceControls(statsToSignals(stats)));
   const compliantCount = controls.filter(c => c.status === "compliant").length;
   const notAssessedCount = controls.filter(c => c.status === "not-assessed").length;
+  const byFramework = controls.reduce<Record<string, Control[]>>((acc, c) => {
+    (acc[c.framework] ??= []).push(c);
+    return acc;
+  }, {});
   const canonicalFwScores = [
     scoreFramework(buildComplianceControls(statsToSignals(stats)), 'ISO_27001_2022'),
     scoreFramework(buildComplianceControls(statsToSignals(stats)), 'NCA_ECC_2_2024'),
@@ -656,7 +669,7 @@ export const ComplianceReportPage: React.FC = () => {
       {/* Evidence cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
         <StatCard label="Training Coverage" value={`${stats.completionRate}%`} hint={`${stats.trainedEmployees}/${stats.totalEmployees} employees`} />
-        <StatCard label="Phishing Resilience" value={stats.phishingCampaigns > 0 ? `${100 - stats.phishingSusceptibilityRate}%` : "—"} hint={stats.phishingCampaigns > 0 ? `${stats.phishingSusceptibilityRate}% susceptibility` : "no campaigns yet"} />
+        <StatCard label="Phishing Resilience" value={stats.phishingCampaignsRun > 0 ? `${100 - stats.susceptibilityRate}%` : "—"} hint={stats.phishingCampaignsRun > 0 ? `${stats.susceptibilityRate}% susceptibility` : "no campaigns yet"} />
         <StatCard label="Assessment" value={stats.hasAssessmentData ? `${stats.avgScore}%` : "—"} hint={stats.hasAssessmentData ? "avg best score" : "no results yet"} />
         <StatCard label="Certificates" value={stats.certificatesIssued} hint="Issued to date" />
         <StatCard label="Audit Evidence" value={stats.auditEventsLast90} hint="events · last 90 days" />
