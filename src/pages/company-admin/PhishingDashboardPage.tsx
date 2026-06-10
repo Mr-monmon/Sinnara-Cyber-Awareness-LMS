@@ -428,12 +428,14 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
         submitted_at: string | null;
         reported_at: string | null;
       }>;
+      const pdfTotalTargets = c.total_queue_size || c.total_targets || 0;
       generateCampaignPdf({
         name: c.name,
         status: c.status,
         launchedAt: c.launched_at || c.launch_date,
-        totalTargets: c.total_queue_size || c.total_targets || 0,
-        emailsSent: c.emails_sent,
+        totalTargets: pdfTotalTargets,
+        // Fall back to totalTargets when emails_sent is not yet populated
+        emailsSent: c.emails_sent || pdfTotalTargets,
         emailsOpened: c.emails_opened,
         linksClicked: c.links_clicked,
         credentialsSubmitted: c.credentials_entered ?? 0,

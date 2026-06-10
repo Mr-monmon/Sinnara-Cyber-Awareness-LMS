@@ -3,6 +3,16 @@ import { Download, ShieldCheck, AlertTriangle, CheckCircle2, Info } from "lucide
 import jsPDF from "jspdf";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  buildComplianceControls,
+  overallReadiness,
+  scoreFramework,
+  STANDARD_DISCLAIMER,
+  type ComplianceSignals,
+  type ControlEvidence,
+  type ControlStatus,
+  type FrameworkId,
+} from "../../lib/complianceFrameworks";
 
 const T = {
   bg:           "#12140a",
@@ -28,38 +38,30 @@ const T = {
   blueBg:       "rgba(96,165,250,0.10)",
 } as const;
 
-type Status = "compliant" | "partial" | "non-compliant";
-
-interface Control {
-  code: string;
-  title: string;
-  description: string;
-  status: Status;
-  evidence: string[];
-  recommendation?: string;
-}
-
-interface Stats {
-  totalEmployees: number;
-  trainedEmployees: number;
-  completionRate: number;
-  avgScore: number;
-  certificatesIssued: number;
-  recentLogins: number;
-  auditEventsLast90: number;
-  trainingsLast90: number;
-  // Phishing simulation evidence
-  phishingCampaignsRun: number;
-  phishingEmployeesTargeted: number;
-  phishingClicked: number;
-  phishingReported: number;
-}
-
-const STATUS_CFG: Record<Status, { color: string; bg: string; border: string; label: string }> = {
-  compliant:       { color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: "On Track"       },
-  partial:         { color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: "Partial Evidence" },
-  "non-compliant": { color: T.red,    bg: T.redBg,    border: T.redBorder,    label: "Needs Attention" },
+const STATUS_CFG: Record<ControlStatus, { color: string; bg: string; border: string; label: string }> = {
+  COMPLIANT:     { color: T.green,     bg: T.greenBg,                border: T.greenBorder,            label: "Compliant"     },
+  PARTIAL:       { color: T.orange,    bg: T.orangeBg,               border: T.orangeBorder,           label: "Partial"       },
+  NON_COMPLIANT: { color: T.red,       bg: T.redBg,                  border: T.redBorder,              label: "Non-Compliant" },
+  NOT_ASSESSED:  { color: T.textMuted, bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)", label: "Not Assessed"  },
 };
+
+const FRAMEWORK_LABELS: Record<FrameworkId, string> = {
+  ISO_27001_2022: "ISO 27001:2022",
+  NCA_ECC_2_2024: "NCA ECC 2-2024",
+  SAMA_CSF:       "SAMA CSF",
+};
+
+const fwControlsByFramework = (controls: ControlEvidence[], fw: FrameworkId) =>
+  controls.filter(c => c.framework === fw);
+
+/** Local page stats — extends the canonical signals with display-only fields. */
+interface PageStats {
+  signals: ComplianceSignals;
+  trainedEmployees: number;
+  recentLogins: number;
+  trainingsLast90: number;
+  phishingEmployeesTargeted: number;
+}
 
 function StatCard({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
@@ -71,7 +73,7 @@ function StatCard({ label, value, hint }: { label: string; value: string | numbe
   );
 }
 
-function StatusBadge({ status }: { status: Status }) {
+function StatusBadge({ status }: { status: ControlStatus }) {
   const cfg = STATUS_CFG[status];
   return (
     <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}>
@@ -122,7 +124,7 @@ function DonutChart({ slices, size = 160, stroke = 22, centerLabel }: { slices: 
 
 export const ComplianceReportPage: React.FC = () => {
   const { user } = useAuth();
-  const [stats, setStats]     = useState<Stats | null>(null);
+  const [stats, setStats]     = useState<PageStats | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -154,9 +156,9 @@ export const ComplianceReportPage: React.FC = () => {
         { data: ecs },
         { data: examResults },
         { count: certificatesIssued },
-        { count: auditEventsLast90 },
         { count: trainingsLast90 },
         { count: recentLogins },
+        { data: phishingCampaigns },
       ] = await Promise.all([
         supabase.from("companies").select("name").eq("id", cid).single(),
         employeeIds.length
@@ -168,21 +170,24 @@ export const ComplianceReportPage: React.FC = () => {
         employeeIds.length
           ? supabase.from("certificates").select("id", { count: "exact", head: true }).in("user_id", employeeIds)
           : Promise.resolve(none),
-        supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("company_id", cid).gte("created_at", ninetyDaysAgo),
         employeeIds.length
           ? supabase.from("employee_courses").select("id", { count: "exact", head: true }).in("employee_id", employeeIds).not("completed_at", "is", null).gte("completed_at", ninetyDaysAgo)
           : Promise.resolve(none),
         employeeEmails.length
           ? supabase.from("auth_attempts").select("id", { count: "exact", head: true }).in("email", employeeEmails).eq("success", true).gte("attempted_at", thirtyDaysAgo)
           : Promise.resolve(none),
+        supabase
+          .from("phishing_campaigns")
+          .select("id, total_queue_size, total_targets, links_clicked, emails_reported")
+          .eq("company_id", cid)
+          .eq("status", "COMPLETED"),
       ]);
 
-      // "Trained" = completed at least one assigned course (primary evidence).
-      // Exam pass is tracked separately as "assessment performance" — not merged here
-      // to avoid inflating the training completion rate with assessment-only activity.
-      const completedSet = new Set<string>(
-        (ecs ?? []).map(c => c.employee_id),
-      );
+      // An employee is "trained" if they completed a course OR passed an exam (matches dashboard logic)
+      const completedSet = new Set<string>([
+        ...((ecs ?? []).map(c => c.employee_id)),
+        ...((examResults ?? []).filter(r => r.passed).map(r => r.employee_id)),
+      ]);
       const trainedEmployees = completedSet.size;
       const totalEmployees   = employeeIds.length;
       const completionRate   = totalEmployees ? Math.round((trainedEmployees / totalEmployees) * 100) : 0;
@@ -198,159 +203,48 @@ export const ComplianceReportPage: React.FC = () => {
       const empScores = Array.from(bestByEmployee.values());
       const avgScore = empScores.length ? Math.round(empScores.reduce((a, b) => a + b, 0) / empScores.length) : 0;
 
-      // Phishing simulation evidence — query real campaigns + per-target engagement.
-      // (Previously the phishing control checked training activity, so it always reported
-      //  "Evidence Missing" even when simulations had been run.)
-      const { data: phishCampaigns } = await supabase
-        .from("phishing_campaigns")
-        .select("id, status, launched_at")
-        .eq("company_id", cid);
-      const phishCampaignIds = (phishCampaigns ?? []).map(c => c.id);
-      const campaignsRun = (phishCampaigns ?? []).filter(
-        c => c.launched_at != null || ["RUNNING", "COMPLETED", "PARTIAL_FAILURE", "PAUSED"].includes(c.status),
-      ).length;
-      const { data: phishTargets } = phishCampaignIds.length
-        ? await supabase
-            .from("phishing_campaign_targets")
-            .select("employee_id, clicked_at, reported_at")
-            .in("campaign_id", phishCampaignIds)
-        : { data: [] as Array<{ employee_id: string | null; clicked_at: string | null; reported_at: string | null }> };
-      const targetedEmployees = new Set<string>();
-      let phishingClicked = 0;
-      let phishingReported = 0;
-      for (const t of (phishTargets ?? [])) {
-        if (t.employee_id) targetedEmployees.add(t.employee_id);
-        if (t.clicked_at) phishingClicked += 1;
-        if (t.reported_at) phishingReported += 1;
-      }
+      // Aggregate phishing campaign data into the canonical compliance signals.
+      // Targets are summed per campaign (same employee in two campaigns counts
+      // twice), which is also the denominator for both rates — so rates stay 0–100.
+      const campaigns = phishingCampaigns ?? [];
+      const phishingEmployeesTargeted = campaigns.reduce(
+        (sum, c) => sum + (c.total_queue_size || c.total_targets || 0), 0
+      );
+      const phishingClicked  = campaigns.reduce((sum, c) => sum + (c.links_clicked  ?? 0), 0);
+      const phishingReported = campaigns.reduce((sum, c) => sum + (c.emails_reported ?? 0), 0);
+      const susceptibilityRate = phishingEmployeesTargeted > 0
+        ? Math.min(100, (phishingClicked / phishingEmployeesTargeted) * 100) : 0;
+      const reportRate = phishingEmployeesTargeted > 0
+        ? Math.min(100, (phishingReported / phishingEmployeesTargeted) * 100) : 0;
 
       setCompanyName(company?.name ?? "Your Company");
       setStats({
-        totalEmployees,
+        signals: {
+          totalEmployees,
+          completionRate,
+          avgExamScore: avgScore,
+          assessedEmployees: trainedEmployees,
+          susceptibilityRate,
+          reportRate,
+          phishingCampaignsRun: campaigns.length,
+          certificatesIssued: certificatesIssued ?? 0,
+        },
         trainedEmployees,
-        completionRate,
-        avgScore,
-        certificatesIssued: certificatesIssued ?? 0,
         recentLogins: recentLogins ?? 0,
-        auditEventsLast90: auditEventsLast90 ?? 0,
         trainingsLast90: trainingsLast90 ?? 0,
-        phishingCampaignsRun: campaignsRun,
-        phishingEmployeesTargeted: targetedEmployees.size,
-        phishingClicked,
-        phishingReported,
+        phishingEmployeesTargeted,
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const buildControls = (s: Stats): Control[] => {
-    const noData = s.totalEmployees === 0;
-    return [
-      {
-        code: "NCA ECC 1-5-1",
-        title: "Cybersecurity Awareness Training",
-        description: "All employees shall be trained on cybersecurity policies, threats, and best practices on a regular basis.",
-        status: noData ? "non-compliant"
-          : s.completionRate >= 90 ? "compliant"
-          : s.completionRate >= 50 ? "partial"
-          : "non-compliant",
-        evidence: noData ? ["No employee training data available — assign courses to begin."] : [
-          `Training Coverage: ${s.trainedEmployees} of ${s.totalEmployees} employees completed assigned training (${s.completionRate}%)`,
-          `${s.certificatesIssued} completion certificate${s.certificatesIssued === 1 ? "" : "s"} issued to date`,
-          `${s.trainingsLast90} course completions recorded in the last 90 days`,
-        ],
-        recommendation: s.completionRate < 90 && !noData
-          ? `Assign and enforce training for remaining ${s.totalEmployees - s.trainedEmployees} employees. Target: ≥90% coverage.`
-          : undefined,
-      },
-      {
-        code: "NCA ECC 2-13-3",
-        title: "Phishing Awareness and Simulation",
-        description: "Employees shall be trained to recognise and resist phishing attacks, with documented simulations.",
-        // Coverage = share of employees who have been included in at least one simulation.
-        status: (() => {
-          if (s.phishingCampaignsRun === 0) return "non-compliant";
-          const coverage = s.totalEmployees ? s.phishingEmployeesTargeted / s.totalEmployees : 0;
-          return coverage >= 0.9 ? "compliant" : "partial";
-        })(),
-        evidence: s.phishingCampaignsRun === 0
-          ? [
-              "Phishing simulation campaign workflow is available in the platform",
-              "Fraud-alert awareness module available to all employees",
-              "No phishing simulation campaigns have been run yet — Evidence Missing for simulation data",
-            ]
-          : [
-              `${s.phishingCampaignsRun} phishing simulation campaign${s.phishingCampaignsRun === 1 ? "" : "s"} run to date`,
-              `${s.phishingEmployeesTargeted} of ${s.totalEmployees} employees included in simulations (${s.totalEmployees ? Math.round((s.phishingEmployeesTargeted / s.totalEmployees) * 100) : 0}% coverage)`,
-              `${s.phishingClicked} link click${s.phishingClicked === 1 ? "" : "s"} and ${s.phishingReported} report${s.phishingReported === 1 ? "" : "s"} captured as auditable evidence`,
-              "Fraud-alert awareness module available to all employees",
-            ],
-        recommendation: (() => {
-          if (s.phishingCampaignsRun === 0) return "Run at least one phishing simulation campaign covering all employees this quarter and export results for audit evidence.";
-          const coverage = s.totalEmployees ? s.phishingEmployeesTargeted / s.totalEmployees : 0;
-          return coverage < 0.9
-            ? `Extend simulation coverage to the remaining ${s.totalEmployees - s.phishingEmployeesTargeted} employees. Target: ≥90% coverage.`
-            : undefined;
-        })(),
-      },
-      {
-        code: "NCA ECC 4-1-2",
-        title: "Assessment Performance",
-        description: "Employees shall demonstrate understanding of cybersecurity topics through assessments.",
-        status: noData ? "non-compliant"
-          : s.avgScore >= 75 ? "compliant"
-          : s.avgScore >= 50 ? "partial"
-          : "non-compliant",
-        evidence: noData ? ["No exam data available."] : [
-          `Average assessment score: ${s.avgScore}% (best attempt per employee)`,
-          `${s.certificatesIssued} certificate${s.certificatesIssued === 1 ? "" : "s"} of completion issued`,
-          `Assessment coverage: ${s.trainedEmployees} employees completed at least one course`,
-        ],
-        recommendation: s.avgScore < 75 && !noData
-          ? "Review training content effectiveness; consider refresher modules for employees scoring below 70%."
-          : undefined,
-      },
-      {
-        code: "ISO/IEC 27001:2022 — A.6.3",
-        title: "Information Security Awareness, Education and Training",
-        description: "Personnel and relevant interested parties shall receive appropriate information security awareness, education and training.",
-        status: noData ? "non-compliant"
-          : s.completionRate >= 80 && s.avgScore >= 60 ? "compliant"
-          : s.completionRate >= 40 ? "partial"
-          : "non-compliant",
-        evidence: noData ? ["No training data — Evidence Missing."] : [
-          `Training completion: ${s.completionRate}% of employees completed assigned courses`,
-          `Assessment score average: ${s.avgScore}% — provides documented evidence of knowledge level`,
-          `${s.auditEventsLast90} audit log events in last 90 days — platform usage trail available`,
-          "Note: Policy acknowledgment log not currently captured — ISO A.6.3 may require separate policy sign-off evidence.",
-        ],
-        recommendation: s.completionRate < 80
-          ? "Ensure all employees complete training and document policy acknowledgments for full ISO A.6.3 evidence coverage."
-          : undefined,
-      },
-      {
-        code: "SAMA CSF 3.3.10",
-        title: "Cybersecurity Training (Financial Sector)",
-        description: "Annual mandatory cybersecurity training for all staff with documented completion evidence.",
-        status: noData ? "non-compliant"
-          : s.completionRate >= 80 ? "compliant"
-          : s.completionRate >= 50 ? "partial"
-          : "non-compliant",
-        evidence: noData ? ["No data available."] : [
-          `${s.completionRate}% training completion rate (mandatory annual threshold: 80%)`,
-          `${s.trainingsLast90} completions in last 90 days`,
-          `${s.certificatesIssued} auditable certificate record${s.certificatesIssued === 1 ? "" : "s"} per employee`,
-        ],
-      },
-    ];
-  };
 
   const downloadPDF = async () => {
     if (!stats) return;
     setDownloading(true);
     try {
-      const controls = buildControls(stats);
+      const controls = buildComplianceControls(stats.signals);
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       const W = doc.internal.pageSize.getWidth();
       const H = doc.internal.pageSize.getHeight();
@@ -363,7 +257,7 @@ export const ComplianceReportPage: React.FC = () => {
       doc.setTextColor(200, 255, 0);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
-      doc.text("Cybersecurity Compliance Readiness Report", margin, 38);
+      doc.text("Cybersecurity Compliance Report", margin, 38);
       doc.setTextColor(180, 180, 180);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -372,10 +266,13 @@ export const ComplianceReportPage: React.FC = () => {
       y = 120;
 
       // Compliance donut chart (rendered via canvas)
-      const compliantN = controls.filter(c => c.status === "compliant").length;
-      const partialN   = controls.filter(c => c.status === "partial").length;
-      const nonN       = controls.filter(c => c.status === "non-compliant").length;
-      const overall = Math.round((compliantN / controls.length) * 100);
+      const compliantN = controls.filter(c => c.status === "COMPLIANT").length;
+      const partialN   = controls.filter(c => c.status === "PARTIAL").length;
+      const nonN       = controls.filter(c => c.status === "NON_COMPLIANT").length;
+      const naN        = controls.filter(c => c.status === "NOT_ASSESSED").length;
+      // Readiness score: COMPLIANT=100, PARTIAL=50, NON_COMPLIANT=0;
+      // NOT_ASSESSED controls are excluded from the denominator.
+      const overall = overallReadiness(controls);
 
       const chartCanvas = document.createElement("canvas");
       const dpi = 2;
@@ -413,7 +310,7 @@ export const ComplianceReportPage: React.FC = () => {
       ctx.fillText(`${overall}%`, cx, cy + 4);
       ctx.font = "10px Helvetica";
       ctx.fillStyle = "#64748b";
-      ctx.fillText("compliant", cx, cy + 20);
+      ctx.fillText("readiness", cx, cy + 20);
 
       const chartDataUrl = chartCanvas.toDataURL("image/png");
       doc.addImage(chartDataUrl, "PNG", margin, y, 110, 110);
@@ -427,9 +324,10 @@ export const ComplianceReportPage: React.FC = () => {
       doc.text("Compliance Breakdown", legendX, legendY);
       legendY += 18;
       const legend = [
-        { label: "On Track",          n: compliantN, color: [34, 197, 94] as [number, number, number] },
-        { label: "Partial Evidence",  n: partialN,   color: [251, 146, 60] as [number, number, number] },
-        { label: "Needs Attention",   n: nonN,       color: [248, 113, 113] as [number, number, number] },
+        { label: "Compliant",      n: compliantN, color: [34, 197, 94] as [number, number, number] },
+        { label: "Partial",        n: partialN,   color: [251, 146, 60] as [number, number, number] },
+        { label: "Non-Compliant",  n: nonN,       color: [248, 113, 113] as [number, number, number] },
+        { label: "Not Assessed",   n: naN,        color: [120, 120, 120] as [number, number, number] },
       ];
       legend.forEach(l => {
         doc.setFillColor(l.color[0], l.color[1], l.color[2]);
@@ -455,12 +353,12 @@ export const ComplianceReportPage: React.FC = () => {
       y += 18;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      const compliantCount = compliantN;
       const summary = [
-        `Overall compliance: ${overall}% (${compliantCount} of ${controls.length} controls compliant)`,
-        `Training completion: ${stats.completionRate}% (${stats.trainedEmployees}/${stats.totalEmployees} employees)`,
-        `Average assessment score: ${stats.avgScore}%`,
-        `Certificates issued: ${stats.certificatesIssued}`,
+        `Overall readiness: ${overall}% (${compliantN} of ${controls.length} controls compliant, ${naN} not assessed)`,
+        `Training completion: ${stats.signals.completionRate}% (${stats.trainedEmployees}/${stats.signals.totalEmployees} employees)`,
+        `Average assessment score: ${stats.signals.avgExamScore}%`,
+        `Certificates issued: ${stats.signals.certificatesIssued}`,
+        `Phishing simulations: ${stats.signals.phishingCampaignsRun} completed (${stats.signals.susceptibilityRate.toFixed(1)}% susceptibility, ${stats.signals.reportRate.toFixed(1)}% reported)`,
       ];
       summary.forEach(line => { doc.text(`• ${line}`, margin + 6, y); y += 14; });
 
@@ -474,83 +372,65 @@ export const ComplianceReportPage: React.FC = () => {
       doc.text("Control Assessment", margin, y);
       y += 20;
 
-      controls.forEach((c) => {
-        // Page break if needed
-        if (y > H - 140) {
-          doc.addPage();
-          y = margin;
-        }
+      const statusColors: Record<ControlStatus, [number, number, number]> = {
+        COMPLIANT:     [34, 197, 94],
+        PARTIAL:       [251, 146, 60],
+        NON_COMPLIANT: [248, 113, 113],
+        NOT_ASSESSED:  [120, 120, 120],
+      };
 
-        // Status pill
-        const statusColors: Record<Status, [number, number, number]> = {
-          compliant:       [34, 197, 94],
-          partial:         [251, 146, 60],
-          "non-compliant": [248, 113, 113],
-        };
-        const [r, g, b] = statusColors[c.status];
-        doc.setFillColor(r, g, b);
-        doc.roundedRect(margin, y, 70, 16, 4, 4, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "bold");
-        doc.text(STATUS_CFG[c.status].label.toUpperCase(), margin + 35, y + 11, { align: "center" });
+      (Object.keys(FRAMEWORK_LABELS) as FrameworkId[]).forEach((fw) => {
+        const fwControls = fwControlsByFramework(controls, fw);
+        if (!fwControls.length) return;
 
-        // Control code
-        doc.setTextColor(80, 80, 80);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        doc.text(c.code, margin + 80, y + 11);
+        if (y > H - 120) { doc.addPage(); y = margin; }
 
-        y += 24;
-
-        // Title
-        doc.setTextColor(20, 20, 20);
+        // Framework section header with its score
+        const fwScore = scoreFramework(controls, fw);
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
-        doc.text(c.title, margin, y);
-        y += 14;
+        doc.setTextColor(20, 20, 20);
+        doc.text(`${FRAMEWORK_LABELS[fw]} — ${fwScore.score}% readiness (${fwScore.assessedCount}/${fwScore.controlCount} assessed)`, margin, y);
+        y += 18;
 
-        // Description
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(90, 90, 90);
-        const descLines = doc.splitTextToSize(c.description, W - margin * 2);
-        doc.text(descLines, margin, y);
-        y += descLines.length * 11 + 6;
+        fwControls.forEach((c) => {
+          if (y > H - 100) { doc.addPage(); y = margin; }
 
-        // Evidence
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.setTextColor(60, 60, 60);
-        doc.text("Evidence:", margin, y);
-        y += 12;
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(40, 40, 40);
-        c.evidence.forEach((e) => {
-          const lines = doc.splitTextToSize(`• ${e}`, W - margin * 2 - 12);
-          if (y + lines.length * 11 > H - margin) {
-            doc.addPage();
-            y = margin;
-          }
-          doc.text(lines, margin + 12, y);
-          y += lines.length * 11;
+          // Status pill
+          const [r, g, b] = statusColors[c.status];
+          doc.setFillColor(r, g, b);
+          doc.roundedRect(margin, y, 78, 16, 4, 4, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(7.5);
+          doc.setFont("helvetica", "bold");
+          doc.text(STATUS_CFG[c.status].label.toUpperCase(), margin + 39, y + 11, { align: "center" });
+
+          // Control id
+          doc.setTextColor(80, 80, 80);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(11);
+          doc.text(c.id, margin + 88, y + 11);
+          y += 24;
+
+          // Title
+          doc.setTextColor(20, 20, 20);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(11);
+          const titleLines = doc.splitTextToSize(c.title, W - margin * 2);
+          doc.text(titleLines, margin, y);
+          y += titleLines.length * 13 + 2;
+
+          // Evidence
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(60, 60, 60);
+          const evLines = doc.splitTextToSize(`Evidence: ${c.evidence}`, W - margin * 2 - 12);
+          if (y + evLines.length * 11 > H - margin) { doc.addPage(); y = margin; }
+          doc.text(evLines, margin + 6, y);
+          y += evLines.length * 11 + 12;
         });
 
-        if (c.recommendation) {
-          y += 4;
-          doc.setFillColor(255, 247, 224);
-          doc.rect(margin, y - 8, W - margin * 2, 24, "F");
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(9);
-          doc.setTextColor(120, 80, 0);
-          doc.text("Recommendation:", margin + 8, y + 6);
-          doc.setFont("helvetica", "normal");
-          const recLines = doc.splitTextToSize(c.recommendation, W - margin * 2 - 100);
-          doc.text(recLines, margin + 92, y + 6);
-          y += 22;
-        }
-
-        y += 14;
+        y += 6;
       });
 
       // Footer note on last page
@@ -561,11 +441,8 @@ export const ComplianceReportPage: React.FC = () => {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text("This report presents compliance readiness indicators from the AwareOne Platform.", margin, y);
-      y += 12;
-      doc.text("It maps awareness programme evidence to NCA ECC, SAMA CSF, and ISO/IEC 27001:2022 Annex A controls.", margin, y);
-      y += 12;
-      doc.text("'On Track' = sufficient evidence found. This is not formal certification. Consult your compliance officer.", margin, y);
+      const disclaimerLines = doc.splitTextToSize(STANDARD_DISCLAIMER, W - margin * 2);
+      doc.text(disclaimerLines, margin, y);
 
       const fileName = `compliance-report-${companyName.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
       doc.save(fileName);
@@ -582,9 +459,10 @@ export const ComplianceReportPage: React.FC = () => {
     );
   }
 
-  const controls = buildControls(stats);
-  const compliantCount = controls.filter(c => c.status === "compliant").length;
-  const overall = Math.round((compliantCount / controls.length) * 100);
+  const controls = buildComplianceControls(stats.signals);
+  const compliantCount = controls.filter(c => c.status === "COMPLIANT").length;
+  // Readiness excludes NOT_ASSESSED controls from the denominator
+  const overall = overallReadiness(controls);
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -597,7 +475,7 @@ export const ComplianceReportPage: React.FC = () => {
           </div>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, margin: 0, letterSpacing: "-0.3px" }}>Compliance Readiness</h1>
-            <p style={{ fontSize: 13, color: T.textMuted, margin: "2px 0 0" }}>Awareness control evidence — NCA ECC · SAMA CSF · ISO/IEC 27001:2022</p>
+            <p style={{ fontSize: 13, color: T.textMuted, margin: "2px 0 0" }}>ISO 27001, NCA ECC and SAMA CSF alignment based on live workspace data</p>
           </div>
         </div>
         <button
@@ -615,19 +493,20 @@ export const ComplianceReportPage: React.FC = () => {
           size={180}
           stroke={26}
           slices={[
-            { value: controls.filter(c => c.status === "compliant").length,    color: T.green,  label: "Compliant" },
-            { value: controls.filter(c => c.status === "partial").length,      color: T.orange, label: "Partial" },
-            { value: controls.filter(c => c.status === "non-compliant").length, color: T.red,   label: "Non-Compliant" },
+            { value: controls.filter(c => c.status === "COMPLIANT").length,     color: T.green,     label: "Compliant" },
+            { value: controls.filter(c => c.status === "PARTIAL").length,       color: T.orange,    label: "Partial" },
+            { value: controls.filter(c => c.status === "NON_COMPLIANT").length, color: T.red,       label: "Non-Compliant" },
+            { value: controls.filter(c => c.status === "NOT_ASSESSED").length,  color: "#475569",   label: "Not Assessed" },
           ]}
-          centerLabel={{ value: `${overall}%`, sub: "compliant" }}
+          centerLabel={{ value: `${overall}%`, sub: "readiness" }}
         />
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 12, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.6px", fontWeight: 700 }}>Readiness Overview</div>
+          <div style={{ fontSize: 12, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.6px", fontWeight: 700 }}>Compliance Readiness</div>
           <div style={{ fontSize: 14, color: T.textBody, marginTop: 4, marginBottom: 16 }}>
-            {compliantCount} of {controls.length} controls on track
+            {compliantCount} of {controls.length} controls fully compliant
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {(["compliant", "partial", "non-compliant"] as Status[]).map(s => {
+            {(["COMPLIANT", "PARTIAL", "NON_COMPLIANT", "NOT_ASSESSED"] as ControlStatus[]).map(s => {
               const n = controls.filter(c => c.status === s).length;
               const pct = controls.length ? Math.round((n / controls.length) * 100) : 0;
               return (
@@ -645,67 +524,51 @@ export const ComplianceReportPage: React.FC = () => {
 
       {/* Stat grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <StatCard label="Employees" value={stats.totalEmployees} hint={`${stats.trainedEmployees} completed training`} />
-        <StatCard label="Training Coverage" value={`${stats.completionRate}%`} hint="Completed assigned courses" />
-        <StatCard label="Assessment Pass Rate" value={`${stats.avgScore}%`} hint="Avg score, best attempt" />
-        <StatCard label="Certificates Issued" value={stats.certificatesIssued} hint="Completion certificates" />
+        <StatCard label="Employees" value={stats.signals.totalEmployees} hint={`${stats.trainedEmployees} fully trained`} />
+        <StatCard label="Training Rate" value={`${stats.signals.completionRate}%`} hint="Across mandatory courses" />
+        <StatCard label="Avg. Score" value={`${stats.signals.avgExamScore}%`} hint="Best score per employee" />
+        <StatCard label="Certificates" value={stats.signals.certificatesIssued} hint="Issued to date" />
         <StatCard label="Active Logins" value={stats.recentLogins} hint="Last 30 days" />
+        <StatCard label="Phishing Campaigns" value={stats.signals.phishingCampaignsRun} hint={`${stats.phishingEmployeesTargeted} targets across campaigns`} />
       </div>
 
-      {/* Methodology note */}
-      <div style={{ padding: "12px 16px", background: "rgba(200,255,0,0.04)", border: "1px solid rgba(200,255,0,0.14)", borderRadius: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.textLabel, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Readiness Scoring Methodology</div>
-        <div style={{ fontSize: 12, color: T.textBody, lineHeight: 1.6 }}>
-          <strong style={{ color: T.white }}>Training Coverage</strong> = employees who completed at least one assigned course ÷ total employees.
-          {" "}<strong style={{ color: T.white }}>Assessment Pass Rate</strong> = average best-attempt score across all employees who took exams.
-          {" "}Controls are rated <strong style={{ color: T.green }}>On Track</strong> (≥ threshold),
-          {" "}<strong style={{ color: T.orange }}>Partial</strong> (below threshold but evidence exists), or
-          {" "}<strong style={{ color: T.red }}>Needs Attention</strong> (no evidence or threshold far below target).
-          {" "}Scores reflect awareness programme activity, not formal audit certification.
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {controls.map(c => (
-          <div key={c.code} style={{ padding: "18px 22px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-              <StatusBadge status={c.status} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: "0.5px" }}>{c.code}</span>
-              <span style={{ fontSize: 15, fontWeight: 700, color: T.white }}>{c.title}</span>
+      {/* Controls grouped by framework */}
+      {(Object.keys(FRAMEWORK_LABELS) as FrameworkId[]).map(fw => {
+        const fwControls = fwControlsByFramework(controls, fw);
+        if (!fwControls.length) return null;
+        const fwScore = scoreFramework(controls, fw);
+        return (
+          <div key={fw} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: T.white }}>{FRAMEWORK_LABELS[fw]}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.accent }}>{fwScore.score}% readiness</span>
+              <span style={{ fontSize: 11, color: T.textMuted }}>({fwScore.assessedCount}/{fwScore.controlCount} controls assessed)</span>
             </div>
-            <p style={{ fontSize: 13, color: T.textBody, margin: "0 0 10px", lineHeight: 1.6 }}>{c.description}</p>
-            <div style={{ fontSize: 11, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 6 }}>Evidence</div>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-              {c.evidence.map((e, i) => (
-                <li key={i} style={{ fontSize: 13, color: T.textLabel, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <CheckCircle2 size={13} style={{ color: T.green, flexShrink: 0, marginTop: 3 }} />
-                  <span>{e}</span>
-                </li>
-              ))}
-            </ul>
-            {c.recommendation && (
-              <div style={{ marginTop: 12, padding: "10px 12px", background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, borderRadius: 8, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <AlertTriangle size={14} style={{ color: T.orange, flexShrink: 0, marginTop: 2 }} />
-                <div style={{ fontSize: 12, color: T.textLabel, lineHeight: 1.5 }}>
-                  <strong style={{ color: T.orange }}>Recommendation: </strong>{c.recommendation}
+            {fwControls.map(c => (
+              <div key={`${c.framework}-${c.id}`} style={{ padding: "18px 22px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                  <StatusBadge status={c.status} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: "0.5px" }}>{c.id}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: T.white }}>{c.title}</span>
+                </div>
+                <div style={{ fontSize: 11, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 6 }}>Evidence</div>
+                <div style={{ fontSize: 13, color: T.textLabel, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  {c.status === "NOT_ASSESSED"
+                    ? <AlertTriangle size={13} style={{ color: T.textMuted, flexShrink: 0, marginTop: 3 }} />
+                    : <CheckCircle2 size={13} style={{ color: T.green, flexShrink: 0, marginTop: 3 }} />}
+                  <span>{c.evidence}</span>
                 </div>
               </div>
-            )}
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })}
 
       {/* Disclaimer */}
       <div style={{ padding: "12px 16px", background: T.blueBg, border: `1px solid ${T.border}`, borderRadius: 10, display: "flex", gap: 10, alignItems: "flex-start" }}>
         <Info size={14} style={{ color: T.blue, flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 12, color: T.textBody, lineHeight: 1.6 }}>
-          <strong style={{ color: T.textLabel }}>Important:</strong>{" "}
-          This page presents <em>compliance readiness indicators</em> based on observable activity in the AwareOne platform.
-          It maps awareness programme data to controls from the NCA Essential Cybersecurity Controls (ECC), SAMA Cybersecurity Framework, and ISO/IEC 27001:2022 Annex A.
-          It is an <strong style={{ color: T.textLabel }}>audit evidence support tool</strong>, not a certification or legal compliance assessment.
-          "On Track" indicates sufficient awareness evidence was found; it does not guarantee formal compliance.
-          Consult your compliance officer for audit-grade documentation.
+          {STANDARD_DISCLAIMER}
         </div>
       </div>
     </div>
