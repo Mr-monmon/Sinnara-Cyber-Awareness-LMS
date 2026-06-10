@@ -26,6 +26,11 @@ import {
 } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword, checkPassword } from "../../lib/passwordPolicy";
+import {
+  BulkUploadResultModal,
+  type UploadResult,
+  type UploadRowOutcome,
+} from "../../components/BulkUploadResultModal";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -443,6 +448,7 @@ export const UsersManagementPage: React.FC = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [uploadCompanyId, setUploadCompanyId] = useState<string>("");
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [newUserData, setNewUserData] = useState({
     full_name: "",
@@ -907,75 +913,205 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
+  // CSV line parser that respects double-quoted fields (handles embedded commas)
+  const parseCSVLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === "," && !inQuotes) {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((v) => v.trim());
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !uploadCompanyId) {
       alert("Please select a company and file");
       return;
     }
+    const companyId = uploadCompanyId;
+    const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        const lines = text.split("\n").filter((line) => line.trim());
+        const lines = text.split(/\r?\n/).filter((line) => line.trim());
 
         if (lines.length < 2) {
           alert("File is empty or incorrectly formatted");
           return;
         }
 
-        const headers = lines[0]
-          .toLowerCase()
-          .split(",")
-          .map((h) => h.trim());
+        const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase());
         const emailIndex = headers.findIndex((h) => h.includes("email"));
         const nameIndex = headers.findIndex((h) => h.includes("name"));
         const phoneIndex = headers.findIndex(
           (h) => h.includes("phone") || h.includes("mobile")
         );
         const deptIndex = headers.findIndex((h) => h.includes("department"));
+        const idIndex = headers.findIndex(
+          (h) => h.includes("employee id") || h === "id"
+        );
+        const posIndex = headers.findIndex(
+          (h) => h.includes("position") || h.includes("title")
+        );
+        const pwIndex = headers.findIndex((h) => h.includes("password"));
 
         if (emailIndex === -1 || nameIndex === -1) {
           alert("File must contain email and name columns");
           return;
         }
 
-        const employees = [];
-        const failedRows = [];
+        // Existing departments for this company (resolve names → ids)
+        const { data: existingDepts } = await supabase
+          .from("departments")
+          .select("id, name")
+          .eq("company_id", companyId);
+        const deptLookup = new Map<string, string>(
+          (existingDepts ?? []).map((d) => [d.name.trim().toLowerCase(), d.id])
+        );
+
+        // Existing user emails (any company) to flag duplicates
+        const existingEmails = new Set(
+          users.map((u) => u.email.toLowerCase())
+        );
+
+        const totalRows = lines.length - 1;
+        type Row = {
+          email: string;
+          full_name: string;
+          phone: string | null;
+          employee_id: string | null;
+          job_title: string | null;
+          department_name: string;
+          password: string;
+          department_id?: string;
+        };
+        const validRows: Row[] = [];
+        const validationFailed: UploadRowOutcome[] = [];
+        const duplicates: UploadRowOutcome[] = [];
+        const seenInFile = new Set<string>();
+        const rowNumByEmail = new Map<string, number>();
 
         for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(",").map((v) => v.trim());
+          const values = parseCSVLine(lines[i]);
+          const rowNum = i + 1;
+          const fullName = values[nameIndex] || "";
+          const rawEmail = values[emailIndex] || "";
+          const email = rawEmail.toLowerCase();
 
-          if (values.length < 2) continue;
-
-          const email = values[emailIndex]?.toLowerCase();
-          const fullName = values[nameIndex];
-
-          if (!email || !fullName) {
-            failedRows.push(i + 1);
+          if (!fullName) {
+            validationFailed.push({ row: rowNum, name: "—", email: rawEmail || "—", reason: "Missing name" });
             continue;
           }
-
-          employees.push({
+          if (!rawEmail) {
+            validationFailed.push({ row: rowNum, name: fullName, email: "—", reason: "Missing email" });
+            continue;
+          }
+          if (!isValidEmail(rawEmail)) {
+            validationFailed.push({ row: rowNum, name: fullName, email: rawEmail, reason: "Invalid email format" });
+            continue;
+          }
+          if (existingEmails.has(email)) {
+            duplicates.push({ row: rowNum, name: fullName, email: rawEmail, reason: "Email already exists" });
+            continue;
+          }
+          if (seenInFile.has(email)) {
+            duplicates.push({ row: rowNum, name: fullName, email: rawEmail, reason: "Duplicate email within the file" });
+            continue;
+          }
+          seenInFile.add(email);
+          rowNumByEmail.set(email, rowNum);
+          const csvPw = pwIndex !== -1 ? values[pwIndex] : "";
+          const password =
+            csvPw && csvPw.length >= 10 && /[A-Z]/.test(csvPw) && /[a-z]/.test(csvPw) && /[0-9]/.test(csvPw) && /[^A-Za-z0-9]/.test(csvPw)
+              ? csvPw
+              : generateStrongPassword();
+          validRows.push({
             email,
             full_name: fullName,
-            phone: phoneIndex !== -1 ? values[phoneIndex] : null,
-            department: deptIndex !== -1 ? values[deptIndex] : null,
-            password: generateStrongPassword(),
-            role: "EMPLOYEE",
-            company_id: uploadCompanyId,
+            phone: phoneIndex !== -1 ? values[phoneIndex] || null : null,
+            employee_id: idIndex !== -1 ? values[idIndex] || null : null,
+            job_title: posIndex !== -1 ? values[posIndex] || null : null,
+            department_name: deptIndex !== -1 ? values[deptIndex] || "" : "",
+            password,
           });
         }
 
-        if (employees.length === 0) {
-          alert("No valid data in file");
+        // Auto-create any departments referenced in the CSV that don't exist yet
+        const departmentsCreated: string[] = [];
+        const newDeptNames = [
+          ...new Set(
+            validRows
+              .map((r) => r.department_name.trim().toLowerCase())
+              .filter((n) => n && !deptLookup.has(n))
+          ),
+        ];
+        for (const deptName of newDeptNames) {
+          const originalName = validRows.find(
+            (r) => r.department_name.trim().toLowerCase() === deptName
+          )?.department_name.trim();
+          if (!originalName) continue;
+          const { data: newDept } = await supabase
+            .from("departments")
+            .insert({ name: originalName, company_id: companyId })
+            .select("id, name")
+            .single();
+          if (newDept) {
+            deptLookup.set(deptName, newDept.id);
+            departmentsCreated.push(newDept.name);
+          }
+        }
+
+        if (validRows.length === 0) {
+          setShowUploadModal(false);
+          setUploadResult({
+            totalRows,
+            succeeded: 0,
+            duplicates,
+            failed: validationFailed,
+            departmentsCreated,
+            emailsSent: 0,
+            emailsFailed: 0,
+          });
           return;
         }
 
+        // Resolve department names → ids and build the server payload
+        const payload = validRows.map((r) => ({
+          email: r.email,
+          full_name: r.full_name,
+          phone: r.phone,
+          employee_id: r.employee_id,
+          job_title: r.job_title,
+          department: r.department_name || null,
+          department_id: r.department_name
+            ? deptLookup.get(r.department_name.trim().toLowerCase()) ?? null
+            : null,
+          password: r.password,
+          role: "EMPLOYEE",
+          company_id: companyId,
+        }));
+
         const { data: bulkResult, error: bulkError } =
           await supabase.functions.invoke("user-admin", {
-            body: { action: "bulkCreate", users: employees },
+            body: { action: "bulkCreate", users: payload },
           });
 
         if (bulkError) throw bulkError;
@@ -985,60 +1121,65 @@ export const UsersManagementPage: React.FC = () => {
             user_id: user?.id,
             action_type: "UPLOAD_EMPLOYEES",
             entity_type: "EMPLOYEE",
-            description: `Uploaded ${
-              bulkResult?.succeeded ?? 0
-            } employees from CSV`,
+            description: `Uploaded ${bulkResult?.succeeded ?? 0} employees from CSV`,
             new_value: {
               count: bulkResult?.succeeded ?? 0,
-              company_id: uploadCompanyId,
+              company_id: companyId,
             },
           },
         ]);
 
-        const succeededEmails: Set<string> = new Set(
-          (bulkResult?.results ?? [])
-            .filter((r: { email: string; success: boolean }) => r.success)
-            .map((r: { email: string; success: boolean }) => r.email)
+        const results: { email: string; success: boolean; error?: string }[] =
+          bulkResult?.results ?? [];
+        const succeededEmails = new Set(
+          results.filter((r) => r.success).map((r) => r.email)
         );
+        const serverFailures: UploadRowOutcome[] = results
+          .filter((r) => !r.success)
+          .map((r) => {
+            const vr = validRows.find((row) => row.email === r.email);
+            return {
+              row: rowNumByEmail.get(r.email.toLowerCase()) ?? 0,
+              name: vr?.full_name || "—",
+              email: r.email,
+              reason: r.error || "Server rejected the row",
+            };
+          });
 
-        await Promise.allSettled(
-          employees
-            .filter((emp) => succeededEmails.has(emp.email))
-            .map((emp) =>
-              sendNotificationEmail(
-                emp.email,
-                emp.full_name,
-                "Welcome to Awareone",
-                "Welcome aboard",
-                "Your account has been created. Use the credentials below to sign in.",
-                {
-                  loginUrl: getLoginUrlForCompany(uploadCompanyId),
-                  credentials: {
-                    email: emp.email,
-                    password: emp.password,
-                    role: "Employee",
-                  },
-                  showSecurityNote: true,
-                }
-              )
-            )
+        const createdRows = validRows.filter((row) =>
+          succeededEmails.has(row.email)
         );
+        const emailResults = await Promise.allSettled(
+          createdRows.map((emp) =>
+            sendNotificationEmail(
+              emp.email,
+              emp.full_name,
+              "Welcome to Awareone",
+              "Welcome aboard",
+              "Your account has been created. Use the credentials below to sign in.",
+              {
+                loginUrl: getLoginUrlForCompany(companyId),
+                credentials: { email: emp.email, password: emp.password, role: "Employee" },
+                showSecurityNote: true,
+              }
+            )
+          )
+        );
+        const emailFailed = emailResults.filter((r) => r.status === "rejected").length;
 
         setShowUploadModal(false);
         setUploadCompanyId("");
         await loadData();
 
-        const serverFailed = bulkResult?.failed ?? 0;
-        const message =
-          failedRows.length > 0 || serverFailed > 0
-            ? `Added ${
-                bulkResult?.succeeded ?? 0
-              } employees successfully.\nCSV row failures: ${
-                failedRows.length > 0 ? failedRows.join(", ") : "none"
-              }. Server failures: ${serverFailed}.`
-            : `Added ${bulkResult?.succeeded ?? 0} employees successfully!`;
-
-        alert(message);
+        setUploadResult({
+          totalRows,
+          succeeded: bulkResult?.succeeded ?? createdRows.length,
+          duplicates,
+          failed: [...validationFailed, ...serverFailures],
+          departmentsCreated,
+          emailsSent: createdRows.length - emailFailed,
+          emailsFailed: emailFailed,
+        });
       } catch (error) {
         console.error("Error uploading employees:", error);
         alert("Failed to upload employees. Check data format.");
@@ -1867,6 +2008,14 @@ export const UsersManagementPage: React.FC = () => {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* ═══════════ BULK UPLOAD RESULTS ═══════════ */}
+      {uploadResult && (
+        <BulkUploadResultModal
+          result={uploadResult}
+          onClose={() => setUploadResult(null)}
+        />
       )}
     </div>
   );

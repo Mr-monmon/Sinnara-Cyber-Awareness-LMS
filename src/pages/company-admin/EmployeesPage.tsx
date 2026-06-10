@@ -25,6 +25,11 @@ import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
 import { getActiveSubscription } from "../../lib/subscription";
+import {
+  BulkUploadResultModal,
+  type UploadResult,
+  type UploadRowOutcome,
+} from "../../components/BulkUploadResultModal";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -190,6 +195,7 @@ interface EmployeesPageProps {
 type BulkCreateResult = {
   email: string;
   success: boolean;
+  error?: string;
 };
 
 type BulkCreateResponse = {
@@ -215,7 +221,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   const [editingEmployee, setEditing] = useState<UserType | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [uploadSummary, setUploadSummary] = useState("");
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -612,7 +618,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       return;
     }
     setUploadError("");
-    setUploadSummary("");
+    setUploadResult(null);
     setIsUploading(true);
     try {
       const content = await file.text();
@@ -645,17 +651,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       const deptLookup = new Map(
         departments.map((d) => [d.name.trim().toLowerCase(), d.id])
       );
+      const totalRows = lines.length - 1;
       const validRows: Record<string, string>[] = [];
-      const rejected = {
-        missingName: 0,
-        missingEmail: 0,
-        invalidEmail: 0,
-        existingEmail: 0,
-      };
+      const validationFailed: UploadRowOutcome[] = [];
+      const duplicates: UploadRowOutcome[] = [];
       const existingEmails = new Set(
         employees.map((e) => e.email.toLowerCase())
       );
       const seenInFile = new Set<string>();
+      const rowNumByEmail = new Map<string, number>();
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         const row = requiredHeaders.reduce<Record<string, string>>(
@@ -665,24 +669,30 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           },
           {}
         );
+        const rowNum = i + 1; // 1-based incl. header row, matches spreadsheet line
         if (!row["full name"]) {
-          rejected.missingName++;
+          validationFailed.push({ row: rowNum, name: "—", email: row.email || "—", reason: "Missing full name" });
           continue;
         }
         if (!row.email) {
-          rejected.missingEmail++;
+          validationFailed.push({ row: rowNum, name: row["full name"], email: "—", reason: "Missing email" });
           continue;
         }
         if (!isValidEmail(row.email)) {
-          rejected.invalidEmail++;
+          validationFailed.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Invalid email format" });
           continue;
         }
         const normalizedEmail = row.email.toLowerCase();
-        if (existingEmails.has(normalizedEmail) || seenInFile.has(normalizedEmail)) {
-          rejected.existingEmail++;
+        if (existingEmails.has(normalizedEmail)) {
+          duplicates.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Email already exists in this company" });
+          continue;
+        }
+        if (seenInFile.has(normalizedEmail)) {
+          duplicates.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Duplicate email within the file" });
           continue;
         }
         seenInFile.add(normalizedEmail);
+        rowNumByEmail.set(normalizedEmail, rowNum);
         // Use CSV password only if it meets policy; otherwise auto-generate
         const csvPassword = row.password?.trim();
         const password =
@@ -703,6 +713,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       }
 
       // Auto-create any departments referenced in the CSV that don't exist yet
+      const departmentsCreated: string[] = [];
       const newDeptNames = [
         ...new Set(
           validRows
@@ -722,8 +733,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           .single();
         if (newDept) {
           deptLookup.set(deptName, newDept.id);
+          departmentsCreated.push(newDept.name);
         }
       }
+      if (departmentsCreated.length > 0) loadDepartments();
 
       // Resolve department names → IDs now that all depts exist
       for (const row of validRows) {
@@ -733,9 +746,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         row.department_id = deptId ?? "";
         delete row.department_name;
       }
-      const totalRejected = Object.values(rejected).reduce((a, b) => a + b, 0);
       if (validRows.length === 0) {
-        setUploadSummary(`No valid rows found. Rejected ${totalRejected}.`);
+        setUploadResult({
+          totalRows,
+          succeeded: 0,
+          duplicates,
+          failed: validationFailed,
+          departmentsCreated,
+          emailsSent: 0,
+          emailsFailed: 0,
+        });
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
       const { data: bulkResult, error: bulkError } =
@@ -743,12 +764,23 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           body: { action: "bulkCreate", users: validRows },
         });
       if (bulkError) throw bulkError;
-      const serverFailed = bulkResult?.failed ?? 0;
       const succeededEmails = new Set(
         (bulkResult?.results ?? [])
           .filter((result) => result.success)
           .map((result) => result.email)
       );
+      // Map server-side failures (with reason) into the failed list
+      const serverFailures: UploadRowOutcome[] = (bulkResult?.results ?? [])
+        .filter((result) => !result.success)
+        .map((result) => {
+          const vr = validRows.find((row) => row.email === result.email);
+          return {
+            row: rowNumByEmail.get(result.email.toLowerCase()) ?? 0,
+            name: vr?.full_name || "—",
+            email: result.email,
+            reason: result.error || "Server rejected the row",
+          };
+        });
       const createdRows = validRows.filter((row) =>
         succeededEmails.has(row.email)
       );
@@ -777,15 +809,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       ).length;
       const emailSent = createdRows.length - emailFailed;
 
-      setUploadSummary(
-        `Imported ${bulkResult?.succeeded ?? 0} employees. Rejected ${
-          totalRejected + serverFailed
-        } rows. (missing name: ${rejected.missingName}, email: ${
-          rejected.missingEmail
-        }, invalid: ${rejected.invalidEmail}, existing: ${
-          rejected.existingEmail
-        }, server: ${serverFailed}) (email sent: ${emailSent}) (email failed: ${emailFailed})`
-      );
+      setUploadResult({
+        totalRows,
+        succeeded: bulkResult?.succeeded ?? createdRows.length,
+        duplicates,
+        failed: [...validationFailed, ...serverFailures],
+        departmentsCreated,
+        emailsSent: emailSent,
+        emailsFailed: emailFailed,
+      });
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadEmployees();
     } catch {
@@ -900,7 +932,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             onChange={(e) => {
               const f = e.target.files?.[0];
               setUploadError("");
-              setUploadSummary("");
+              setUploadResult(null);
               uploadCSV(f);
             }}
           />
@@ -956,17 +988,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         </div>
       </div>
 
-      {/* ── Upload feedback ── */}
-      {(uploadError || uploadSummary) && (
+      {/* ── Upload fatal error ── */}
+      {uploadError && (
         <div
           style={{
             marginBottom: 16,
             padding: "12px 16px",
-            background: uploadError ? T.redBg : T.greenBg,
-            border: `1px solid ${uploadError ? T.redBorder : T.greenBorder}`,
+            background: T.redBg,
+            border: `1px solid ${T.redBorder}`,
             borderRadius: 10,
             fontSize: 13,
-            color: uploadError ? T.red : T.green,
+            color: T.red,
             lineHeight: "20px",
             display: "flex",
             alignItems: "flex-start",
@@ -974,7 +1006,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             gap: 12,
           }}
         >
-          <span>{uploadError || uploadSummary}</span>
+          <span>{uploadError}</span>
           <button
             style={{
               background: "none",
@@ -984,14 +1016,19 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
               padding: 0,
               flexShrink: 0,
             }}
-            onClick={() => {
-              setUploadError("");
-              setUploadSummary("");
-            }}
+            onClick={() => setUploadError("")}
           >
             <X size={14} />
           </button>
         </div>
+      )}
+
+      {/* ── Bulk upload results modal ── */}
+      {uploadResult && (
+        <BulkUploadResultModal
+          result={uploadResult}
+          onClose={() => setUploadResult(null)}
+        />
       )}
 
       {/* ── Search ── */}
