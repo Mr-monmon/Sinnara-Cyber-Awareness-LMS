@@ -162,8 +162,8 @@ export const ComplianceReportPage: React.FC = () => {
       ] = await Promise.all([
         supabase.from("companies").select("name").eq("id", cid).single(),
         employeeIds.length
-          ? supabase.from("employee_courses").select("employee_id, completed_at").in("employee_id", employeeIds).not("completed_at", "is", null)
-          : Promise.resolve({ data: [] as { employee_id: string; completed_at: string | null }[], error: null }),
+          ? supabase.from("employee_courses").select("employee_id, status").in("employee_id", employeeIds).eq("status", "COMPLETED")
+          : Promise.resolve({ data: [] as { employee_id: string; status: string | null }[], error: null }),
         employeeIds.length
           ? supabase.from("exam_results").select("employee_id, percentage, passed").in("employee_id", employeeIds)
           : Promise.resolve({ data: [] as { employee_id: string; percentage: number | null; passed: boolean }[], error: null }),
@@ -171,7 +171,7 @@ export const ComplianceReportPage: React.FC = () => {
           ? supabase.from("certificates").select("id", { count: "exact", head: true }).in("user_id", employeeIds)
           : Promise.resolve(none),
         employeeIds.length
-          ? supabase.from("employee_courses").select("id", { count: "exact", head: true }).in("employee_id", employeeIds).not("completed_at", "is", null).gte("completed_at", ninetyDaysAgo)
+          ? supabase.from("employee_courses").select("id", { count: "exact", head: true }).in("employee_id", employeeIds).eq("status", "COMPLETED").gte("completed_at", ninetyDaysAgo)
           : Promise.resolve(none),
         employeeEmails.length
           ? supabase.from("auth_attempts").select("id", { count: "exact", head: true }).in("email", employeeEmails).eq("success", true).gte("attempted_at", thirtyDaysAgo)

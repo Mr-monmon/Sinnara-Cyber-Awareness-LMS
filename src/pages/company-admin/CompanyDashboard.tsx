@@ -215,7 +215,9 @@ export const CompanyDashboard = () => {
 
       const [, courseRes, examsRes] = await Promise.all([
         supabase.from("exam_results").select("employee_id, percentage, passed").in("employee_id", ids),
-        supabase.from("employee_courses").select("employee_id, completed_at").in("employee_id", ids).not("completed_at", "is", null),
+        // status is the source of truth (maintained by the course-progress trigger);
+        // completed_at can lag behind for rows written before the trigger existed.
+        supabase.from("employee_courses").select("employee_id, status").in("employee_id", ids).eq("status", "COMPLETED"),
         supabase.from("employee_available_exams").select("employee_id").in("employee_id", ids),
       ]);
 

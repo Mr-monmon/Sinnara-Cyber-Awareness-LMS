@@ -347,8 +347,8 @@ export const AnalyticsPage: React.FC = () => {
           ? supabase.from('exam_results').select('employee_id,exam_id,percentage,completed_at').in('employee_id', empIds)
           : Promise.resolve({ data: [] as { employee_id: string; exam_id: string; percentage: number; completed_at: string }[] }),
         empIds.length > 0
-          ? supabase.from('employee_courses').select('employee_id,completed_at').in('employee_id', empIds)
-          : Promise.resolve({ data: [] as { employee_id: string; completed_at: string | null }[] }),
+          ? supabase.from('employee_courses').select('employee_id,status').in('employee_id', empIds)
+          : Promise.resolve({ data: [] as { employee_id: string; status: string | null }[] }),
         empIds.length > 0
           ? supabase.from('assigned_exams').select('exam_id').in('assigned_to_employee', empIds)
           : Promise.resolve({ data: [] as { exam_id: string }[] }),
@@ -362,7 +362,7 @@ export const AnalyticsPage: React.FC = () => {
         resultsByEmp.get(r.employee_id)!.push(r);
       });
 
-      const coursesByEmp = new Map<string, { completed_at: string | null }[]>();
+      const coursesByEmp = new Map<string, { status: string | null }[]>();
       (allCoursesRes.data ?? []).forEach(c => {
         if (!coursesByEmp.has(c.employee_id)) coursesByEmp.set(c.employee_id, []);
         coursesByEmp.get(c.employee_id)!.push(c);
@@ -389,7 +389,7 @@ export const AnalyticsPage: React.FC = () => {
           if (chrono.length > 1) postScore = Math.round(chrono[chrono.length - 1].percentage);
         }
         const empCourses = coursesByEmp.get(emp.id) ?? [];
-        const coursesCompleted = empCourses.filter(c => c.completed_at !== null).length;
+        const coursesCompleted = empCourses.filter(c => c.status === 'COMPLETED').length;
         const examsCompleted   = empResults.length;
         const improvement = postScore !== undefined && preScore !== undefined ? postScore - preScore : 0;
         const status = postScore !== undefined ? (postScore >= 70 ? 'Passed' : 'Failed') : preScore !== undefined ? 'In Progress' : 'Not Started';
