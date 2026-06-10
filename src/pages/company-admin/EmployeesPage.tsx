@@ -17,6 +17,9 @@ import {
   ShieldOff,
   UserX,
   UserCheck,
+  CheckCircle,
+  AlertTriangle,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -190,12 +193,248 @@ interface EmployeesPageProps {
 type BulkCreateResult = {
   email: string;
   success: boolean;
+  error?: string;
 };
 
 type BulkCreateResponse = {
   succeeded?: number;
   failed?: number;
   results?: BulkCreateResult[];
+};
+
+/* Per-row outcome surfaced in the upload-results modal */
+type UploadRowOutcome = { row: number; name: string; email: string; reason: string };
+
+type UploadResult = {
+  totalRows: number;
+  succeeded: number;
+  duplicates: UploadRowOutcome[];
+  failed: UploadRowOutcome[];
+  departmentsCreated: string[];
+  emailsSent: number;
+  emailsFailed: number;
+};
+
+/* Results modal shown after a bulk CSV upload */
+const UploadResultModal: React.FC<{ result: UploadResult; onClose: () => void }> = ({
+  result,
+  onClose,
+}) => {
+  const stat = (label: string, value: number, color: string) => (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 110,
+        padding: "14px 16px",
+        background: "rgba(255,255,255,0.03)",
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 26, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginTop: 6 }}>{label}</div>
+    </div>
+  );
+
+  const problems = [
+    ...result.failed.map((r) => ({ ...r, kind: "fail" as const })),
+    ...result.duplicates.map((r) => ({ ...r, kind: "dup" as const })),
+  ].sort((a, b) => a.row - b.row);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.62)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: 20,
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 640,
+          maxHeight: "88vh",
+          display: "flex",
+          flexDirection: "column",
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 16,
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 20px",
+            borderBottom: `1px solid ${T.border}`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Upload size={18} style={{ color: T.accent }} />
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: T.white, margin: 0 }}>
+              Import Results
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: T.textMuted, padding: 4 }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 20, overflowY: "auto" }}>
+          {/* Stat cards */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+            {stat("Total rows", result.totalRows, T.white)}
+            {stat("Imported", result.succeeded, T.green)}
+            {stat("Duplicates", result.duplicates.length, T.orange)}
+            {stat("Failed", result.failed.length, T.red)}
+          </div>
+
+          {/* Email + departments summary */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: problems.length ? 18 : 0,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 12,
+                color: T.textBody,
+                background: "rgba(96,165,250,0.08)",
+                border: `1px solid ${T.blueBorder}`,
+                borderRadius: 8,
+                padding: "6px 10px",
+              }}
+            >
+              ✉️ Welcome emails sent: {result.emailsSent}
+              {result.emailsFailed > 0 ? ` · failed: ${result.emailsFailed}` : ""}
+            </span>
+            {result.departmentsCreated.length > 0 && (
+              <span
+                style={{
+                  fontSize: 12,
+                  color: T.textBody,
+                  background: "rgba(52,211,153,0.08)",
+                  border: `1px solid ${T.greenBorder}`,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Building2 size={13} style={{ color: T.green }} />
+                New departments: {result.departmentsCreated.join(", ")}
+              </span>
+            )}
+          </div>
+
+          {/* Problem list */}
+          {problems.length > 0 ? (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, marginBottom: 8 }}>
+                ROWS NOT IMPORTED ({problems.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {problems.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "9px 12px",
+                      background: "rgba(255,255,255,0.02)",
+                      border: `1px solid ${T.borderFaint}`,
+                      borderRadius: 9,
+                    }}
+                  >
+                    <AlertTriangle
+                      size={15}
+                      style={{ color: p.kind === "dup" ? T.orange : T.red, flexShrink: 0, marginTop: 2 }}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: T.white, fontWeight: 600 }}>
+                        {p.name !== "—" ? p.name : "(no name)"}{" "}
+                        <span style={{ color: T.textMuted, fontWeight: 400 }}>
+                          · {p.email}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: p.kind === "dup" ? T.orange : T.red, marginTop: 2 }}>
+                        Row {p.row || "?"} — {p.reason}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "14px 16px",
+                background: T.greenBg,
+                border: `1px solid ${T.greenBorder}`,
+                borderRadius: 10,
+              }}
+            >
+              <CheckCircle size={18} style={{ color: T.green }} />
+              <span style={{ fontSize: 13, color: T.green, fontWeight: 600 }}>
+                All {result.succeeded} rows imported successfully.
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: "14px 20px",
+            borderTop: `1px solid ${T.border}`,
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              background: T.accent,
+              color: T.accentDark,
+              fontSize: 14,
+              fontWeight: 700,
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 /* ═══════════════════════════════════════════
@@ -215,7 +454,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   const [editingEmployee, setEditing] = useState<UserType | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [uploadSummary, setUploadSummary] = useState("");
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -612,7 +851,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       return;
     }
     setUploadError("");
-    setUploadSummary("");
+    setUploadResult(null);
     setIsUploading(true);
     try {
       const content = await file.text();
@@ -645,17 +884,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       const deptLookup = new Map(
         departments.map((d) => [d.name.trim().toLowerCase(), d.id])
       );
+      const totalRows = lines.length - 1;
       const validRows: Record<string, string>[] = [];
-      const rejected = {
-        missingName: 0,
-        missingEmail: 0,
-        invalidEmail: 0,
-        existingEmail: 0,
-      };
+      const validationFailed: UploadRowOutcome[] = [];
+      const duplicates: UploadRowOutcome[] = [];
       const existingEmails = new Set(
         employees.map((e) => e.email.toLowerCase())
       );
       const seenInFile = new Set<string>();
+      const rowNumByEmail = new Map<string, number>();
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         const row = requiredHeaders.reduce<Record<string, string>>(
@@ -665,24 +902,30 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           },
           {}
         );
+        const rowNum = i + 1; // 1-based incl. header row, matches spreadsheet line
         if (!row["full name"]) {
-          rejected.missingName++;
+          validationFailed.push({ row: rowNum, name: "—", email: row.email || "—", reason: "Missing full name" });
           continue;
         }
         if (!row.email) {
-          rejected.missingEmail++;
+          validationFailed.push({ row: rowNum, name: row["full name"], email: "—", reason: "Missing email" });
           continue;
         }
         if (!isValidEmail(row.email)) {
-          rejected.invalidEmail++;
+          validationFailed.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Invalid email format" });
           continue;
         }
         const normalizedEmail = row.email.toLowerCase();
-        if (existingEmails.has(normalizedEmail) || seenInFile.has(normalizedEmail)) {
-          rejected.existingEmail++;
+        if (existingEmails.has(normalizedEmail)) {
+          duplicates.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Email already exists in this company" });
+          continue;
+        }
+        if (seenInFile.has(normalizedEmail)) {
+          duplicates.push({ row: rowNum, name: row["full name"], email: row.email, reason: "Duplicate email within the file" });
           continue;
         }
         seenInFile.add(normalizedEmail);
+        rowNumByEmail.set(normalizedEmail, rowNum);
         // Use CSV password only if it meets policy; otherwise auto-generate
         const csvPassword = row.password?.trim();
         const password =
@@ -703,6 +946,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       }
 
       // Auto-create any departments referenced in the CSV that don't exist yet
+      const departmentsCreated: string[] = [];
       const newDeptNames = [
         ...new Set(
           validRows
@@ -722,8 +966,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           .single();
         if (newDept) {
           deptLookup.set(deptName, newDept.id);
+          departmentsCreated.push(newDept.name);
         }
       }
+      if (departmentsCreated.length > 0) loadDepartments();
 
       // Resolve department names → IDs now that all depts exist
       for (const row of validRows) {
@@ -733,9 +979,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         row.department_id = deptId ?? "";
         delete row.department_name;
       }
-      const totalRejected = Object.values(rejected).reduce((a, b) => a + b, 0);
       if (validRows.length === 0) {
-        setUploadSummary(`No valid rows found. Rejected ${totalRejected}.`);
+        setUploadResult({
+          totalRows,
+          succeeded: 0,
+          duplicates,
+          failed: validationFailed,
+          departmentsCreated,
+          emailsSent: 0,
+          emailsFailed: 0,
+        });
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
       const { data: bulkResult, error: bulkError } =
@@ -743,12 +997,23 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           body: { action: "bulkCreate", users: validRows },
         });
       if (bulkError) throw bulkError;
-      const serverFailed = bulkResult?.failed ?? 0;
       const succeededEmails = new Set(
         (bulkResult?.results ?? [])
           .filter((result) => result.success)
           .map((result) => result.email)
       );
+      // Map server-side failures (with reason) into the failed list
+      const serverFailures: UploadRowOutcome[] = (bulkResult?.results ?? [])
+        .filter((result) => !result.success)
+        .map((result) => {
+          const vr = validRows.find((row) => row.email === result.email);
+          return {
+            row: rowNumByEmail.get(result.email.toLowerCase()) ?? 0,
+            name: vr?.full_name || "—",
+            email: result.email,
+            reason: result.error || "Server rejected the row",
+          };
+        });
       const createdRows = validRows.filter((row) =>
         succeededEmails.has(row.email)
       );
@@ -777,15 +1042,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       ).length;
       const emailSent = createdRows.length - emailFailed;
 
-      setUploadSummary(
-        `Imported ${bulkResult?.succeeded ?? 0} employees. Rejected ${
-          totalRejected + serverFailed
-        } rows. (missing name: ${rejected.missingName}, email: ${
-          rejected.missingEmail
-        }, invalid: ${rejected.invalidEmail}, existing: ${
-          rejected.existingEmail
-        }, server: ${serverFailed}) (email sent: ${emailSent}) (email failed: ${emailFailed})`
-      );
+      setUploadResult({
+        totalRows,
+        succeeded: bulkResult?.succeeded ?? createdRows.length,
+        duplicates,
+        failed: [...validationFailed, ...serverFailures],
+        departmentsCreated,
+        emailsSent: emailSent,
+        emailsFailed: emailFailed,
+      });
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadEmployees();
     } catch {
@@ -900,7 +1165,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             onChange={(e) => {
               const f = e.target.files?.[0];
               setUploadError("");
-              setUploadSummary("");
+              setUploadResult(null);
               uploadCSV(f);
             }}
           />
@@ -956,17 +1221,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         </div>
       </div>
 
-      {/* ── Upload feedback ── */}
-      {(uploadError || uploadSummary) && (
+      {/* ── Upload fatal error ── */}
+      {uploadError && (
         <div
           style={{
             marginBottom: 16,
             padding: "12px 16px",
-            background: uploadError ? T.redBg : T.greenBg,
-            border: `1px solid ${uploadError ? T.redBorder : T.greenBorder}`,
+            background: T.redBg,
+            border: `1px solid ${T.redBorder}`,
             borderRadius: 10,
             fontSize: 13,
-            color: uploadError ? T.red : T.green,
+            color: T.red,
             lineHeight: "20px",
             display: "flex",
             alignItems: "flex-start",
@@ -974,7 +1239,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             gap: 12,
           }}
         >
-          <span>{uploadError || uploadSummary}</span>
+          <span>{uploadError}</span>
           <button
             style={{
               background: "none",
@@ -984,14 +1249,19 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
               padding: 0,
               flexShrink: 0,
             }}
-            onClick={() => {
-              setUploadError("");
-              setUploadSummary("");
-            }}
+            onClick={() => setUploadError("")}
           >
             <X size={14} />
           </button>
         </div>
+      )}
+
+      {/* ── Bulk upload results modal ── */}
+      {uploadResult && (
+        <UploadResultModal
+          result={uploadResult}
+          onClose={() => setUploadResult(null)}
+        />
       )}
 
       {/* ── Search ── */}
