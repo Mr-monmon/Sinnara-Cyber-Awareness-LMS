@@ -4,6 +4,14 @@ name = "awareone"
 main = "src/worker.ts"
 compatibility_date = "2026-04-09"
 
+# The app is served from a custom domain via the ASSETS binding, so the
+# workers.dev subdomain / preview URLs are not used. Disabling them stops
+# `wrangler versions upload` from calling the /subdomain API endpoint, which
+# the Workers Builds token is not authorised for (it failed deploys with
+# "Unable to authenticate request [code: 10001]").
+workers_dev = false
+preview_urls = false
+
 # Cloudflare Workers Builds runs this command on every push to main.
 # VITE_* env vars are taken from "Variables and Secrets" in the Worker
 # dashboard and are in scope during the build, so the Vite bundle is
