@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { RequestDemoModal } from "../components/landing/RequestDemoModal";
 import { PartnersCarousel } from "../components/landing/PartnersCarousel";
 import { supabase } from "../lib/supabase";
@@ -53,8 +53,6 @@ interface FooterSettings {
 ───────────────────────────────────────── */
 const LOGO =
   "https://raw.githubusercontent.com/Mr-monmon/Sinnara-Cyber-Awareness-LMS/main/supabase/without%20bg%202.png";
-const DASH =
-  "https://raw.githubusercontent.com/Mr-monmon/Sinnara-Cyber-Awareness-LMS/main/src/pages/AwareOne%20cybersecurity%20dashboard.png";
 
 /* ─────────────────────────────────────────
    FEATURE ICONS (inline SVG)
@@ -161,6 +159,213 @@ const StepIcons: React.ReactNode[] = [
 ];
 
 /* ═══════════════════════════════════════════
+   SCROLL-IN HOOK + COUNT-UP
+═══════════════════════════════════════════ */
+function useInView<E extends HTMLElement>(threshold = 0.2) {
+  const ref = useRef<E | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || inView) return;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) { setInView(true); ob.disconnect(); }
+      },
+      { threshold }
+    );
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, [threshold, inView]);
+  return { ref, inView };
+}
+
+const CountUp: React.FC<{ end: number; duration?: number; suffix?: string }> = ({ end, duration = 1600, suffix = "" }) => {
+  const { ref, inView } = useInView<HTMLSpanElement>(0.5);
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(end * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, end, duration]);
+  return <span ref={ref}>{val.toLocaleString()}{suffix}</span>;
+};
+
+/* ═══════════════════════════════════════════
+   REGIONAL CYBER-THREAT MAP (hero infographic)
+═══════════════════════════════════════════ */
+const MENA_PATH =
+  "M88,70 L150,48 L250,55 L300,92 L318,120 L324,148 L332,150 L337,127 L343,150 L350,166 L392,159 L388,201 L405,251 L360,301 L300,346 L210,373 L150,350 L120,300 L100,230 L94,160 Z";
+
+const CITIES: { name: string; x: number; y: number; primary?: boolean }[] = [
+  { name: "Riyadh", x: 232, y: 176, primary: true },
+  { name: "Jeddah", x: 132, y: 205 },
+  { name: "Kuwait", x: 299, y: 104 },
+  { name: "Doha",   x: 335, y: 152 },
+  { name: "Dubai",  x: 360, y: 182 },
+  { name: "Muscat", x: 388, y: 224 },
+  { name: "Amman",  x: 103, y: 82 },
+];
+
+const ATTACKS = [
+  "M18,30 Q120,90 232,176",
+  "M424,60 Q398,150 360,182",
+  "M250,455 Q160,330 132,205",
+];
+
+const MENAMap: React.FC = () => {
+  const tiltRef = useRef<HTMLDivElement | null>(null);
+  const onMove = (e: React.MouseEvent) => {
+    const el = tiltRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(900px) rotateY(${px * 9}deg) rotateX(${-py * 9}deg)`;
+  };
+  const onLeave = () => {
+    if (tiltRef.current) tiltRef.current.style.transform = "perspective(900px) rotateY(0deg) rotateX(0deg)";
+  };
+
+  return (
+    <div className="aw-map-wrap" onMouseMove={onMove} onMouseLeave={onLeave}>
+      <div aria-hidden="true" style={{ position: "absolute", inset: "8%", background: "rgba(200,255,0,0.16)", filter: "blur(48px)", borderRadius: "50%", pointerEvents: "none" }} />
+
+      <div ref={tiltRef} className="aw-map-tilt">
+        <svg viewBox="0 0 440 470" width="100%" role="img" aria-label="Cyber-threat map of Saudi Arabia and the Gulf region" style={{ display: "block", overflow: "visible" }}>
+          <defs>
+            <pattern id="awDots" width="11" height="11" patternUnits="userSpaceOnUse">
+              <circle cx="1.4" cy="1.4" r="1.4" fill="rgba(200,255,0,0.30)" />
+            </pattern>
+            <clipPath id="awClip"><path d={MENA_PATH} /></clipPath>
+            <filter id="awGlow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <radialGradient id="awFill" cx="42%" cy="38%" r="72%">
+              <stop offset="0%" stopColor="rgba(200,255,0,0.13)" />
+              <stop offset="100%" stopColor="rgba(200,255,0,0.02)" />
+            </radialGradient>
+          </defs>
+
+          <g clipPath="url(#awClip)">
+            <rect x="0" y="0" width="440" height="470" fill="url(#awFill)" />
+            <rect x="0" y="0" width="440" height="470" fill="url(#awDots)" />
+          </g>
+
+          <path className="aw-map-border" d={MENA_PATH} fill="none" stroke="#c8ff00" strokeWidth="2" strokeLinejoin="round" filter="url(#awGlow)" />
+
+          {ATTACKS.map((d, i) => (
+            <path key={i} className="aw-attack" d={d} fill="none" stroke="#ef4444" strokeWidth="1.6" strokeLinecap="round" style={{ animationDelay: `${i * 1.1}s` }} />
+          ))}
+
+          {CITIES.map((c) => (
+            <g key={c.name}>
+              <circle className="aw-city-ring" cx={c.x} cy={c.y} r={c.primary ? 7 : 5} fill="none" stroke="#c8ff00" strokeWidth="1.3" style={{ animationDelay: `${(c.x % 5) * 0.4}s` }} />
+              <circle cx={c.x} cy={c.y} r={c.primary ? 4 : 2.6} fill="#c8ff00" />
+              <text x={c.x > 300 ? c.x - 9 : c.x + 9} y={c.y - (c.primary ? 12 : 8)} fill={c.primary ? "#c8ff00" : "rgba(203,213,225,0.85)"} fontSize={c.primary ? 13 : 11} fontWeight={c.primary ? 800 : 600} textAnchor={c.x > 300 ? "end" : "start"} style={{ fontFamily: "'Inter', sans-serif" }}>{c.name}</text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Floating status chips */}
+      <div style={{ position: "absolute", top: "5%", left: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.88)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 10, backdropFilter: "blur(6px)", animation: "aw-float-y 5s ease-in-out infinite", whiteSpace: "nowrap" }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 8px #ef4444" }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#fca5a5" }}>Live attacks blocked</span>
+      </div>
+      <div style={{ position: "absolute", bottom: "7%", right: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.88)", border: "1px solid rgba(200,255,0,0.30)", borderRadius: 10, backdropFilter: "blur(6px)", animation: "aw-float-y 5.6s ease-in-out infinite", animationDelay: "0.6s", whiteSpace: "nowrap" }}>
+        <svg width="13" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2L4 5V11C4 16.55 7.84 21.74 12 23C16.16 21.74 20 16.55 20 11V5L12 2Z" stroke="#c8ff00" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M9 12L11 14L15 10" stroke="#c8ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#c8ff00" }}>NCA · SAMA · PDPL</span>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   STATS BAND (count-up)
+═══════════════════════════════════════════ */
+const STATS: { end: number; suffix: string; label: string }[] = [
+  { end: 25, suffix: "+",  label: "Enterprises Protected" },
+  { end: 6,  suffix: "",   label: "Compliance Frameworks" },
+  { end: 50, suffix: "K+", label: "Phishing Emails Simulated" },
+  { end: 98, suffix: "%",  label: "Avg. Detection Uplift" },
+];
+
+const StatsBand: React.FC = () => (
+  <section aria-label="Key metrics" style={{ borderTop: `1px solid ${T.borderFaint}`, borderBottom: `1px solid ${T.borderFaint}`, background: "rgba(200,255,0,0.015)" }}>
+    <div className="aw-container" style={{ paddingTop: 44, paddingBottom: 44 }}>
+      <div className="aw-stats-grid">
+        {STATS.map((s) => (
+          <div key={s.label} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 46, fontWeight: 900, color: T.accent, lineHeight: 1, letterSpacing: "-1.5px" }}>
+              <CountUp end={s.end} suffix={s.suffix} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.textBody, marginTop: 10 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+/* ═══════════════════════════════════════════
+   COMPLIANCE FRAMEWORKS (assembling grid)
+═══════════════════════════════════════════ */
+const FRAMEWORKS: { abbr: string; title: string; desc: string; scope: "Local" | "Global" }[] = [
+  { abbr: "NCA",  title: "NCA Essential Controls", desc: "Saudi National Cybersecurity Authority ECC alignment.", scope: "Local" },
+  { abbr: "SAMA", title: "SAMA Cyber Framework",   desc: "Saudi Central Bank framework for financial entities.", scope: "Local" },
+  { abbr: "PDPL", title: "PDPL Data Privacy",      desc: "Kingdom's Personal Data Protection Law readiness.",   scope: "Local" },
+  { abbr: "ISO",  title: "ISO/IEC 27001",          desc: "International information-security management standard.", scope: "Global" },
+  { abbr: "NIST", title: "NIST CSF",               desc: "U.S. NIST Cybersecurity Framework best practices.",   scope: "Global" },
+  { abbr: "GDPR", title: "GDPR Readiness",         desc: "EU General Data Protection Regulation controls.",     scope: "Global" },
+];
+
+const ComplianceSection: React.FC = () => {
+  const { ref, inView } = useInView<HTMLDivElement>(0.18);
+  return (
+    <section id="compliance" className="aw-section">
+      <div className="aw-container">
+        <div style={{ textAlign: "center", maxWidth: 720, margin: "0 auto 56px" }}>
+          <span style={{ display: "inline-block", padding: "5px 14px", background: T.accentAlpha10, border: `1px solid ${T.accentAlpha20}`, borderRadius: 9999, fontSize: 12, fontWeight: 700, color: T.accent, letterSpacing: "0.6px", textTransform: "uppercase", marginBottom: 20 }}>Compliance</span>
+          <h2 style={{ fontSize: 40, fontWeight: 900, color: T.white, lineHeight: "46px", margin: "0 0 16px" }}>
+            Aligned with <span style={{ color: T.accent }}>Local &amp; Global</span> Frameworks
+          </h2>
+          <p style={{ fontSize: 16, color: T.textBody, lineHeight: "25px", margin: 0 }}>
+            From the Kingdom&apos;s NCA, SAMA and PDPL to international standards like ISO 27001 and NIST — AwareOne maps your awareness program to the controls auditors expect.
+          </p>
+        </div>
+
+        <div ref={ref} className="aw-fw-grid">
+          {FRAMEWORKS.map((f, i) => (
+            <div key={f.abbr} className={`aw-fw-card${inView ? " in" : ""}`} style={{ transitionDelay: `${i * 90}ms` }}>
+              <div className="aw-fw-card-inner">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 56, height: 44, padding: "0 14px", borderRadius: 11, background: "rgba(200,255,0,0.08)", border: "1px solid rgba(200,255,0,0.25)", color: T.accent, fontWeight: 900, fontSize: 15, letterSpacing: "0.5px" }}>{f.abbr}</div>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase", padding: "4px 11px", borderRadius: 9999, color: f.scope === "Local" ? T.accent : T.textNav, background: f.scope === "Local" ? "rgba(200,255,0,0.10)" : "rgba(255,255,255,0.05)", border: `1px solid ${f.scope === "Local" ? "rgba(200,255,0,0.25)" : T.border}` }}>{f.scope}</span>
+                </div>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: T.white, margin: "0 0 7px", lineHeight: "24px" }}>{f.title}</h3>
+                <p style={{ fontSize: 14, color: T.textBody, lineHeight: "21px", margin: 0 }}>{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ═══════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════ */
 export const LandingPage = () => {
@@ -226,6 +431,35 @@ export const LandingPage = () => {
         @keyframes aw-fraud-pulse {
           0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.35); }
           60%      { box-shadow: 0 0 0 7px rgba(239,68,68,0); }
+        }
+
+        /* ── Regional threat map + scroll infographics ── */
+        @keyframes aw-map-draw    { from { stroke-dashoffset: 1400; } to { stroke-dashoffset: 0; } }
+        @keyframes aw-attack-flow { 0% { stroke-dashoffset: 160; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+        @keyframes aw-ring-pulse  { 0% { transform: scale(0.6); opacity: 0.75; } 100% { transform: scale(2.6); opacity: 0; } }
+        @keyframes aw-float-y     { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+
+        .aw-map-wrap   { position: relative; width: 100%; max-width: 520px; margin: 0 auto; }
+        .aw-map-tilt   { transition: transform 0.2s ease-out; will-change: transform; transform-style: preserve-3d; }
+        .aw-map-border { stroke-dasharray: 1400; animation: aw-map-draw 2.6s ease forwards; }
+        .aw-attack     { stroke-dasharray: 160; animation: aw-attack-flow 3.4s linear infinite; }
+        .aw-city-ring  { transform-box: fill-box; transform-origin: center; animation: aw-ring-pulse 2.8s ease-out infinite; }
+
+        .aw-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+        @media (max-width: 900px) { .aw-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 32px 24px; } }
+
+        .aw-fw-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+        @media (max-width: 1024px) { .aw-fw-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 600px)  { .aw-fw-grid { grid-template-columns: 1fr; } }
+        .aw-fw-card { opacity: 0; transform: translateY(46px) scale(0.92); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22,1,0.36,1); }
+        .aw-fw-card.in { opacity: 1; transform: none; }
+        .aw-fw-card-inner { height: 100%; background: rgba(200,255,0,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 24px; transition: border-color 0.2s, background 0.2s, transform 0.2s; }
+        .aw-fw-card-inner:hover { border-color: rgba(200,255,0,0.30); background: rgba(200,255,0,0.06); transform: translateY(-4px); }
+
+        @media (prefers-reduced-motion: reduce) {
+          .aw-map-border, .aw-attack, .aw-city-ring { animation: none !important; }
+          .aw-map-border { stroke-dashoffset: 0; }
+          .aw-fw-card { opacity: 1 !important; transform: none !important; }
         }
 
         .aw-desk-nav  { display: flex; }
@@ -398,25 +632,9 @@ export const LandingPage = () => {
                 </div>
               </div>
 
-              {/* Dashboard card */}
+              {/* Regional cyber-threat map */}
               <div className="aw-hero-right" style={{ position: "relative" }}>
-                <div aria-hidden="true" style={{ position: "absolute", inset: -16, background: "rgba(200,255,0,0.20)", borderRadius: 9999, filter: "blur(32px)", opacity: 0.3, pointerEvents: "none" }}/>
-                <div style={{ position: "relative", background: T.overlayDark, border: `1px solid ${T.border}`, borderRadius: 16, padding: 17, boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", overflow: "hidden" }}>
-                  <div style={{ position: "relative", background: T.bg, border: `1px solid ${T.borderFaint}`, borderRadius: 8, overflow: "hidden" }}>
-                    <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(29.29deg, rgba(200,255,0,0.10) 0%, rgba(200,255,0,0) 50%)", zIndex: 1, pointerEvents: "none" }}/>
-                    <img src={DASH} alt="AwareOne cybersecurity dashboard" style={{ width: "100%", display: "block", mixBlendMode: "luminosity", opacity: 0.6 }}/>
-                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
-                      <button aria-label="Watch demo video"
-                        style={{ width: 64, height: 64, borderRadius: "50%", background: T.accent, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.10)", transition: "transform 0.2s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.08)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}>
-                        <svg width="18" height="22" viewBox="0 0 18 22" fill="none" aria-hidden="true">
-                          <path d="M2 2L16 11L2 20V2Z" fill="#12140a" stroke="#12140a" strokeWidth="1" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <MENAMap />
               </div>
             </div>
           </div>
@@ -424,6 +642,9 @@ export const LandingPage = () => {
 
         {/* ══════════════ PARTNERS ══════════════ */}
         <PartnersCarousel />
+
+        {/* ══════════════ STATS BAND ══════════════ */}
+        <StatsBand />
 
         {/* ══════════════ FEATURES ══════════════ */}
         <section id="features" className="aw-section">
@@ -447,6 +668,9 @@ export const LandingPage = () => {
             </div>
           </div>
         </section>
+
+        {/* ══════════════ COMPLIANCE ══════════════ */}
+        <ComplianceSection />
 
         {/* ══════════════ HOW IT WORKS ══════════════ */}
         <section id="how-it-works" className="aw-section">
