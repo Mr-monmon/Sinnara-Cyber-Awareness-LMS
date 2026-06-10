@@ -17,9 +17,6 @@ import {
   ShieldOff,
   UserX,
   UserCheck,
-  CheckCircle,
-  AlertTriangle,
-  Building2,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -28,6 +25,11 @@ import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
 import { getActiveSubscription } from "../../lib/subscription";
+import {
+  BulkUploadResultModal,
+  type UploadResult,
+  type UploadRowOutcome,
+} from "../../components/BulkUploadResultModal";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -200,241 +202,6 @@ type BulkCreateResponse = {
   succeeded?: number;
   failed?: number;
   results?: BulkCreateResult[];
-};
-
-/* Per-row outcome surfaced in the upload-results modal */
-type UploadRowOutcome = { row: number; name: string; email: string; reason: string };
-
-type UploadResult = {
-  totalRows: number;
-  succeeded: number;
-  duplicates: UploadRowOutcome[];
-  failed: UploadRowOutcome[];
-  departmentsCreated: string[];
-  emailsSent: number;
-  emailsFailed: number;
-};
-
-/* Results modal shown after a bulk CSV upload */
-const UploadResultModal: React.FC<{ result: UploadResult; onClose: () => void }> = ({
-  result,
-  onClose,
-}) => {
-  const stat = (label: string, value: number, color: string) => (
-    <div
-      style={{
-        flex: 1,
-        minWidth: 110,
-        padding: "14px 16px",
-        background: "rgba(255,255,255,0.03)",
-        border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 26, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginTop: 6 }}>{label}</div>
-    </div>
-  );
-
-  const problems = [
-    ...result.failed.map((r) => ({ ...r, kind: "fail" as const })),
-    ...result.duplicates.map((r) => ({ ...r, kind: "dup" as const })),
-  ].sort((a, b) => a.row - b.row);
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.62)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 20,
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 640,
-          maxHeight: "88vh",
-          display: "flex",
-          flexDirection: "column",
-          background: T.bgCard,
-          border: `1px solid ${T.border}`,
-          borderRadius: 16,
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "18px 20px",
-            borderBottom: `1px solid ${T.border}`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Upload size={18} style={{ color: T.accent }} />
-            <h2 style={{ fontSize: 17, fontWeight: 800, color: T.white, margin: 0 }}>
-              Import Results
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", color: T.textMuted, padding: 4 }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: 20, overflowY: "auto" }}>
-          {/* Stat cards */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            {stat("Total rows", result.totalRows, T.white)}
-            {stat("Imported", result.succeeded, T.green)}
-            {stat("Duplicates", result.duplicates.length, T.orange)}
-            {stat("Failed", result.failed.length, T.red)}
-          </div>
-
-          {/* Email + departments summary */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginBottom: problems.length ? 18 : 0,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 12,
-                color: T.textBody,
-                background: "rgba(96,165,250,0.08)",
-                border: `1px solid ${T.blueBorder}`,
-                borderRadius: 8,
-                padding: "6px 10px",
-              }}
-            >
-              ✉️ Welcome emails sent: {result.emailsSent}
-              {result.emailsFailed > 0 ? ` · failed: ${result.emailsFailed}` : ""}
-            </span>
-            {result.departmentsCreated.length > 0 && (
-              <span
-                style={{
-                  fontSize: 12,
-                  color: T.textBody,
-                  background: "rgba(52,211,153,0.08)",
-                  border: `1px solid ${T.greenBorder}`,
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Building2 size={13} style={{ color: T.green }} />
-                New departments: {result.departmentsCreated.join(", ")}
-              </span>
-            )}
-          </div>
-
-          {/* Problem list */}
-          {problems.length > 0 ? (
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.textMuted, marginBottom: 8 }}>
-                ROWS NOT IMPORTED ({problems.length})
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {problems.map((p, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      padding: "9px 12px",
-                      background: "rgba(255,255,255,0.02)",
-                      border: `1px solid ${T.borderFaint}`,
-                      borderRadius: 9,
-                    }}
-                  >
-                    <AlertTriangle
-                      size={15}
-                      style={{ color: p.kind === "dup" ? T.orange : T.red, flexShrink: 0, marginTop: 2 }}
-                    />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, color: T.white, fontWeight: 600 }}>
-                        {p.name !== "—" ? p.name : "(no name)"}{" "}
-                        <span style={{ color: T.textMuted, fontWeight: 400 }}>
-                          · {p.email}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: p.kind === "dup" ? T.orange : T.red, marginTop: 2 }}>
-                        Row {p.row || "?"} — {p.reason}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "14px 16px",
-                background: T.greenBg,
-                border: `1px solid ${T.greenBorder}`,
-                borderRadius: 10,
-              }}
-            >
-              <CheckCircle size={18} style={{ color: T.green }} />
-              <span style={{ fontSize: 13, color: T.green, fontWeight: 600 }}>
-                All {result.succeeded} rows imported successfully.
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            padding: "14px 20px",
-            borderTop: `1px solid ${T.border}`,
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              padding: "10px 22px",
-              borderRadius: 10,
-              border: "none",
-              cursor: "pointer",
-              background: T.accent,
-              color: T.accentDark,
-              fontSize: 14,
-              fontWeight: 700,
-              fontFamily: "'Inter', sans-serif",
-            }}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 /* ═══════════════════════════════════════════
@@ -1258,7 +1025,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
       {/* ── Bulk upload results modal ── */}
       {uploadResult && (
-        <UploadResultModal
+        <BulkUploadResultModal
           result={uploadResult}
           onClose={() => setUploadResult(null)}
         />
