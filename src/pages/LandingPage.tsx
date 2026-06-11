@@ -5,7 +5,6 @@ import { supabase } from "../lib/supabase";
 import {
   ArrowRight,
   Mail,
-  Phone,
   MapPin,
   Twitter,
   Linkedin,
@@ -101,7 +100,7 @@ const FEATURE_ICONS: React.ReactNode[] = [
 ];
 
 const FEATURES = [
-  { title: "Hosted in Saudi Arabia",  desc: "Full data residency and sovereignty within the Kingdom." },
+  { title: "Compliance Reports Ready", desc: "Audit-ready reports for ISO 27001, NCA, SAMA, and PDPL — generated automatically with one click." },
   { title: "Regulatory Compliance",   desc: "Built for ISO 27001, NCA, SAMA, and PDPL frameworks." },
   { title: "Local Threat Intel",      desc: "Stay updated on threats specific to the MENA region." },
   { title: "Comprehensive Training",  desc: "In-depth interactive modules for all employee levels." },
@@ -199,26 +198,26 @@ const CountUp: React.FC<{ end: number; duration?: number; suffix?: string }> = (
 };
 
 /* ═══════════════════════════════════════════
-   REGIONAL CYBER-THREAT MAP (hero infographic)
+   REGIONAL CYBER-THREAT MAP — accurate geographic SVG
+   ViewBox: 0 0 1448 1086  (paths provided by design)
 ═══════════════════════════════════════════ */
-const MENA_PATH =
-  "M88,70 L150,48 L250,55 L300,92 L318,120 L324,148 L332,150 L337,127 L343,150 L350,166 L392,159 L388,201 L405,251 L360,301 L300,346 L210,373 L150,350 L120,300 L100,230 L94,160 Z";
-
-const CITIES: { name: string; x: number; y: number; primary?: boolean }[] = [
-  { name: "Riyadh", x: 232, y: 176, primary: true },
-  { name: "Jeddah", x: 132, y: 205 },
-  { name: "Kuwait", x: 299, y: 104 },
-  { name: "Doha",   x: 335, y: 152 },
-  { name: "Dubai",  x: 360, y: 182 },
-  { name: "Muscat", x: 388, y: 224 },
-  { name: "Amman",  x: 103, y: 82 },
+const MAP_CITIES: { name: string; x: number; y: number; primary?: boolean }[] = [
+  { name: "Riyadh", x: 601,  y: 520,  primary: true },
+  { name: "Jeddah", x: 195,  y: 448               },
+  { name: "Amman",  x: 199,  y: 185               },
+  { name: "Kuwait", x: 748,  y: 270               },
+  { name: "Doha",   x: 898,  y: 440               },
+  { name: "Dubai",  x: 1078, y: 498               },
+  { name: "Muscat", x: 1174, y: 636               },
 ];
 
-const ATTACKS = [
-  "M18,30 Q120,90 232,176",
-  "M424,60 Q398,150 360,182",
-  "M250,455 Q160,330 132,205",
+const MAP_ATTACKS = [
+  "M 30,90  Q 200,310 601,520",
+  "M 1430,75 Q 1310,290 1078,498",
+  "M 700,1060 Q 640,790 601,520",
 ];
+
+const SA_PATH = "M 151.16 275.65 L 202.60 282.14 L 222.58 269.59 L 233.64 254.91 L 268.91 249.26 L 276.51 235.60 L 291.80 228.68 L 245.73 187.91 L 338.30 167.45 L 347.11 161.30 L 402.78 172.35 L 471.64 200.89 L 601.96 282.90 L 687.89 286.15 L 729.08 290.09 L 740.59 309.51 L 773.27 308.46 L 791.37 343.62 L 814.11 352.93 L 822.03 367.26 L 853.53 384.40 L 856.32 401.22 L 851.72 414.80 L 857.57 428.50 L 870.86 439.93 L 877.01 453.30 L 883.92 463.29 L 897.90 471.38 L 910.71 468.49 L 919.48 484.06 L 921.25 493.49 L 938.95 534.80 L 1077.89 555.36 L 1087.21 546.74 L 1108.39 575.62 L 1077.58 657.17 L 938.92 697.95 L 805.65 713.58 L 762.52 731.93 L 729.39 774.74 L 707.82 781.54 L 696.27 767.95 L 678.55 769.99 L 633.87 765.91 L 625.40 761.83 L 572.06 762.77 L 559.53 766.45 L 540.55 755.85 L 528.30 775.89 L 533.04 793.08 L 512.75 806.09 L 506.75 788.69 L 492.81 776.41 L 489.25 760.14 L 465.38 745.53 L 440.74 711.34 L 427.71 678.11 L 395.74 650.05 L 375.12 643.36 L 344.51 604.49 L 339.17 576.16 L 341.14 551.98 L 314.63 506.77 L 292.95 490.86 L 267.99 482.43 L 252.79 459.06 L 255.32 449.85 L 242.47 428.71 L 228.98 419.60 L 210.93 389.27 L 159.21 328.38 L 136.20 328.58 L 151.16 275.65 Z";
 
 const MENAMap: React.FC = () => {
   const tiltRef = useRef<HTMLDivElement | null>(null);
@@ -227,61 +226,133 @@ const MENAMap: React.FC = () => {
     if (!el) return;
     const r = el.getBoundingClientRect();
     const px = (e.clientX - r.left) / r.width - 0.5;
-    const py = (e.clientY - r.top) / r.height - 0.5;
-    el.style.transform = `perspective(900px) rotateY(${px * 9}deg) rotateX(${-py * 9}deg)`;
+    const py = (e.clientY - r.top)  / r.height - 0.5;
+    el.style.transform = `perspective(900px) rotateY(${px * 7}deg) rotateX(${-py * 7}deg)`;
   };
   const onLeave = () => {
     if (tiltRef.current) tiltRef.current.style.transform = "perspective(900px) rotateY(0deg) rotateX(0deg)";
   };
 
+  const S = "#c8ff00";          // primary neon green
+  const SF = "rgba(200,255,0,0.65)"; // faint for smaller countries
+
   return (
     <div className="aw-map-wrap" onMouseMove={onMove} onMouseLeave={onLeave}>
-      <div aria-hidden="true" style={{ position: "absolute", inset: "8%", background: "rgba(200,255,0,0.16)", filter: "blur(48px)", borderRadius: "50%", pointerEvents: "none" }} />
+      <div aria-hidden="true" style={{ position: "absolute", inset: "10%", background: "rgba(200,255,0,0.11)", filter: "blur(52px)", borderRadius: "50%", pointerEvents: "none" }} />
 
       <div ref={tiltRef} className="aw-map-tilt">
-        <svg viewBox="0 0 440 470" width="100%" role="img" aria-label="Cyber-threat map of Saudi Arabia and the Gulf region" style={{ display: "block", overflow: "visible" }}>
+        <svg viewBox="0 0 1448 1086" width="100%" role="img"
+          aria-label="Cyber-threat map of Saudi Arabia and the Gulf region"
+          style={{ display: "block", overflow: "visible" }}>
           <defs>
-            <pattern id="awDots" width="11" height="11" patternUnits="userSpaceOnUse">
-              <circle cx="1.4" cy="1.4" r="1.4" fill="rgba(200,255,0,0.30)" />
-            </pattern>
-            <clipPath id="awClip"><path d={MENA_PATH} /></clipPath>
-            <filter id="awGlow" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="3" result="b" />
-              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            <filter id="awGlow2" x="-60%" y="-60%" width="220%" height="220%" colorInterpolationFilters="sRGB">
+              <feGaussianBlur stdDeviation="2.5" result="b1"/>
+              <feGaussianBlur stdDeviation="6"   result="b2"/>
+              <feGaussianBlur stdDeviation="12"  result="b3"/>
+              <feMerge>
+                <feMergeNode in="b3"/><feMergeNode in="b2"/>
+                <feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/>
+              </feMerge>
             </filter>
-            <radialGradient id="awFill" cx="42%" cy="38%" r="72%">
-              <stop offset="0%" stopColor="rgba(200,255,0,0.13)" />
-              <stop offset="100%" stopColor="rgba(200,255,0,0.02)" />
+            <pattern id="awDots2" width="22" height="22" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="2" fill="rgba(200,255,0,0.22)" />
+            </pattern>
+            <clipPath id="awSaClip"><path d={SA_PATH} /></clipPath>
+            <radialGradient id="awFillSa" cx="42%" cy="45%" r="60%">
+              <stop offset="0%"   stopColor="rgba(200,255,0,0.12)" />
+              <stop offset="100%" stopColor="rgba(200,255,0,0.01)" />
+            </radialGradient>
+            <radialGradient id="awFillSm" cx="50%" cy="50%" r="70%">
+              <stop offset="0%"   stopColor="rgba(200,255,0,0.09)" />
+              <stop offset="100%" stopColor="rgba(200,255,0,0.00)" />
             </radialGradient>
           </defs>
 
-          <g clipPath="url(#awClip)">
-            <rect x="0" y="0" width="440" height="470" fill="url(#awFill)" />
-            <rect x="0" y="0" width="440" height="470" fill="url(#awDots)" />
+          {/* Country fills */}
+          <path fill="url(#awFillSa)" d={SA_PATH} />
+          <path fill="url(#awFillSm)" d="M 178.41 151.80 L 186.47 138.94 L 237.96 155.10 L 328.47 111.64 L 347.11 161.30 L 338.30 167.45 L 245.73 187.91 L 291.80 228.68 L 276.51 235.60 L 268.91 249.26 L 233.64 254.91 L 222.58 269.59 L 202.60 282.14 L 151.16 275.65 L 149.62 269.75 L 172.65 204.56 L 171.57 188.70 L 178.40 176.73 L 178.41 151.80 Z" />
+          <path fill="url(#awFillSm)" d="M 752.86 250.40 L 762.51 268.40 L 758.38 277.70 L 773.27 308.46 L 740.59 309.51 L 729.08 290.09 L 687.89 286.15 L 721.81 247.01 L 752.86 250.40 Z" />
+          <path fill="url(#awFillSm)" d="M 919.48 484.06 L 927.71 482.08 L 929.42 493.26 L 965.59 486.83 L 1031.73 489.10 L 1127.07 410.26 L 1135.86 424.15 L 1142.14 456.36 L 1118.54 456.52 L 1114.74 483.08 L 1122.93 488.75 L 1102.01 496.78 L 1101.88 513.44 L 1088.41 530.32 L 1087.21 546.74 L 1077.89 555.36 L 938.95 534.80 L 921.25 493.49 L 919.48 484.06 Z" />
+          <path fill="url(#awFillSm)" d="M 1087.21 546.74 L 1088.41 530.32 L 1101.88 513.44 L 1102.01 496.78 L 1122.93 488.75 L 1114.74 483.08 L 1118.54 456.52 L 1142.14 456.36 L 1162.86 484.21 L 1188.66 499.02 L 1222.56 504.35 L 1249.94 511.78 L 1283.26 548.70 L 1299.80 553.86 L 1299.71 562.96 L 1275.50 598.70 L 1256.03 611.75 L 1238.79 639.68 L 1217.82 637.54 L 1208.21 647.26 L 1200.79 667.94 L 1206.47 695.19 L 1202.11 700.20 L 1180.84 700.07 L 1151.97 715.31 L 1147.47 735.17 L 1136.90 743.78 L 1108.15 743.45 L 1090.05 753.72 L 1090.28 770.19 L 1067.92 781.51 L 1042.41 777.67 L 1011.51 791.42 L 990.16 793.73 L 938.92 697.95 L 1077.58 657.17 L 1108.39 575.62 L 1087.21 546.74 Z" />
+
+          {/* Dot matrix on KSA */}
+          <g clipPath="url(#awSaClip)">
+            <rect x="0" y="0" width="1448" height="1086" fill="url(#awDots2)" />
           </g>
 
-          <path className="aw-map-border" d={MENA_PATH} fill="none" stroke="#c8ff00" strokeWidth="2" strokeLinejoin="round" filter="url(#awGlow)" />
+          {/* Borders with glow */}
+          <g filter="url(#awGlow2)">
+            <path className="aw-map-border" d={SA_PATH} fill="none" stroke={S} strokeWidth="4.2" strokeLinejoin="round" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "0.3s" }}
+              d="M 178.41 151.80 L 186.47 138.94 L 237.96 155.10 L 328.47 111.64 L 347.11 161.30 L 338.30 167.45 L 245.73 187.91 L 291.80 228.68 L 276.51 235.60 L 268.91 249.26 L 233.64 254.91 L 222.58 269.59 L 202.60 282.14 L 151.16 275.65 L 149.62 269.75 L 172.65 204.56 L 171.57 188.70 L 178.40 176.73 L 178.41 151.80 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "0.5s" }}
+              d="M 752.86 250.40 L 762.51 268.40 L 758.38 277.70 L 773.27 308.46 L 740.59 309.51 L 729.08 290.09 L 687.89 286.15 L 721.81 247.01 L 752.86 250.40 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "0.7s" }}
+              d="M 883.92 463.29 L 880.86 433.62 L 893.32 412.23 L 905.94 407.85 L 919.93 420.63 L 920.74 444.50 L 910.71 468.49 L 897.90 471.38 L 883.92 463.29 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "0.9s" }}
+              d="M 919.48 484.06 L 927.71 482.08 L 929.42 493.26 L 965.59 486.83 L 1031.73 489.10 L 1127.07 410.26 L 1135.86 424.15 L 1142.14 456.36 L 1118.54 456.52 L 1114.74 483.08 L 1122.93 488.75 L 1102.01 496.78 L 1101.88 513.44 L 1088.41 530.32 L 1087.21 546.74 L 1077.89 555.36 L 938.95 534.80 L 921.25 493.49 L 919.48 484.06 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "1.1s" }}
+              d="M 1087.21 546.74 L 1088.41 530.32 L 1101.88 513.44 L 1102.01 496.78 L 1122.93 488.75 L 1114.74 483.08 L 1118.54 456.52 L 1142.14 456.36 L 1162.86 484.21 L 1188.66 499.02 L 1222.56 504.35 L 1249.94 511.78 L 1283.26 548.70 L 1299.80 553.86 L 1299.71 562.96 L 1275.50 598.70 L 1256.03 611.75 L 1238.79 639.68 L 1217.82 637.54 L 1208.21 647.26 L 1200.79 667.94 L 1206.47 695.19 L 1202.11 700.20 L 1180.84 700.07 L 1151.97 715.31 L 1147.47 735.17 L 1136.90 743.78 L 1108.15 743.45 L 1090.05 753.72 L 1090.28 770.19 L 1067.92 781.51 L 1042.41 777.67 L 1011.51 791.42 L 990.16 793.73 L 938.92 697.95 L 1077.58 657.17 L 1108.39 575.62 L 1087.21 546.74 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3.4" strokeLinejoin="round" style={{ animationDelay: "1.3s" }}
+              d="M 1135.86 424.15 L 1127.07 410.26 L 1140.53 396.37 L 1146.24 399.91 L 1141.89 416.76 L 1135.86 424.15 Z" />
+            <path className="aw-map-border" fill="none" stroke={SF} strokeWidth="3" strokeLinejoin="round" style={{ animationDelay: "1.5s" }}
+              d="M 876.52 408.44 C 876.52 413.76 874.46 418.23 871.90 418.23 C 869.34 418.23 867.28 413.76 867.28 408.44 C 867.28 403.12 869.34 398.65 871.90 398.65 C 874.46 398.65 876.52 403.12 876.52 408.44 Z" />
+          </g>
 
-          {ATTACKS.map((d, i) => (
-            <path key={i} className="aw-attack" d={d} fill="none" stroke="#ef4444" strokeWidth="1.6" strokeLinecap="round" style={{ animationDelay: `${i * 1.1}s` }} />
+          {/* Attack arcs */}
+          {MAP_ATTACKS.map((d, i) => (
+            <path key={i} className="aw-attack" d={d}
+              fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"
+              style={{ animationDelay: `${i * 1.3}s` }} />
           ))}
 
-          {CITIES.map((c) => (
+          {/* Shield near Riyadh */}
+          <g transform="translate(680,390)" style={{ animation: "aw-float-y 4.5s ease-in-out infinite" }}>
+            <circle r="22" fill="rgba(200,255,0,0.10)" stroke="rgba(200,255,0,0.28)" strokeWidth="1.5" />
+            <path d="M0,-12 L-9,-6 L-9,3 C-9,9 0,14 0,14 C0,14 9,9 9,3 L9,-6 Z"
+              fill="none" stroke={S} strokeWidth="2.2" strokeLinejoin="round" />
+            <path d="M-4,2 L-1,5 L5.5,-2" stroke={S} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+
+          {/* City nodes */}
+          {MAP_CITIES.map((c) => (
             <g key={c.name}>
-              <circle className="aw-city-ring" cx={c.x} cy={c.y} r={c.primary ? 7 : 5} fill="none" stroke="#c8ff00" strokeWidth="1.3" style={{ animationDelay: `${(c.x % 5) * 0.4}s` }} />
-              <circle cx={c.x} cy={c.y} r={c.primary ? 4 : 2.6} fill="#c8ff00" />
-              <text x={c.x > 300 ? c.x - 9 : c.x + 9} y={c.y - (c.primary ? 12 : 8)} fill={c.primary ? "#c8ff00" : "rgba(203,213,225,0.85)"} fontSize={c.primary ? 13 : 11} fontWeight={c.primary ? 800 : 600} textAnchor={c.x > 300 ? "end" : "start"} style={{ fontFamily: "'Inter', sans-serif" }}>{c.name}</text>
+              <circle className="aw-city-ring" cx={c.x} cy={c.y} r={c.primary ? 18 : 12}
+                fill="none" stroke={S} strokeWidth="2"
+                style={{ animationDelay: `${(c.x % 9) * 0.25}s` }} />
+              <circle cx={c.x} cy={c.y} r={c.primary ? 9 : 5} fill={S} />
+              <text
+                x={c.x > 900 ? c.x - 18 : c.x + 18}
+                y={c.primary ? c.y - 28 : c.y - 19}
+                fill={c.primary ? S : "rgba(203,213,225,0.85)"}
+                fontSize={c.primary ? 30 : 22}
+                fontWeight={c.primary ? 800 : 600}
+                textAnchor={c.x > 900 ? "end" : "start"}
+                style={{ fontFamily: "'Inter', sans-serif" }}>
+                {c.name}
+              </text>
             </g>
           ))}
+
+          {/* Country abbreviations */}
+          <text x="580" y="600" fill="rgba(200,255,0,0.22)" fontSize="90" fontWeight="900"
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontFamily: "'Inter', sans-serif", letterSpacing: "8px" }}>SA</text>
+          <text x="199" y="228" fill="rgba(200,255,0,0.28)" fontSize="42" fontWeight="800"
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontFamily: "'Inter', sans-serif" }}>JO</text>
+          <text x="1185" y="688" fill="rgba(200,255,0,0.22)" fontSize="42" fontWeight="800"
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontFamily: "'Inter', sans-serif" }}>OM</text>
         </svg>
       </div>
 
-      {/* Floating status chips */}
-      <div style={{ position: "absolute", top: "5%", left: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.88)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 10, backdropFilter: "blur(6px)", animation: "aw-float-y 5s ease-in-out infinite", whiteSpace: "nowrap" }}>
-        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 8px #ef4444" }} />
+      {/* Floating chips */}
+      <div style={{ position: "absolute", top: "4%", left: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.90)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 10, backdropFilter: "blur(8px)", animation: "aw-float-y 5s ease-in-out infinite", whiteSpace: "nowrap", zIndex: 2 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 8px #ef4444", flexShrink: 0 }} />
         <span style={{ fontSize: 12, fontWeight: 700, color: "#fca5a5" }}>Live attacks blocked</span>
       </div>
-      <div style={{ position: "absolute", bottom: "7%", right: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.88)", border: "1px solid rgba(200,255,0,0.30)", borderRadius: 10, backdropFilter: "blur(6px)", animation: "aw-float-y 5.6s ease-in-out infinite", animationDelay: "0.6s", whiteSpace: "nowrap" }}>
+      <div style={{ position: "absolute", bottom: "4%", right: "-3%", display: "flex", alignItems: "center", gap: 8, padding: "8px 13px", background: "rgba(18,20,10,0.90)", border: "1px solid rgba(200,255,0,0.30)", borderRadius: 10, backdropFilter: "blur(8px)", animation: "aw-float-y 5.8s ease-in-out infinite", animationDelay: "0.8s", whiteSpace: "nowrap", zIndex: 2 }}>
         <svg width="13" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M12 2L4 5V11C4 16.55 7.84 21.74 12 23C16.16 21.74 20 16.55 20 11V5L12 2Z" stroke="#c8ff00" strokeWidth="2" strokeLinejoin="round" />
           <path d="M9 12L11 14L15 10" stroke="#c8ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -434,15 +505,15 @@ export const LandingPage = () => {
         }
 
         /* ── Regional threat map + scroll infographics ── */
-        @keyframes aw-map-draw    { from { stroke-dashoffset: 1400; } to { stroke-dashoffset: 0; } }
-        @keyframes aw-attack-flow { 0% { stroke-dashoffset: 160; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+        @keyframes aw-map-draw    { from { stroke-dashoffset: 8000; } to { stroke-dashoffset: 0; } }
+        @keyframes aw-attack-flow { 0% { stroke-dashoffset: 800; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
         @keyframes aw-ring-pulse  { 0% { transform: scale(0.6); opacity: 0.75; } 100% { transform: scale(2.6); opacity: 0; } }
         @keyframes aw-float-y     { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 
         .aw-map-wrap   { position: relative; width: 100%; max-width: 520px; margin: 0 auto; }
         .aw-map-tilt   { transition: transform 0.2s ease-out; will-change: transform; transform-style: preserve-3d; }
-        .aw-map-border { stroke-dasharray: 1400; animation: aw-map-draw 2.6s ease forwards; }
-        .aw-attack     { stroke-dasharray: 160; animation: aw-attack-flow 3.4s linear infinite; }
+        .aw-map-border { stroke-dasharray: 8000; animation: aw-map-draw 2.6s ease forwards; }
+        .aw-attack     { stroke-dasharray: 800; animation: aw-attack-flow 3.4s linear infinite; }
         .aw-city-ring  { transform-box: fill-box; transform-origin: center; animation: aw-ring-pulse 2.8s ease-out infinite; }
 
         .aw-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
@@ -819,12 +890,6 @@ export const LandingPage = () => {
                   <a href={`mailto:${footerSettings.email}`} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: T.textBody, textDecoration: "none", transition: "color 0.2s" }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>
                     <Mail size={14} style={{ color: T.textMuted, flexShrink: 0 }}/>{footerSettings.email}
-                  </a>
-                </li>
-                <li>
-                  <a href={`tel:${footerSettings.phone.replace(/\s/g,"")}`} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: T.textBody, textDecoration: "none", transition: "color 0.2s" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>
-                    <Phone size={14} style={{ color: T.textMuted, flexShrink: 0 }}/>{footerSettings.phone}
                   </a>
                 </li>
                 <li style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: T.textBody }}>
