@@ -222,7 +222,13 @@ export const PhishingMonitoringPage: React.FC = () => {
   const [autoRefresh, setAutoRefresh]     = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [refreshing, setRefreshing]       = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Mirror of `selected` for use inside stable callbacks/intervals without
+  // adding `selected` to their dependency arrays (which would re-create them
+  // on every selection and re-trigger the initial-load effect).
+  const selectedRef = useRef<Campaign | null>(null);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   /* ── Load overview campaign list ── */
   const loadCampaigns = useCallback(async (quiet = false) => {
@@ -257,14 +263,14 @@ export const PhishingMonitoringPage: React.FC = () => {
       setOverview({ running, scheduled, completed, totalSent, totalFailed, totalOpened, totalClicked });
       setLastRefreshed(new Date());
 
-      // If a campaign was selected, refresh its drill-down data silently
-      if (selected) {
-        const updated = rows.find(r => r.id === selected.id);
-        if (updated) setSelected(updated);
-      }
+      // Refresh the selected campaign's header stats with the freshly-loaded row.
+      // Functional update so this callback does NOT depend on `selected` — that
+      // dependency previously re-created loadCampaigns on every selection, which
+      // re-ran the initial-load effect and made the drill-down flash then vanish.
+      setSelected(prev => (prev ? rows.find(r => r.id === prev.id) ?? prev : prev));
     } catch (err) { console.error('Failed to load campaigns', err); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selected]);
+  }, []);
 
   /* ── Load drill-down data for selected campaign ── */
   const loadDrillDown = useCallback(async (campaignId: string) => {
@@ -315,6 +321,33 @@ export const PhishingMonitoringPage: React.FC = () => {
     loadDrillDown(c.id);
   };
 
+  /* ── Pause / resume a campaign ──
+   * The campaign engine (process-campaign) leaves a PAUSED campaign's queue
+   * rows PENDING and defers them, so flipping RUNNING⇄PAUSED here cleanly halts
+   * and resumes sending on the next cron tick. */
+  const handleTogglePause = async () => {
+    const current = selected;
+    if (!current || statusUpdating) return;
+    const next = current.status === 'PAUSED' ? 'RUNNING' : 'PAUSED';
+    setStatusUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('phishing_campaigns')
+        .update({ status: next })
+        .eq('id', current.id);
+      if (error) throw error;
+      // Reflect immediately, then reconcile from the server.
+      setSelected(prev => (prev ? { ...prev, status: next } : prev));
+      setCampaigns(prev => prev.map(c => (c.id === current.id ? { ...c, status: next } : c)));
+      await loadCampaigns(true);
+    } catch (err) {
+      console.error('Failed to update campaign status', err);
+      alert('Failed to update campaign status: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   /* ── Initial load + auto-refresh ── */
   useEffect(() => {
     loadCampaigns(false);
@@ -325,11 +358,12 @@ export const PhishingMonitoringPage: React.FC = () => {
     if (autoRefresh) {
       timerRef.current = setInterval(() => {
         loadCampaigns(true);
-        if (selected) loadDrillDown(selected.id);
+        const sel = selectedRef.current;
+        if (sel) loadDrillDown(sel.id);
       }, 30_000);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [autoRefresh, selected, loadCampaigns, loadDrillDown]);
+  }, [autoRefresh, loadCampaigns, loadDrillDown]);
 
   /* ── Manual refresh ── */
   const handleRefresh = async () => {
@@ -501,6 +535,22 @@ export const PhishingMonitoringPage: React.FC = () => {
                   </div>
                 </div>
                 {drillLoading && <Loader2 size={14} style={{ color: T.textMuted }} className="aw-mon-spin" />}
+                {(selected.status === 'RUNNING' || selected.status === 'PAUSED') && (
+                  <button
+                    onClick={handleTogglePause}
+                    disabled={statusUpdating}
+                    title={selected.status === 'PAUSED' ? 'Resume sending emails' : 'Temporarily pause sending'}
+                    style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                      background: selected.status === 'PAUSED' ? T.greenBg : T.goldBg,
+                      border: `1px solid ${selected.status === 'PAUSED' ? T.greenBorder : T.goldBorder}`,
+                      color: selected.status === 'PAUSED' ? T.green : T.gold,
+                      fontSize: 12, fontWeight: 700, cursor: statusUpdating ? 'not-allowed' : 'pointer', opacity: statusUpdating ? 0.6 : 1, fontFamily: 'inherit' }}>
+                    {statusUpdating
+                      ? <Loader2 size={12} className="aw-mon-spin" />
+                      : selected.status === 'PAUSED' ? <Play size={12} /> : <Pause size={12} />}
+                    {selected.status === 'PAUSED' ? 'Resume' : 'Pause'}
+                  </button>
+                )}
                 <button
                   onClick={handleExportPdf}
                   title="Export campaign results to PDF"
