@@ -264,9 +264,9 @@ export const PhishingDomainsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Domains table */}
-      <div className="aw-pd-fade" style={{ animationDelay: '0.1s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Domains list (card layout — gives the DNS record room to wrap) */}
+      <div className="aw-pd-fade" style={{ animationDelay: '0.1s', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>All Domains</span>
           <button
             onClick={loadDomains}
@@ -276,34 +276,27 @@ export const PhishingDomainsPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div style={{ padding: '48px 0', textAlign: 'center' }}>
+          <div style={{ padding: '48px 0', textAlign: 'center', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
             <Loader2 size={24} style={{ color: T.accent, animation: 'aw-pd-spin 0.8s linear infinite', margin: '0 auto' }} />
           </div>
         ) : domains.length === 0 ? (
-          <div style={{ padding: '48px 0', textAlign: 'center' }}>
+          <div style={{ padding: '48px 0', textAlign: 'center', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14 }}>
             <Globe size={30} style={{ color: 'rgba(255,255,255,0.08)', margin: '0 auto 10px', display: 'block' }} />
             <p style={{ color: T.textMuted, fontSize: 13, margin: 0 }}>No domains added yet.</p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="aw-pd-table">
-              <thead>
-                <tr>
-                  <th>Domain</th>
-                  <th>Status</th>
-                  <th>DNS Record</th>
-                  <th>Verified At</th>
-                  <th>Added</th>
-                  <th style={{ textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {domains.map(domain => (
-                  <tr key={domain.id}>
-                    <td>
-                      <span style={{ fontWeight: 700, color: T.white }}>{domain.domain_name}</span>
-                    </td>
-                    <td>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
+            {domains.map(domain => (
+              <div key={domain.id} className="aw-pd-fade" style={{ background: T.bgCard, border: `1px solid ${domain.is_verified ? T.greenBorder : T.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                {/* Title + status */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Globe size={16} style={{ color: T.blue }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.white, wordBreak: 'break-all', lineHeight: 1.3 }}>{domain.domain_name}</div>
+                    <div style={{ marginTop: 6 }}>
                       {domain.is_verified ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 9999, fontSize: 10, fontWeight: 700, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green }}>
                           <CheckCircle size={10} /> VERIFIED
@@ -313,69 +306,74 @@ export const PhishingDomainsPage: React.FC = () => {
                           <XCircle size={10} /> PENDING
                         </span>
                       )}
-                    </td>
-                    <td>
-                      {domain.dns_record ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <code style={{ fontSize: 10, color: T.textMuted, background: 'rgba(255,255,255,0.04)', padding: '3px 7px', borderRadius: 5, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                            {domain.dns_record}
-                          </code>
-                          <button
-                            className="aw-pd-copy-btn"
-                            title="Copy DNS record"
-                            onClick={() => copyToClipboard(domain.dns_record!, domain.id)}>
-                            {copied === domain.id
-                              ? <CheckCircle size={12} style={{ color: T.green }} />
-                              : <Copy size={12} />}
-                          </button>
-                        </div>
-                      ) : (
-                        <span style={{ color: T.textMuted, fontSize: 12 }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: 11, color: T.textMuted }}>
-                      {domain.verified_at ? fmt(domain.verified_at) : '—'}
-                    </td>
-                    <td style={{ fontSize: 11, color: T.textMuted }}>
-                      {fmt(domain.created_at)}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                        {verifyingId === domain.id ? (
-                          <Loader2 size={14} style={{ color: T.accent, animation: 'aw-pd-spin 0.8s linear infinite' }} />
-                        ) : domain.is_verified ? (
-                          <button
-                            className="aw-pd-icon-btn"
-                            title="Mark as unverified"
-                            onClick={() => handleUnverify(domain)}
-                            style={{ background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange }}>
-                            <XCircle size={13} />
-                          </button>
-                        ) : (
-                          <button
-                            className="aw-pd-icon-btn"
-                            title="Mark as verified"
-                            onClick={() => handleVerify(domain)}
-                            style={{ background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green }}>
-                            <CheckCircle size={13} />
-                          </button>
-                        )}
-                        <button
-                          className="aw-pd-icon-btn"
-                          title="Delete domain"
-                          onClick={() => handleDelete(domain.id)}
-                          disabled={deletingId === domain.id}
-                          style={{ background: T.redBg, border: `1px solid ${T.redBorder}`, color: T.red, opacity: deletingId === domain.id ? 0.5 : 1 }}>
-                          {deletingId === domain.id
-                            ? <Loader2 size={13} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} />
-                            : <Trash2 size={13} />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DNS record — full width, wraps instead of truncating */}
+                <div>
+                  <div style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>DNS TXT Record</div>
+                  {domain.dns_record ? (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.borderFaint}`, borderRadius: 9, padding: '10px 12px' }}>
+                      <code style={{ flex: 1, minWidth: 0, fontSize: 11, color: T.textBody, wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                        {domain.dns_record}
+                      </code>
+                      <button
+                        className="aw-pd-copy-btn"
+                        title="Copy DNS record"
+                        onClick={() => copyToClipboard(domain.dns_record!, domain.id)}
+                        style={{ flexShrink: 0 }}>
+                        {copied === domain.id
+                          ? <CheckCircle size={13} style={{ color: T.green }} />
+                          : <Copy size={13} />}
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ color: T.textMuted, fontSize: 12 }}>—</span>
+                  )}
+                </div>
+
+                {/* Meta + actions */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: `1px solid ${T.borderFaint}`, paddingTop: 12 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 11, color: T.textMuted }}>Added {fmt(domain.created_at)}</span>
+                    {domain.verified_at && <span style={{ fontSize: 11, color: T.green }}>Verified {fmt(domain.verified_at)}</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                    {verifyingId === domain.id ? (
+                      <Loader2 size={14} style={{ color: T.accent, animation: 'aw-pd-spin 0.8s linear infinite' }} />
+                    ) : domain.is_verified ? (
+                      <button
+                        className="aw-pd-btn"
+                        title="Mark as unverified"
+                        onClick={() => handleUnverify(domain)}
+                        style={{ padding: '7px 12px', fontSize: 12, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange }}>
+                        <XCircle size={13} /> Unverify
+                      </button>
+                    ) : (
+                      <button
+                        className="aw-pd-btn"
+                        title="Mark as verified"
+                        onClick={() => handleVerify(domain)}
+                        style={{ padding: '7px 12px', fontSize: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green }}>
+                        <CheckCircle size={13} /> Verify
+                      </button>
+                    )}
+                    <button
+                      className="aw-pd-icon-btn"
+                      title="Delete domain"
+                      onClick={() => handleDelete(domain.id)}
+                      disabled={deletingId === domain.id}
+                      style={{ background: T.redBg, border: `1px solid ${T.redBorder}`, color: T.red, opacity: deletingId === domain.id ? 0.5 : 1 }}>
+                      {deletingId === domain.id
+                        ? <Loader2 size={13} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} />
+                        : <Trash2 size={13} />}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            ))}
           </div>
         )}
       </div>

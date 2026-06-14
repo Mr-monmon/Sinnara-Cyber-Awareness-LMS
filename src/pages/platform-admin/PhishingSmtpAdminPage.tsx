@@ -120,6 +120,7 @@ export const PhishingSmtpAdminPage: React.FC = () => {
   const [profiles, setProfiles] = useState<SmtpProfile[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editProfile, setEditProfile] = useState<SmtpProfile | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -180,14 +181,33 @@ export const PhishingSmtpAdminPage: React.FC = () => {
 
   const loadAll = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
-      const [profilesRes, companiesRes] = await Promise.all([
-        supabase.from('smtp_profiles').select(SAFE_COLS).eq('is_platform_profile', true).order('created_at', { ascending: false }),
+      // Full set, including newer columns (visibility, password_encrypted).
+      const FULL_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
+      // Core set guaranteed on the original schema. Used as a fallback so a
+      // database that is behind on a migration (e.g. missing the `visibility`
+      // column) still lists the profiles instead of silently showing zero.
+      const CORE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, created_at';
+
+      const [profilesFull, companiesRes] = await Promise.all([
+        supabase.from('smtp_profiles').select(FULL_COLS).eq('is_platform_profile', true).order('created_at', { ascending: false }),
         supabase.from('companies').select('id, name, is_active').order('name'),
       ]);
 
-      const rawProfiles = profilesRes.data || [];
+      let profileRows = profilesFull.data as SmtpProfile[] | null;
+      let profileErr  = profilesFull.error;
+      if (profileErr) {
+        console.warn('[SmtpAdmin] full profile select failed, retrying with core columns:', profileErr);
+        const coreRes = await supabase.from('smtp_profiles').select(CORE_COLS).eq('is_platform_profile', true).order('created_at', { ascending: false });
+        profileRows = coreRes.data as SmtpProfile[] | null;
+        profileErr  = coreRes.error;
+      }
+      // Surface a real failure instead of silently rendering "0 profiles".
+      if (profileErr) throw profileErr;
+      if (companiesRes.error) throw companiesRes.error;
+
+      const rawProfiles = profileRows || [];
 
       // Load push access for all profiles
       const ids = rawProfiles.map(p => p.id);
@@ -206,7 +226,10 @@ export const PhishingSmtpAdminPage: React.FC = () => {
         pushed_companies: accessMap[p.id] || [],
       })));
       setCompanies(companiesRes.data || []);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error('[SmtpAdmin] loadAll', err);
+      setLoadError(getErrorMessage(err));
+    }
     finally { setLoading(false); }
   };
 
@@ -396,6 +419,18 @@ export const PhishingSmtpAdminPage: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Load error */}
+      {loadError && (
+        <div style={{ background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <AlertCircle size={16} style={{ color: T.red, flexShrink: 0, marginTop: 1 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.red, marginBottom: 2 }}>Couldn't load SMTP profiles</div>
+            <div style={{ fontSize: 12, color: T.textBody, wordBreak: 'break-word' }}>{loadError}</div>
+          </div>
+          <button onClick={loadAll} style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderFaint}`, color: T.textBody, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>Retry</button>
+        </div>
+      )}
 
       {/* Profiles list */}
       {loading ? (
