@@ -2,17 +2,32 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Trash2, Plus, Video, FileText, ClipboardCheck,
   X, Save, Loader2, CheckCircle, ChevronDown,
+  Youtube, Cloud, UploadCloud, RefreshCw, AlertCircle,
 } from 'lucide-react';
 import Quill from 'quill';
 import { supabase } from '../../lib/supabase';
 import { Course } from '../../lib/types';
+import {
+  VideoProvider, VideoMeta, VideoContentData,
+  buildCloudflareIframeUrl, buildCloudflareThumbnailUrl,
+  getCloudflareStreamSubdomain, parseVideoMeta, isValidYouTubeUrl,
+} from '../../lib/video';
 
 /* ─────────────────────────────────────────
    TYPES
 ───────────────────────────────────────── */
 type SectionType = 'VIDEO' | 'ARTICLE' | 'QUIZ';
 type QuizQuestion = { question: string; options: string[]; correct_answer: string; };
-type CourseSectionContentData = { questions?: QuizQuestion[]; [k: string]: unknown; };
+type CourseSectionContentData = { questions?: QuizQuestion[]; video?: VideoMeta; [k: string]: unknown; };
+
+/** Cloudflare Stream metadata returned by the cloudflare-stream edge function. */
+type CfVideoInfo = {
+  status: 'ready' | 'processing' | 'error' | 'pending';
+  readyToStream: boolean;
+  durationSeconds: number | null;
+  thumbnail: string | null;
+  playbackUrl: string | null;
+};
 
 export interface CourseSection {
   id: string; course_id: string; title: string;
@@ -200,6 +215,8 @@ const defaultForm = {
   section_type: 'VIDEO' as SectionType,
   content: '', content_ar: '',
   duration_minutes: 10,
+  video_provider: 'youtube' as VideoProvider,
+  cf_uid_en: '', cf_uid_ar: '',
 };
 const defaultQ = { question: '', option1: '', option2: '', option3: '', option4: '', correct_answer: '' };
 
@@ -224,6 +241,28 @@ const SectionBlock: React.FC<{
   </div>
 );
 
+/* ─────────────────────────────────────────
+   CLOUDFLARE STATUS BADGE
+───────────────────────────────────────── */
+const CF_STATUS = {
+  ready:      { c: T.green,    bg: T.greenBg,             b: T.greenBorder,         label: 'Ready' },
+  processing: { c: T.blue,     bg: T.blueBg,              b: T.blueBorder,          label: 'Processing…' },
+  pending:    { c: T.textMuted, bg: 'rgba(255,255,255,.04)', b: T.border,           label: 'Awaiting upload' },
+  error:      { c: T.red,      bg: T.redBg,               b: T.redBorder,           label: 'Error' },
+} as const;
+
+const CfStatusBadge: React.FC<{ info: CfVideoInfo }> = ({ info }) => {
+  const s = CF_STATUS[info.status] ?? CF_STATUS.processing;
+  const mins = info.durationSeconds ? Math.floor(info.durationSeconds / 60) : 0;
+  const secs = info.durationSeconds ? info.durationSeconds % 60 : 0;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 7, background: s.bg, border: `1px solid ${s.b}`, color: s.c, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      {s.label}
+      {info.durationSeconds ? ` · ${mins}:${String(secs).padStart(2, '0')}` : ''}
+    </span>
+  );
+};
+
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
@@ -241,6 +280,13 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
   const [quizLang, setQuizLang]       = useState<'en' | 'ar'>('en');
   const [addQOpen, setAddQOpen]       = useState(true);
 
+  /* Cloudflare Stream — per-language video metadata + busy state */
+  const [cfInfo, setCfInfo]   = useState<{ en: CfVideoInfo | null; ar: CfVideoInfo | null }>({ en: null, ar: null });
+  const [cfBusy, setCfBusy]   = useState<{ en: 'idle' | 'uploading' | 'checking'; ar: 'idle' | 'uploading' | 'checking' }>({ en: 'idle', ar: 'idle' });
+  const [cfError, setCfError] = useState<string | null>(null);
+  const fileEnRef = useRef<HTMLInputElement | null>(null);
+  const fileArRef = useRef<HTMLInputElement | null>(null);
+
   const quillRef    = useRef<HTMLDivElement | null>(null);
   const quillInst   = useRef<Quill | null>(null);
   const quillArRef  = useRef<HTMLDivElement | null>(null);
@@ -249,11 +295,16 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
   useEffect(() => {
     if (!open) return;
     if (editingSection) {
+      const meta = editingSection.section_type === 'VIDEO'
+        ? parseVideoMeta(editingSection.content_data as VideoContentData)
+        : { provider: 'youtube' as VideoProvider };
       setForm({
         title: editingSection.title, title_ar: editingSection.title_ar || '',
         section_type: editingSection.section_type,
         content: editingSection.content || '', content_ar: editingSection.content_ar || '',
         duration_minutes: editingSection.duration_minutes,
+        video_provider: meta.provider,
+        cf_uid_en: meta.cf_uid_en || '', cf_uid_ar: meta.cf_uid_ar || '',
       });
       setQuizQ(editingSection.section_type === 'QUIZ' ? editingSection.content_data?.questions || [] : []);
       setQuizQAr(editingSection.section_type === 'QUIZ' ? editingSection.content_data_ar?.questions || [] : []);
@@ -262,6 +313,7 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     }
     setCurQ({ ...defaultQ }); setCurQAr({ ...defaultQ });
     setQuizLang('en'); setAddQOpen(true);
+    setCfInfo({ en: null, ar: null }); setCfBusy({ en: 'idle', ar: 'idle' }); setCfError(null);
   }, [editingSection, open]);
 
   useEffect(() => {
@@ -335,22 +387,141 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
     setCurQState({ ...defaultQ });
   };
 
+  /* ── Cloudflare Stream helpers ──
+     The API token lives only on the server. The browser uploads the file
+     straight to Cloudflare using a one-time URL minted by the edge function. */
+  const callCfFn = async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const { data, error } = await supabase.functions.invoke('cloudflare-stream', { body: payload });
+    if (error) {
+      let msg = error.message || 'Cloudflare request failed.';
+      try {
+        const ctx = (error as unknown as { context?: Response }).context;
+        if (ctx && typeof ctx.json === 'function') {
+          const j = await ctx.json();
+          if (j?.error) msg = j.error as string;
+        }
+      } catch { /* ignore parse failure */ }
+      throw new Error(msg);
+    }
+    return (data ?? {}) as Record<string, unknown>;
+  };
+
+  const refreshCfStatus = async (uid: string, lang: 'en' | 'ar') => {
+    const id = uid.trim();
+    if (!id) return;
+    setCfError(null);
+    setCfBusy(p => ({ ...p, [lang]: 'checking' }));
+    try {
+      const info = await callCfFn({ action: 'get-video', uid: id }) as unknown as CfVideoInfo;
+      setCfInfo(p => ({ ...p, [lang]: info }));
+    } catch (e) {
+      setCfError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCfBusy(p => ({ ...p, [lang]: 'idle' }));
+    }
+  };
+
+  const uploadCf = async (file: File, lang: 'en' | 'ar') => {
+    setCfError(null);
+    setCfBusy(p => ({ ...p, [lang]: 'uploading' }));
+    try {
+      const init = await callCfFn({ action: 'create-upload', name: file.name, maxDurationSeconds: 21600 });
+      const uid = init.uid as string | undefined;
+      const uploadURL = init.uploadURL as string | undefined;
+      if (!uid || !uploadURL) throw new Error('Could not start the Cloudflare upload.');
+
+      const fd = new FormData();
+      fd.append('file', file);
+      const up = await fetch(uploadURL, { method: 'POST', body: fd });
+      if (!up.ok) throw new Error(`Upload to Cloudflare failed (HTTP ${up.status}).`);
+
+      setForm(p => (lang === 'en' ? { ...p, cf_uid_en: uid } : { ...p, cf_uid_ar: uid }));
+
+      // Poll a few times until the video finishes processing.
+      for (let i = 0; i < 6; i++) {
+        const info = await callCfFn({ action: 'get-video', uid }) as unknown as CfVideoInfo;
+        setCfInfo(p => ({ ...p, [lang]: info }));
+        if (info.status === 'ready' || info.status === 'error') break;
+        await new Promise(r => setTimeout(r, 4000));
+      }
+    } catch (e) {
+      setCfError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCfBusy(p => ({ ...p, [lang]: 'idle' }));
+    }
+  };
+
   /* ── Submit ── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.section_type === 'ARTICLE' && !articlePt.trim()) { alert('Article content (English) is required'); return; }
     if (form.section_type === 'QUIZ' && quizQ.length === 0)   { alert('At least one English question required'); return; }
+    if (form.section_type === 'VIDEO') {
+      if (form.video_provider === 'youtube') {
+        const en = form.content.trim(); const ar = form.content_ar.trim();
+        if (!en && !ar)               { alert('Provide a YouTube video URL (English, or Arabic).'); return; }
+        if (en && !isValidYouTubeUrl(en)) { alert('English video URL must be a valid YouTube URL.'); return; }
+        if (ar && !isValidYouTubeUrl(ar)) { alert('Arabic video URL must be a valid YouTube URL.'); return; }
+      } else {
+        if (!form.cf_uid_en.trim() && !form.cf_uid_ar.trim()) {
+          alert('Provide a Cloudflare Stream video UID (English, or Arabic) — or upload a video.'); return;
+        }
+      }
+    }
+
+    // Strip non-column form fields (provider/uids are persisted inside content_data).
+    const { video_provider, cf_uid_en, cf_uid_ar, ...formCols } = form;
+
     setSaving(true);
     try {
-      const contentData   = form.section_type === 'QUIZ' ? { questions: quizQ } : {};
-      const contentDataAr = form.section_type === 'QUIZ' && quizQAr.length > 0 ? { questions: quizQAr } : contentData;
-      const contentAr     = form.section_type === 'ARTICLE'
-        ? (articlePtAr.trim() ? form.content_ar : form.content)
-        : (form.content_ar.trim() || form.content);
+      let finalContent   = formCols.content;
+      let finalContentAr: string;
+      let contentData: Record<string, unknown>;
+      let contentDataAr: Record<string, unknown>;
+
+      if (form.section_type === 'QUIZ') {
+        contentData    = { questions: quizQ };
+        contentDataAr  = quizQAr.length > 0 ? { questions: quizQAr } : contentData;
+        finalContentAr = formCols.content_ar.trim() || formCols.content;
+      } else if (form.section_type === 'ARTICLE') {
+        contentData    = {};
+        contentDataAr  = {};
+        finalContentAr = articlePtAr.trim() ? formCols.content_ar : formCols.content;
+      } else if (video_provider === 'cloudflare_stream') {
+        const sub   = getCloudflareStreamSubdomain();
+        const uidEn = cf_uid_en.trim();
+        const uidAr = cf_uid_ar.trim();
+        const pbEn  = uidEn ? buildCloudflareIframeUrl(uidEn, sub) : '';
+        const pbAr  = uidAr ? buildCloudflareIframeUrl(uidAr, sub) : '';
+        const video: VideoMeta = {
+          provider: 'cloudflare_stream',
+          cf_uid_en: uidEn || null,
+          cf_uid_ar: uidAr || null,
+          cf_playback_url_en:  pbEn || null,
+          cf_playback_url_ar:  pbAr || null,
+          cf_thumbnail_url_en: uidEn ? buildCloudflareThumbnailUrl(uidEn, sub) : null,
+          cf_thumbnail_url_ar: uidAr ? buildCloudflareThumbnailUrl(uidAr, sub) : null,
+          duration_seconds: cfInfo.en?.durationSeconds ?? cfInfo.ar?.durationSeconds ?? null,
+          status:           cfInfo.en?.status          ?? cfInfo.ar?.status          ?? null,
+        };
+        // Keep content/content_ar as the playback URL too (back-compat convenience).
+        finalContent   = pbEn || pbAr || '';
+        finalContentAr = pbAr || pbEn || '';
+        contentData    = { video };
+        contentDataAr  = { video };
+      } else {
+        // YouTube (default)
+        finalContent   = formCols.content;
+        finalContentAr = formCols.content_ar.trim() || formCols.content;
+        contentData    = { video: { provider: 'youtube' } };
+        contentDataAr  = { video: { provider: 'youtube' } };
+      }
+
       const payload = {
-        ...form,
-        title_ar: form.title_ar.trim() || form.title.trim(),
-        content_ar: contentAr, course_id: course.id,
+        ...formCols,
+        content: finalContent,
+        title_ar: formCols.title_ar.trim() || formCols.title.trim(),
+        content_ar: finalContentAr, course_id: course.id,
         content_data: contentData, content_data_ar: contentDataAr,
         order_index: editingSection ? editingSection.order_index : sectionsCount,
       };
@@ -364,6 +535,51 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
       onClose(); onSaved();
     } catch (err) { console.error(err); alert('Failed to save section'); }
     finally { setSaving(false); }
+  };
+
+  /* ── Cloudflare per-language field block ── */
+  const renderCfLang = (lang: 'en' | 'ar') => {
+    const isEn    = lang === 'en';
+    const uid     = isEn ? form.cf_uid_en : form.cf_uid_ar;
+    const setUid  = (v: string) => setForm(p => (isEn ? { ...p, cf_uid_en: v } : { ...p, cf_uid_ar: v }));
+    const info    = cfInfo[lang];
+    const busy    = cfBusy[lang];
+    const fileRef = isEn ? fileEnRef : fileArRef;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label className="aw-ccf-label">
+          Cloudflare Video UID ({isEn ? 'English' : 'Arabic'}){' '}
+          {isEn
+            ? <span style={{ color: T.accent }}>*</span>
+            : <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span>}
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="aw-ccf-input" type="text" style={{ flex: 1 }}
+            placeholder={isEn ? 'Paste UID or upload below…' : 'Falls back to English'}
+            value={uid} onChange={e => setUid(e.target.value.trim())} />
+          <button type="button" className="aw-ccf-cancel-btn" style={{ padding: '0 14px', whiteSpace: 'nowrap' }}
+            disabled={!uid.trim() || busy !== 'idle'}
+            onClick={() => refreshCfStatus(uid, lang)}>
+            {busy === 'checking'
+              ? <Loader2 size={13} style={{ animation: 'aw-spin .8s linear infinite' }} />
+              : <RefreshCw size={13} />}
+            Check
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) uploadCf(f, lang); e.target.value = ''; }} />
+          <button type="button" className="aw-ccf-cancel-btn" style={{ padding: '8px 14px' }}
+            disabled={busy !== 'idle'}
+            onClick={() => fileRef.current?.click()}>
+            {busy === 'uploading'
+              ? <><Loader2 size={13} style={{ animation: 'aw-spin .8s linear infinite' }} /> Uploading…</>
+              : <><UploadCloud size={13} /> Upload {isEn ? 'English' : 'Arabic'} video</>}
+          </button>
+          {info && <CfStatusBadge info={info} />}
+        </div>
+      </div>
+    );
   };
 
   const typeCfg = TYPES.find(t => t.key === form.section_type) ?? TYPES[0];
@@ -439,15 +655,55 @@ export const CourseContentForm: React.FC<CourseContentFormProps> = ({
 
             {/* ══ VIDEO ══ */}
             {form.section_type === 'VIDEO' && (
-              <SectionBlock title="Video Links" icon={Video} color={T.blue}>
+              <SectionBlock title="Video Source" icon={Video} color={T.blue}>
+                {/* Provider selector */}
                 <div>
-                  <label className="aw-ccf-label">Video URL (English) <span style={{ color: T.accent }}>*</span></label>
-                  <input className="aw-ccf-input" type="url" required placeholder="https://youtube.com/watch?v=…" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
+                  <label className="aw-ccf-label">Video Provider <span style={{ color: T.accent }}>*</span></label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {([
+                      { key: 'youtube',           label: 'YouTube',          Icon: Youtube },
+                      { key: 'cloudflare_stream', label: 'Cloudflare Stream', Icon: Cloud   },
+                    ] as const).map(({ key, label, Icon }) => {
+                      const active = form.video_provider === key;
+                      return (
+                        <button key={key} type="button" className="aw-ccf-type-btn"
+                          style={{ background: active ? T.blueBg : 'rgba(255,255,255,.02)', borderColor: active ? T.blueBorder : 'rgba(255,255,255,.08)', color: active ? T.blue : T.textMuted }}
+                          onClick={() => { setForm(p => ({ ...p, video_provider: key })); setCfError(null); }}>
+                          <Icon size={14} /> {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <label className="aw-ccf-label">Video URL (Arabic) <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
-                  <input className="aw-ccf-input" type="url" placeholder="Falls back to English" value={form.content_ar} onChange={e => setForm(p => ({ ...p, content_ar: e.target.value }))} />
-                </div>
+
+                {cfError && form.video_provider === 'cloudflare_stream' && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 9, padding: '10px 13px' }}>
+                    <AlertCircle size={14} style={{ color: T.red, flexShrink: 0, marginTop: 1 }} />
+                    <span style={{ fontSize: 12, color: T.textBody, wordBreak: 'break-word' }}>{cfError}</span>
+                  </div>
+                )}
+
+                {form.video_provider === 'youtube' ? (
+                  <>
+                    <div>
+                      <label className="aw-ccf-label">Video URL (English) <span style={{ color: T.accent }}>*</span></label>
+                      <input className="aw-ccf-input" type="url" placeholder="https://youtube.com/watch?v=…" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="aw-ccf-label">Video URL (Arabic) <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
+                      <input className="aw-ccf-input" type="url" placeholder="Falls back to English" value={form.content_ar} onChange={e => setForm(p => ({ ...p, content_ar: e.target.value }))} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {renderCfLang('en')}
+                    {renderCfLang('ar')}
+                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, lineHeight: '17px' }}>
+                      Upload a file or paste an existing Cloudflare Stream UID. Uploads go straight to Cloudflare
+                      via a secure one-time URL — the API token never reaches the browser.
+                    </p>
+                  </>
+                )}
               </SectionBlock>
             )}
 

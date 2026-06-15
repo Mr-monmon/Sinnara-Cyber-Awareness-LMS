@@ -10,6 +10,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedNumber } from "../../i18n/utils";
 import ArticlePreview from "./ArticlePreview";
 import { useTheme } from "../../contexts/ThemeContext";
+import { VideoPlayer } from "../../components/VideoPlayer";
+import { resolveVideo, VideoContentData } from "../../lib/video";
 
 /* tokens injected via useTheme() inside the component */
 
@@ -210,13 +212,6 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const getSectionData       = (section: CourseSection) => isArabic ? section.content_data_ar || section.content_data : section.content_data;
   const getSectionQuestions  = (section: CourseSection) => getSectionData(section).questions || [];
 
-  const convertYouTubeUrl = (url: string) => {
-    if (!url) return url;
-    if (url.includes("youtube.com/watch?v=")) return `https://www.youtube.com/embed/${url.split("watch?v=")[1].split("&")[0]}`;
-    if (url.includes("youtu.be/")) return `https://www.youtube.com/embed/${url.split("youtu.be/")[1].split("?")[0]}`;
-    return url;
-  };
-
   const markSectionComplete = async (sectionId: string) => {
     if (!user) return;
     const { error } = await supabase.from("course_section_progress").upsert(
@@ -319,6 +314,12 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const currentSectionTitle = getSectionTitle(currentSection);
   const currentSectionContent = getSectionContent(currentSection);
   const currentSectionQuestions = getSectionQuestions(currentSection);
+  const currentVideo = resolveVideo({
+    contentData: currentSection.content_data as VideoContentData,
+    content: currentSection.content,
+    contentAr: currentSection.content_ar,
+    isArabic,
+  });
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", minHeight: '100vh', background: T.bg }}>
@@ -450,23 +451,20 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
             {/* ── VIDEO ── */}
             {currentSection.section_type === "VIDEO" && (
               <div style={{ padding: '24px' }}>
-                <div style={{ position: 'relative', paddingTop: '56.25%', background: '#000', borderRadius: 10, overflow: 'hidden', marginBottom: 20, border: `1px solid ${T.border}` }}>
-                  {currentSectionContent.includes("youtube.com") || currentSectionContent.includes("youtu.be") ? (
-                    <iframe
-                      src={convertYouTubeUrl(currentSectionContent)}
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                      <PlayCircle size={48} style={{ color: T.textMuted, opacity: 0.50 }} />
-                      <a href={currentSectionContent} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: T.blue, textDecoration: 'none' }}>
-                        {t("courseViewer.videoLink", { ns: "employee" })}
-                      </a>
-                    </div>
-                  )}
-                </div>
+                <VideoPlayer
+                  provider={currentVideo.provider}
+                  youtubeUrl={currentVideo.provider === "youtube" ? currentVideo.rawUrl : null}
+                  cloudflareVideoUid={currentVideo.uid}
+                  cloudflarePlaybackUrl={currentVideo.provider === "cloudflare_stream" ? currentVideo.embedUrl : null}
+                  title={currentSectionTitle}
+                  language={isArabic ? "ar" : "en"}
+                  poster={currentVideo.thumbnailUrl}
+                  fallbackLabel={t("courseViewer.videoLink", { ns: "employee" })}
+                  borderColor={T.border}
+                  mutedColor={T.textMuted}
+                  linkColor={T.blue}
+                  style={{ marginBottom: 20 }}
+                />
 
                 {!isSectionCompleted(currentSection.id) && (
                   <button className="aw-btn-green" onClick={() => markSectionComplete(currentSection.id)}>
