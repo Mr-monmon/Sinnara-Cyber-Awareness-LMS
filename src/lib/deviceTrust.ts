@@ -16,6 +16,7 @@
  */
 
 import { supabase } from './supabase';
+import { captureException } from './sentry';
 
 const DEVICE_ID_KEY = 'aw.mfa.device_id';
 
@@ -40,7 +41,10 @@ export function getDeviceId(): string | null {
     const fresh = randomDeviceId();
     localStorage.setItem(DEVICE_ID_KEY, fresh);
     return fresh;
-  } catch {
+  } catch (err) {
+    // Private mode / blocked storage. Not an error worth alerting on, but it
+    // explains why a user is challenged on every single login.
+    console.warn('[deviceTrust] device id storage unavailable; 2FA will be asked every login:', err);
     return null;
   }
 }
@@ -51,9 +55,18 @@ export async function isDeviceTrusted(): Promise<boolean> {
   if (!deviceId) return false;
   try {
     const { data, error } = await supabase.rpc('is_mfa_device_trusted', { p_device_id: deviceId });
-    if (error) return false;
+    if (error) {
+      // Failing closed here only costs an extra challenge, but a persistent
+      // failure (missing migration, revoked grant) would silently make the
+      // 15-day window never apply, so it must be visible.
+      console.error('[deviceTrust] is_mfa_device_trusted failed:', error.message, error);
+      captureException(error, { scope: 'deviceTrust.isDeviceTrusted' });
+      return false;
+    }
     return data === true;
-  } catch {
+  } catch (err) {
+    console.error('[deviceTrust] is_mfa_device_trusted threw:', err);
+    captureException(err, { scope: 'deviceTrust.isDeviceTrusted' });
     return false;
   }
 }
@@ -67,20 +80,34 @@ export async function trustThisDevice(): Promise<void> {
   const deviceId = getDeviceId();
   if (!deviceId) return;
   try {
-    await supabase.rpc('trust_mfa_device', {
+    const { error } = await supabase.rpc('trust_mfa_device', {
       p_device_id: deviceId,
       p_user_agent: navigator.userAgent.slice(0, 400),
     });
-  } catch {
-    /* best-effort */
+    if (error) {
+      // The login itself already succeeded, so this is not fatal — but if it
+      // keeps failing every login re-challenges, which users report as a bug.
+      console.error('[deviceTrust] trust_mfa_device failed:', error.message, error);
+      captureException(error, { scope: 'deviceTrust.trustThisDevice' });
+    }
+  } catch (err) {
+    console.error('[deviceTrust] trust_mfa_device threw:', err);
+    captureException(err, { scope: 'deviceTrust.trustThisDevice' });
   }
 }
 
 /** Forget every remembered browser for the current user (e.g. after re-enrolling 2FA). */
 export async function revokeTrustedDevices(): Promise<void> {
   try {
-    await supabase.rpc('revoke_mfa_trusted_devices');
-  } catch {
-    /* best-effort */
+    const { error } = await supabase.rpc('revoke_mfa_trusted_devices');
+    if (error) {
+      // A failure here leaves stale trust in place after a factor change, which
+      // is a security-relevant regression rather than a cosmetic one.
+      console.error('[deviceTrust] revoke_mfa_trusted_devices failed:', error.message, error);
+      captureException(error, { scope: 'deviceTrust.revokeTrustedDevices' });
+    }
+  } catch (err) {
+    console.error('[deviceTrust] revoke_mfa_trusted_devices threw:', err);
+    captureException(err, { scope: 'deviceTrust.revokeTrustedDevices' });
   }
 }

@@ -4,7 +4,7 @@ import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
 import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
 import { extractTenantSubdomain, getHostAccessMode } from "../lib/tenant";
-import { setSentryUser } from "../lib/sentry";
+import { captureException, setSentryUser } from "../lib/sentry";
 import { isDeviceTrusted, revokeTrustedDevices, trustThisDevice } from "../lib/deviceTrust";
 
 /**
@@ -172,8 +172,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     // change password → enrol 2FA → (dashboard, where the exam gate takes over).
     let needsMfaEnrolment = false;
     if (isMfaMandatory(profile)) {
-      const { data: factorsData } = await supabase.auth.mfa.listFactors();
-      needsMfaEnrolment = (factorsData?.totp?.length ?? 0) === 0;
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+      if (factorsError) {
+        // "Couldn't check" must not become "not enrolled": that would push an
+        // already-enrolled user into a setup flow they cannot dismiss. Let them
+        // in and re-check on the next sign-in, but make the failure visible.
+        console.error("[auth] listFactors failed during login; skipping 2FA enrolment gate:", factorsError.message, factorsError);
+        captureException(factorsError, { scope: "AuthContext.login.listFactors", userId: profile?.id });
+      } else {
+        // Only a verified factor satisfies the mandate; an abandoned enrolment
+        // leaves an unverified one behind.
+        needsMfaEnrolment = (factorsData?.totp ?? []).every((f) => f.status !== "verified");
+      }
     }
     setMfaSetupRequired(needsMfaEnrolment);
 

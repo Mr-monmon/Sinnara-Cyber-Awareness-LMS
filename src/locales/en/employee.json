@@ -145,7 +145,9 @@
       "body_one": "You have a mandatory assessment to finish. The rest of the platform unlocks as soon as it is done.",
       "exhaustedTitle": "No attempts remaining",
       "exhaustedBody": "You have used every attempt on {{count}} mandatory assessment(s) without passing. Contact your administrator to have your attempts reset.",
-      "dueOn": "Due {{date}}"
+      "dueOn": "Due {{date}}",
+      "errorTitle": "Could not check your required assessments",
+      "errorBody": "Your assessments may be incomplete on this screen. Please refresh, and tell your administrator if it keeps happening. Details: {{message}}"
     }
   },
   "fraudAlerts": {

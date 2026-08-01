@@ -16,7 +16,7 @@ export const ExamGateBanner = ({ gate }: { gate: MandatoryExamGate }) => {
   const { t, i18n } = useTranslation("employee");
 
   if (gate.loading) return null;
-  if (!gate.blocked && gate.exhausted.length === 0) return null;
+  if (!gate.blocked && gate.exhausted.length === 0 && !gate.error) return null;
 
   const nearestDue = gate.blocking
     .map((e) => e.due_date)
@@ -80,6 +80,38 @@ export const ExamGateBanner = ({ gate }: { gate: MandatoryExamGate }) => {
             </p>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: T.textBody, lineHeight: 1.6 }}>
               {t("exams.gate.exhaustedBody", { count: gate.exhausted.length })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/*
+        The gate fails open when its lookup breaks, which would otherwise be
+        invisible — the employee would simply find the platform unlocked. Saying
+        so gives them something to report and gives support something to match
+        against the Sentry event.
+      */}
+      {gate.error && (
+        <div
+          role="alert"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            padding: "14px 16px",
+            marginBottom: 20,
+            borderRadius: 10,
+            background: `${T.orange}14`,
+            border: `1px solid ${T.orange}40`,
+          }}
+        >
+          <AlertTriangle size={18} style={{ color: T.orange, flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: T.white }}>
+              {t("exams.gate.errorTitle")}
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: T.textBody, lineHeight: 1.6 }}>
+              {t("exams.gate.errorBody", { message: gate.error })}
             </p>
           </div>
         </div>

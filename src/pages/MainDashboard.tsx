@@ -4,6 +4,7 @@ import { PolicyConsentModal } from "../components/PolicyConsentModal";
 import { TwoFactorSetupModal } from "../components/auth/TwoFactorSetupModal";
 import LoadingScreen from "../components/LoadingScreen";
 import { supabase } from "../lib/supabase";
+import { captureException } from "../lib/sentry";
 
 const PlatformDashboard = lazy(() =>
   import("./platform-admin/PlatformDashboard").then((m) => ({
@@ -50,14 +51,30 @@ const MainDashboard = () => {
         if (!cancelled) setShowMfaSetup(false);
         return;
       }
-      const { data } = await supabase.auth.mfa.listFactors();
+      const { data, error } = await supabase.auth.mfa.listFactors();
+
+      if (error) {
+        // Do not block on a failed lookup: treating "couldn't check" as "not
+        // enrolled" would trap an already-enrolled user behind a setup modal
+        // they cannot dismiss. Login still enforces the mandate on the next
+        // sign-in, so failing open here is recoverable — but it must be loud.
+        console.error("[mfaMandate] listFactors failed; skipping enrolment gate:", error.message, error);
+        captureException(error, { scope: "MainDashboard.mfaMandate", userId: user?.id });
+        if (!cancelled) setShowMfaSetup(false);
+        return;
+      }
+
       // Only a verified factor counts: an abandoned half-finished enrolment
       // leaves an unverified factor behind and must not satisfy the mandate.
       const enrolled = (data?.totp ?? []).some((f) => f.status === "verified");
       if (!cancelled) setShowMfaSetup(!enrolled);
     };
 
-    void checkEnrolment();
+    void checkEnrolment().catch((err) => {
+      console.error("[mfaMandate] enrolment check threw:", err);
+      captureException(err, { scope: "MainDashboard.mfaMandate" });
+      if (!cancelled) setShowMfaSetup(false);
+    });
     return () => { cancelled = true; };
   }, [user]);
 
