@@ -1,12 +1,20 @@
-import { FormEvent, useState, useEffect } from "react";
-import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck, CheckCircle, ShieldOff, AlertCircle } from "lucide-react";
+import { FormEvent, useState, useEffect, ReactNode } from "react";
+import {
+  Eye, EyeOff, KeyRound, Loader2, ShieldCheck, CheckCircle, ShieldOff, AlertCircle,
+  LayoutDashboard, CreditCard, Users, CalendarDays, CalendarCheck, Target,
+  Mail, Send, Fish, BadgeCheck,
+} from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { checkPassword } from "../../lib/passwordPolicy";
 import { PasswordStrengthMeter } from "../../components/PasswordStrengthMeter";
 import { TwoFactorSetupModal } from "../../components/auth/TwoFactorSetupModal";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme, type ThemeTokens } from "../../contexts/ThemeContext";
+import {
+  getCompanySubscriptionOverview,
+  type CompanySubscriptionOverview,
+} from "../../lib/subscription";
 
 /* tokens injected via useTheme() inside the component */
 
@@ -75,6 +83,36 @@ const STYLES = `
     box-shadow: none;
   }
 
+  /* ── Tabs ── */
+  .aw-acc-tabs {
+    display: flex; gap: 6px; padding: 5px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px; width: fit-content; max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .aw-acc-tab {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 9px; border: 1px solid transparent;
+    background: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; font-family: 'Inter', sans-serif;
+    color: #64748b; transition: all 0.18s; white-space: nowrap;
+  }
+  .aw-acc-tab:hover:not(.active) { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+  .aw-acc-tab.active {
+    background: rgba(200,255,0,0.09);
+    border-color: rgba(200,255,0,0.28);
+    color: #c8ff00;
+  }
+
+  /* ── Metric tile ── */
+  .aw-acc-tile {
+    padding: 15px 16px; border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column; gap: 9px; min-width: 0;
+  }
+
   @keyframes aw-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   .aw-fade-up { animation: aw-fade-up 0.4s ease both; }
 `;
@@ -125,6 +163,98 @@ const PasswordField: React.FC<{
   </div>
 );
 
+/* ─────────────────────────────────────────
+   OVERVIEW — helpers & presentational parts
+───────────────────────────────────────── */
+const SUB_TYPE_LABEL: Record<string, string> = {
+  POC_3M:    "Proof of Concept — 3 Months",
+  MONTHLY_6: "6 Months",
+  YEARLY_1:  "1 Year",
+  YEARLY_2:  "2 Years",
+  CUSTOM:    "Custom",
+};
+
+const fmtDate = (value?: string | null) => {
+  if (!value) return "—";
+  const d = new Date(String(value).slice(0, 10));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const fmtNum = (n?: number | null) => (n === null || n === undefined ? "—" : n.toLocaleString("en-US"));
+
+/** Usage meter. Colour escalates as the limit is approached. */
+const UsageBar: React.FC<{ used: number; limit: number; T: ThemeTokens }> = ({ used, limit, T }) => {
+  const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
+  const pct = Math.round(ratio * 100);
+  const tone = ratio >= 1 ? T.red : ratio >= 0.8 ? T.gold : T.green;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ height: 6, borderRadius: 9999, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: tone, borderRadius: 9999, transition: "width 0.45s ease" }} />
+      </div>
+      <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600 }}>
+        {fmtNum(used)} of {fmtNum(limit)} used · {pct}%
+      </span>
+    </div>
+  );
+};
+
+/** A single label/value tile, optionally with a usage meter underneath. */
+const Tile: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  tone?: string;
+  used?: number | null;
+  limit?: number | null;
+  T: ThemeTokens;
+}> = ({ icon: Icon, label, value, hint, tone, used, limit, T }) => {
+  const showBar = typeof used === "number" && typeof limit === "number" && limit > 0;
+  return (
+    <div className="aw-acc-tile">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Icon size={13} style={{ color: tone || T.textMuted, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: "0.4px", textTransform: "uppercase" }}>
+          {label}
+        </span>
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: tone || T.white, lineHeight: "24px", wordBreak: "break-word" }}>
+        {value}
+      </div>
+      {showBar && <UsageBar used={used as number} limit={limit as number} T={T} />}
+      {hint && !showBar && <span style={{ fontSize: 11, color: T.textMuted }}>{hint}</span>}
+    </div>
+  );
+};
+
+/** Card wrapper matching the existing password / 2FA cards. */
+const Card: React.FC<{
+  icon: React.ElementType; title: string; subtitle?: string;
+  right?: ReactNode; children: ReactNode; delay?: string; T: ThemeTokens;
+}> = ({ icon: Icon, title, subtitle, right, children, delay, T }) => (
+  <div className="aw-fade-up" style={{ animationDelay: delay, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden" }}>
+    <div style={{ padding: "18px 22px", borderBottom: `1px solid ${T.borderFaint}`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ width: 36, height: 36, borderRadius: 9, background: T.borderFaint, border: `1px solid ${T.borderFaint}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={16} style={{ color: T.textLabel }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 140 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: "0 0 2px" }}>{title}</h2>
+        {subtitle && <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>{subtitle}</p>}
+      </div>
+      {right}
+    </div>
+    <div style={{ padding: "18px 22px" }}>{children}</div>
+  </div>
+);
+
+const TILE_GRID: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: 12,
+};
+
 /* ═══════════════════════════════════════════
    COMPONENT
 ═══════════════════════════════════════════ */
@@ -135,6 +265,23 @@ const AccountSettings = () => {
   const [showPassword, setShowPassword] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
   const [error, setError]           = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── Overview (subscription + phishing limits) ────────────────────────
+  const [tab, setTab] = useState<"overview" | "security">("overview");
+  const [overview, setOverview] = useState<CompanySubscriptionOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const companyId = user?.company_id;
+    if (!companyId) { setOverviewLoading(false); return; }
+    setOverviewLoading(true);
+    getCompanySubscriptionOverview(companyId)
+      .then(res => { if (!cancelled) setOverview(res); })
+      .catch(err => { console.warn("[AccountSettings] overview load failed", err); })
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.company_id]);
 
   // ── MFA state ────────────────────────────────────────────────────────
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
@@ -233,10 +380,125 @@ const AccountSettings = () => {
           </h1>
         </div>
         <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
-          Manage your account security and login credentials.
+          Review your company subscription and manage your account security.
         </p>
       </div>
 
+      {/* ── Tabs ── */}
+      <div className="aw-fade-up aw-acc-tabs" style={{ animationDelay: '0.03s' }}>
+        {([
+          { key: 'overview', label: 'Overview',  Icon: LayoutDashboard },
+          { key: 'security', label: 'Security',  Icon: ShieldCheck     },
+        ] as const).map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            type="button"
+            className={`aw-acc-tab ${tab === key ? 'active' : ''}`}
+            onClick={() => setTab(key)}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════════ OVERVIEW TAB ══════════════ */}
+      {tab === 'overview' && (
+        overviewLoading ? (
+          <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '28px 22px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, color: T.textMuted, fontSize: 13 }}>
+            <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} />
+            Loading subscription details…
+          </div>
+        ) : (
+          <>
+            {/* ── Subscription ── */}
+            <Card
+              T={T} delay="0.05s" icon={CreditCard}
+              title="Subscription"
+              subtitle="Your company's current plan and licensing."
+              right={(() => {
+                const s = overview?.subscription;
+                if (!s) return null;
+                const cfg = s.expired
+                  ? { c: T.red,   bg: T.redBg,   b: T.redBorder,   label: 'Expired' }
+                  : !s.is_active
+                    ? { c: T.gold, bg: T.goldBg, b: T.goldBorder, label: 'Inactive' }
+                    : s.expires_soon
+                      ? { c: T.gold, bg: T.goldBg, b: T.goldBorder, label: `Expires in ${s.days_remaining} day${s.days_remaining === 1 ? '' : 's'}` }
+                      : { c: T.green, bg: T.greenBg, b: T.greenBorder, label: 'Active' };
+                return (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9999, background: cfg.bg, border: `1px solid ${cfg.b}`, color: cfg.c, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    <BadgeCheck size={12} /> {cfg.label}
+                  </span>
+                );
+              })()}
+            >
+              {overview?.subscription ? (
+                <div style={TILE_GRID}>
+                  <Tile T={T} icon={CreditCard} label="Subscription Type"
+                    value={SUB_TYPE_LABEL[overview.subscription.subscription_type] || overview.subscription.subscription_type || '—'} />
+                  <Tile T={T} icon={Users} label="License Limit"
+                    value={fmtNum(overview.subscription.license_count)}
+                    used={overview.licensesUsed} limit={overview.subscription.license_count}
+                    hint="Employee accounts included in your plan" />
+                  <Tile T={T} icon={CalendarDays} label="Start Date"
+                    value={fmtDate(overview.subscription.start_date)} />
+                  <Tile T={T} icon={CalendarCheck} label="End Date"
+                    value={fmtDate(overview.subscription.end_date)}
+                    tone={overview.subscription.expired ? T.red : undefined}
+                    hint={overview.subscription.expired
+                      ? 'Subscription period has ended'
+                      : `${overview.subscription.days_remaining} day${overview.subscription.days_remaining === 1 ? '' : 's'} remaining`} />
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>
+                  No subscription details are available for your company. Please contact your account manager.
+                </p>
+              )}
+            </Card>
+
+            {/* ── Phishing limits ── */}
+            <Card
+              T={T} delay="0.10s" icon={Fish}
+              title="Company Phishing Limits"
+              subtitle="Simulation quotas allocated to your company."
+              right={overview?.phishing ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9999, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <Target size={12} /> {overview.phishing.phishing_mode === 'TICKET' ? 'Managed (Ticket)' : 'Self-service'}
+                </span>
+              ) : null}
+            >
+              {overview?.phishing ? (
+                <div style={TILE_GRID}>
+                  <Tile T={T} icon={Target} label="Phishing Mode"
+                    value={overview.phishing.phishing_mode === 'TICKET' ? 'Ticket' : 'Custom'}
+                    hint={overview.phishing.phishing_mode === 'TICKET'
+                      ? 'Campaigns are run for you by the platform team'
+                      : 'You build and launch campaigns yourself'} />
+                  <Tile T={T} icon={Send} label="Max Campaigns / Year"
+                    value={fmtNum(overview.phishing.max_campaigns_per_year)}
+                    used={overview.phishing.campaigns_used_this_year}
+                    limit={overview.phishing.max_campaigns_per_year} />
+                  <Tile T={T} icon={Mail} label="Max Emails / Month"
+                    value={fmtNum(overview.phishing.max_emails_per_month)}
+                    used={overview.phishing.emails_sent_this_month}
+                    limit={overview.phishing.max_emails_per_month} />
+                  <Tile T={T} icon={Users} label="Max Targets / Campaign"
+                    value={fmtNum(overview.phishing.max_targets_per_campaign)}
+                    hint="Recipients allowed in a single campaign" />
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>
+                  No phishing limits are configured for your company yet.
+                </p>
+              )}
+            </Card>
+          </>
+        )
+      )}
+
+      {/* ══════════════ SECURITY TAB ══════════════ */}
+      {tab === 'security' && (
+      <>
       {/* ── User info card ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.05s', padding: '18px 20px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: T.accent + '14', border: `1px solid ${T.accent}2e`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -408,6 +670,9 @@ const AccountSettings = () => {
           )}
         </div>
       </div>
+
+      </>
+      )}
 
       {showMfaSetup && (
         <TwoFactorSetupModal

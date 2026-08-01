@@ -247,6 +247,7 @@ const EmployeeDashboardInner: React.FC = () => {
   const [isLoading, setIsLoading]         = useState(true);
   const [, setAssignedExams] = useState<EmployeeAvailableExam[]>([]);
   const [company, setCompany]             = useState<Company | null>(null);
+  const [companyReadFailed, setCompanyReadFailed] = useState(false);
   const [stats, setStats] = useState({ assignedCourses: 0, completedCourses: 0, inProgressCourses: 0, pendingExams: 0, certificates: 0 });
   const [userRank, setUserRank] = useState<number | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -269,9 +270,20 @@ const EmployeeDashboardInner: React.FC = () => {
     if (!user?.company_id) return;
     setIsLoading(true);
     try {
-      const { data } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).single();
-      setCompany(data);
-    } catch {
+      // Fail OPEN: supabase-js resolves (rather than throws) on an RLS denial or
+      // transient failure, so a null read must not be mistaken for a deactivated
+      // company — that showed "Your subscription has expired" to valid users.
+      const { data, error } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).maybeSingle();
+      if (error) {
+        console.warn("[EmployeeDashboard] could not read company record", error);
+        setCompanyReadFailed(true);
+      } else {
+        setCompanyReadFailed(false);
+        setCompany(data);
+      }
+    } catch (err) {
+      console.warn("[EmployeeDashboard] loadCompany failed", err);
+      setCompanyReadFailed(true);
       setIsLoading(false);
       setLoadError(true);
     }
@@ -568,7 +580,7 @@ const EmployeeDashboardInner: React.FC = () => {
     <>
       {isLoading ? (
         <LoadingScreen />
-      ) : company?.is_active ? (
+      ) : (company?.is_active !== false || companyReadFailed) ? (
         <DashboardLayout activePage={activePage} onNavigate={(page) => setActivePage(page)}>
           <Suspense fallback={<LoadingScreen />}>{renderContent()}</Suspense>
         </DashboardLayout>

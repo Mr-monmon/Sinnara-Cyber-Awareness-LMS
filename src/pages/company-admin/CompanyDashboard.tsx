@@ -198,6 +198,7 @@ export const CompanyDashboard = () => {
   const { user }    = useAuth();
   const [activePage, setActivePage]             = useState("dashboard");
   const [company, setCompany]                   = useState<Company | null>(null);
+  const [companyReadFailed, setCompanyReadFailed] = useState(false);
   const [subscription, setSubscription]         = useState<SubscriptionInfo | null>(null);
   const [isLoading, setIsLoading]               = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
@@ -238,12 +239,27 @@ export const CompanyDashboard = () => {
     setIsLoading(true);
     if (!user?.company_id) return;
     try {
-      const { data } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).single();
-      setCompany(data);
+      const { data, error } = await supabase.from("companies").select("id, name, is_active, subdomain").eq("id", user.company_id).maybeSingle();
+      // Fail OPEN on an unreadable company row. supabase-js resolves (rather than
+      // throws) on an RLS denial or a transient network failure, so treating a
+      // null read as "inactive" used to show the full-screen "Your subscription
+      // has expired" block to companies whose subscription was perfectly valid.
+      // Only an explicit is_active === false may lock the workspace.
+      if (error) {
+        console.warn("[CompanyDashboard] could not read company record", error);
+        setCompanyReadFailed(true);
+      } else {
+        setCompanyReadFailed(false);
+        setCompany(data);
+      }
       const sub = await getActiveSubscription(user.company_id);
       setSubscription(sub);
       setIsLoading(false);
-    } catch { setIsLoading(false); }
+    } catch (err) {
+      console.warn("[CompanyDashboard] loadCompany failed", err);
+      setCompanyReadFailed(true);
+      setIsLoading(false);
+    }
   };
 
   const renderContent = () => {
@@ -523,7 +539,7 @@ export const CompanyDashboard = () => {
   return (
     <>
       {isLoading ? <LoadingScreen /> :
-       company?.is_active ? (
+       (company?.is_active !== false || companyReadFailed) ? (
         <DashboardLayout activePage={activePage} onNavigate={setActivePage}>
           {(subscription?.expires_soon || subscription?.expired) && (
             <div style={{ marginBottom: 16 }}>
