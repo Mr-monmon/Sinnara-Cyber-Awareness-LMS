@@ -85,7 +85,10 @@ interface PlayerEngine {
   seekTo(seconds: number): void;
   /** @param volume 0..1 */
   setVolume(volume: number): void;
+  /** @returns 0..1 */
+  getVolume(): number;
   setMuted(muted: boolean): void;
+  isMuted(): boolean;
   destroy(): void;
 }
 
@@ -131,7 +134,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
 
   const isAr = language === 'ar';
   const L = isAr ? STRINGS.ar : STRINGS.en;
-  const embedUrl = useMemo(() => resolveEmbedUrl(props, locked), [props, locked]);
+  const embedUrl = useMemo(
+    () => resolveEmbedUrl(props, locked),
+    // Depend on the source fields, not the props object, which is a fresh
+    // identity every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [provider, props.youtubeUrl, props.cloudflarePlaybackUrl, props.cloudflareVideoUid, locked],
+  );
 
   /*
    * A configured video that yields no embed URL is a content bug an admin has to
@@ -225,6 +234,9 @@ interface LockedPlayerProps {
 
 const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, isAr, labels, frameStyle }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // The IFrame API's documented pattern targets an element with an id; give it
+  // a stable unique one rather than relying on the bare node reference.
+  const frameId = useRef(`aw-video-${Math.random().toString(36).slice(2, 10)}`).current;
   const engineRef = useRef<PlayerEngine | null>(null);
   /** Furthest point actually watched; the ceiling for any seek. */
   const maxWatchedRef = useRef(0);
@@ -243,17 +255,27 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
   useEffect(() => {
     let cancelled = false;
     let engine: PlayerEngine | null = null;
+    // Tracked separately from `engine` so a player created but abandoned
+    // mid-attach (the learner clicked to the next section) is still torn down.
+    // Without this each switch leaks a live player holding a window message
+    // listener and polling a detached iframe.
+    let disposePlayer: (() => void) | null = null;
 
     const attachYouTube = async () => {
       const YT = await loadYouTubeApi();
       if (cancelled || !iframeRef.current) return;
 
-      const player = await new Promise<any>((resolve) => {
+      const player = await new Promise<any>((resolve, reject) => {
+        let settled = false;
+
         // Resolve with `event.target` rather than the constructor's return value:
         // onReady can fire before the assignment completes.
-        new YT.Player(iframeRef.current, {
+        const created = new YT.Player(iframeRef.current, {
           events: {
-            onReady: (e: any) => resolve(e.target),
+            onReady: (e: any) => {
+              settled = true;
+              resolve(e.target);
+            },
             onStateChange: (e: any) => {
               if (cancelled) return;
               setPlaying(e.data === YT.PlayerState.PLAYING);
@@ -266,10 +288,19 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
               const err = new Error(`YouTube player error ${e?.data} for ${embedUrl}`);
               console.error('[VideoPlayer]', err.message);
               captureException(err, { scope: 'VideoPlayer.youtube', code: e?.data, embedUrl });
-              if (!cancelled) setFailed(true);
+              // A bad video id fires onError and never onReady, so the attach
+              // promise has to be rejected here or it stays pending forever and
+              // the learner watches a spinner instead of the error message.
+              if (!settled) {
+                settled = true;
+                reject(err);
+              } else if (!cancelled) {
+                setFailed(true);
+              }
             },
           },
         });
+        disposePlayer = () => created?.destroy?.();
       });
       if (cancelled) return;
 
@@ -280,7 +311,9 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
         getDuration: () => player.getDuration?.() ?? 0,
         seekTo: (s) => player.seekTo(s, true),
         setVolume: (v) => player.setVolume(Math.round(v * 100)),
+        getVolume: () => (player.getVolume?.() ?? 100) / 100,
         setMuted: (m) => (m ? player.mute() : player.unMute()),
+        isMuted: () => player.isMuted?.() === true,
         destroy: () => player.destroy?.(),
       };
     };
@@ -289,6 +322,7 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
       const Stream = await loadCloudflareStreamSdk();
       if (cancelled || !iframeRef.current) return;
       const player = Stream(iframeRef.current);
+      disposePlayer = () => { /* the SDK has no teardown; dropping the iframe suffices */ };
 
       player.addEventListener('play', () => !cancelled && setPlaying(true));
       player.addEventListener('pause', () => !cancelled && setPlaying(false));
@@ -302,16 +336,36 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
         getDuration: () => player.duration ?? 0,
         seekTo: (s) => { player.currentTime = s; },
         setVolume: (v) => { player.volume = v; },
+        getVolume: () => player.volume ?? 1,
         setMuted: (m) => { player.muted = m; },
-        destroy: () => { /* the SDK has no teardown; dropping the iframe suffices */ },
+        isMuted: () => player.muted === true,
+        destroy: () => { /* see disposePlayer */ },
       };
     };
 
     const attach = provider === 'cloudflare_stream' ? attachCloudflare : attachYouTube;
     attach()
       .then(() => {
-        if (cancelled || !engine) return;
+        if (cancelled || !engine) {
+          // Attach finished after we stopped caring — drop the player rather
+          // than leaving it running against a detached iframe.
+          disposePlayer?.();
+          return;
+        }
         engineRef.current = engine;
+
+        // Adopt the provider's actual audio state. YouTube persists the
+        // viewer's last volume and mute across embeds, so assuming 100/unmuted
+        // would show a full-volume control bar over silent playback with no
+        // native controls to correct it.
+        try {
+          const v = engine.getVolume();
+          if (Number.isFinite(v)) setVolumeState(Math.round(Math.max(0, Math.min(1, v)) * 100));
+          setMutedState(engine.isMuted());
+        } catch (err) {
+          console.warn('[VideoPlayer] could not read initial volume state:', err);
+        }
+
         setReady(true);
       })
       .catch((err) => {
@@ -319,13 +373,16 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
         // an ad-blocker apart from a bad video id or a removed video.
         console.error(`[VideoPlayer] could not attach the ${provider} player:`, err, { embedUrl });
         captureException(err, { scope: 'VideoPlayer.attach', provider, embedUrl });
+        disposePlayer?.();
         if (!cancelled) setFailed(true);
       });
 
     return () => {
       cancelled = true;
       try {
-        engineRef.current?.destroy();
+        // `disposePlayer` also covers the window where the player exists but
+        // `engine` was never assigned.
+        disposePlayer?.();
       } catch (err) {
         // Teardown is best-effort, but a throw here usually means the player and
         // React are fighting over the same node — worth seeing in the console.
@@ -338,17 +395,40 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
   /* ── Position polling + forward-seek watchdog ── */
   useEffect(() => {
     if (!ready) return;
+
+    let lastWallMs = performance.now();
+
     const id = window.setInterval(() => {
       const engine = engineRef.current;
       if (!engine) return;
 
       const total = engine.getDuration();
-      if (Number.isFinite(total) && total > 0) setDuration(total);
+      const hasDuration = Number.isFinite(total) && total > 0;
+      if (hasDuration) setDuration(total);
 
       const t = engine.getCurrentTime();
+      const nowMs = performance.now();
+      const wallElapsed = Math.max(0, (nowMs - lastWallMs) / 1000);
+      lastWallMs = nowMs;
+
       if (!Number.isFinite(t)) return;
 
-      if (t > maxWatchedRef.current + SKIP_TOLERANCE_SECONDS) {
+      /*
+       * How far playback may legitimately have advanced since the last tick.
+       *
+       * Comparing against a fixed tolerance was wrong in two ways. It fired on
+       * any source with no real duration — a live stream sits at the live edge
+       * and refuses to seek — turning the watchdog into a 4 Hz rewind loop with
+       * no way out, since the shield swallows every gesture and there are no
+       * native controls. And it treated a stalled timer as a skip: a throttled
+       * background tab, a long main-thread block or a laptop waking from sleep
+       * all deliver one tick covering minutes of real playback, which used to
+       * be rewound as if the learner had scrubbed. Media advances at most one
+       * second per second of wall time, so wall time is the honest bound.
+       */
+      const allowance = Math.max(SKIP_TOLERANCE_SECONDS, wallElapsed + SKIP_TOLERANCE_SECONDS);
+
+      if (hasDuration && t > maxWatchedRef.current + allowance) {
         // A jump ahead we didn't authorise — pull playback back to the
         // high-water mark rather than letting the learner skip content.
         engine.seekTo(maxWatchedRef.current);
@@ -361,6 +441,7 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
       }
       setCurrentTime(t);
     }, POLL_INTERVAL_MS);
+
     return () => window.clearInterval(id);
   }, [ready]);
 
@@ -437,6 +518,7 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
       <style>{`@keyframes aw-vp-spin { to { transform: rotate(360deg); } }`}</style>
       <iframe
         ref={iframeRef}
+        id={frameId}
         src={embedUrl}
         title={title || 'Course video'}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
