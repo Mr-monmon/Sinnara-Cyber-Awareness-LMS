@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Calendar, Building2, User, CreditCard,
   Save, Loader2, AlertCircle,
@@ -198,15 +198,30 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
     }
   }, [company]);
 
-  /* Auto-calculate end date */
-  useEffect(() => {
-    if (form.subscription_type === 'CUSTOM') return;
+  /* Auto-calculate the end date — ONLY in response to a real user edit.
+     This effect used to also run when the form was hydrated from an existing
+     company, recomputing end = start + N months and silently REVERTING a
+     previously extended end date whenever an admin opened Edit to change
+     something unrelated. `autoCalcRef` keeps it off during hydration and after
+     the end date has been set by hand. */
+  const autoCalcRef = useRef(false);
+
+  const recalcEnd = (type: string, start: string) => {
     const monthsMap: Record<string, number> = { POC_3M: 3, MONTHLY_6: 6, YEARLY_1: 12, YEARLY_2: 24 };
-    const months = monthsMap[form.subscription_type];
-    if (!months) return;
-    const end = new Date(form.subscription_start);
+    const months = monthsMap[type];
+    if (!months || !start) return null;
+    const end = new Date(start);
+    if (Number.isNaN(end.getTime())) return null;
     end.setMonth(end.getMonth() + months);
-    setForm(prev => ({ ...prev, subscription_end: end.toISOString().split('T')[0] }));
+    return end.toISOString().split('T')[0];
+  };
+
+  useEffect(() => {
+    if (!autoCalcRef.current) return;          // hydration, or a manual end-date edit
+    autoCalcRef.current = false;
+    if (form.subscription_type === 'CUSTOM') return;
+    const next = recalcEnd(form.subscription_type, form.subscription_start);
+    if (next) setForm(prev => ({ ...prev, subscription_end: next }));
   }, [form.subscription_type, form.subscription_start]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -342,7 +357,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
               <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label className="aw-cfm-label">Subscription Type <span style={{ color: T.accent }}>*</span></label>
-                  <select className="aw-cfm-select" required value={form.subscription_type} onChange={e => setForm(p => ({ ...p, subscription_type: e.target.value }))}>
+                  <select className="aw-cfm-select" required value={form.subscription_type} onChange={e => { autoCalcRef.current = true; setForm(p => ({ ...p, subscription_type: e.target.value })); }}>
                     <option value="POC_3M">POC 3 Months (Trial)</option>
                     <option value="MONTHLY_6">6 Months</option>
                     <option value="YEARLY_1">1 Year</option>
@@ -353,17 +368,22 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
 
                 <div>
                   <label className="aw-cfm-label">Start Date <span style={{ color: T.accent }}>*</span></label>
-                  <input className="aw-cfm-input" type="date" required value={form.subscription_start} onChange={e => setForm(p => ({ ...p, subscription_start: e.target.value }))} />
+                  <input className="aw-cfm-input" type="date" required value={form.subscription_start} onChange={e => { autoCalcRef.current = true; setForm(p => ({ ...p, subscription_start: e.target.value })); }} />
                 </div>
 
                 <div>
                   <label className="aw-cfm-label">
-                    End Date {form.subscription_type !== 'CUSTOM' && <span style={{ color: T.textMuted, fontWeight: 400 }}>(auto-calculated)</span>}
-                    {form.subscription_type === 'CUSTOM' && <span style={{ color: T.accent }}>*</span>}
+                    End Date <span style={{ color: T.accent }}>*</span>
+                    {form.subscription_type !== 'CUSTOM' && (
+                      <span style={{ color: T.textMuted, fontWeight: 400 }}> (auto-filled — editable)</span>
+                    )}
                   </label>
+                  {/* Always editable: this field used to be disabled unless the type
+                      was CUSTOM, so an admin could not extend a subscription without
+                      changing its type. Editing it by hand now sticks — the auto-calc
+                      effect only re-runs when the type or start date is changed. */}
                   <input
                     className="aw-cfm-input" type="date" required value={form.subscription_end}
-                    disabled={form.subscription_type !== 'CUSTOM'}
                     onChange={e => setForm(p => ({ ...p, subscription_end: e.target.value }))}
                   />
                 </div>

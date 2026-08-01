@@ -20,6 +20,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { buildTenantRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
+import { syncSubscriptionRow } from "../../lib/subscription";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -307,10 +308,20 @@ export const CompaniesPage: React.FC = () => {
   const handleSaveCompany = async (formData: Record<string, unknown>) => {
     try {
       if (editingCompany) {
-        await supabase
+        const { error: updErr } = await supabase
           .from("companies")
           .update(formData)
           .eq("id", editingCompany.id);
+        // Surface write failures. This used to be discarded, so an RLS denial or
+        // constraint violation reported success while nothing was saved — which
+        // looked exactly like "I extended the subscription and it did not apply".
+        if (updErr) throw updErr;
+
+        // Mirror the subscription onto the legacy `subscriptions` row so the
+        // company-facing view can never read a stale end date. `companies` stays
+        // authoritative; this simply stops the two stores from drifting apart.
+        await syncSubscriptionRow(editingCompany.id, formData);
+
         await supabase
           .from("users")
           .update({
@@ -359,16 +370,9 @@ export const CompaniesPage: React.FC = () => {
             adminResult?.error || "Failed to create company admin"
           );
 
-        await supabase.from("subscriptions").insert([
-          {
-            company_id: newCo.id,
-            subscription_type: formData.subscription_type,
-            start_date: formData.subscription_start,
-            end_date: formData.subscription_end,
-            license_count: formData.license_limit,
-            status: formData.is_active ? "ACTIVE" : "PENDING",
-          },
-        ]);
+        // Idempotent: updates the row if one already exists (e.g. created by the
+        // companies→subscriptions sync trigger) instead of inserting a duplicate.
+        await syncSubscriptionRow(newCo.id, formData);
 
         await supabase.from("audit_logs").insert([
           {
