@@ -9,6 +9,8 @@ import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import { FraudAlertWidget } from "../../components/FraudAlertWidget";
 import { useAuth } from "../../contexts/AuthContext";
+import { useMandatoryExamGate } from "../../hooks/useMandatoryExamGate";
+import { ExamGateBanner } from "./ExamGateBanner";
 import { supabase } from "../../lib/supabase";
 import { EmployeeAvailableExam, Company } from "../../lib/types";
 import { formatLocalizedNumber } from "../../i18n/utils";
@@ -256,7 +258,23 @@ const EmployeeDashboardInner: React.FC = () => {
   const isRtl = i18n.dir() === "rtl";
 
   useEffect(() => { loadCompany(); loadStats(); }, [user]);
-  // intentionally not auto-redirecting to exams — employee can navigate freely
+
+  /*
+   * Mandatory assessments hold the employee on the exams screen. Previously the
+   * dashboard deliberately let them roam ("employee can navigate freely"), which
+   * meant a compliance exam with a deadline could be ignored indefinitely while
+   * the employee worked through courses instead.
+   *
+   * `activePage` is left untouched so the page they were heading for is restored
+   * the moment the gate clears; only the *effective* page is overridden.
+   */
+  const examGate = useMandatoryExamGate(user?.id);
+  const effectivePage = examGate.blocked ? "my-exams" : activePage;
+
+  const handleNavigate = (page: string) => {
+    if (examGate.blocked && page !== "my-exams") return;
+    setActivePage(page);
+  };
 
   const loadAssignedExams = async () => {
     if (!user) return;
@@ -566,9 +584,9 @@ const EmployeeDashboardInner: React.FC = () => {
   };
 
   const renderContent = () => {
-    switch (activePage) {
+    switch (effectivePage) {
       case "my-courses":   return <MyCoursesPage navigateToCertificates={() => setActivePage("certificates")} />;
-      case "my-exams":     return <MyExamsPage onExamCompleted={() => { void loadStats(); }} />;
+      case "my-exams":     return <MyExamsPage onExamCompleted={() => { void loadStats(); void examGate.refresh(); }} />;
       case "fraud-alerts": return <FraudAlertsPage />;
       case "certificates": return <CertificatesPage />;
       case "account":      return <AccountSettings />;
@@ -578,10 +596,11 @@ const EmployeeDashboardInner: React.FC = () => {
 
   return (
     <>
-      {isLoading ? (
+      {isLoading || examGate.loading ? (
         <LoadingScreen />
       ) : (company?.is_active !== false || companyReadFailed) ? (
-        <DashboardLayout activePage={activePage} onNavigate={(page) => setActivePage(page)}>
+        <DashboardLayout activePage={effectivePage} onNavigate={handleNavigate}>
+          <ExamGateBanner gate={examGate} />
           <Suspense fallback={<LoadingScreen />}>{renderContent()}</Suspense>
         </DashboardLayout>
       ) : (

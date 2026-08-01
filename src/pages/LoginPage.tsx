@@ -100,7 +100,7 @@ export const LoginPage = ({
   backLabel = "Back to Home",
   backTo = "/",
 }: LoginPageProps) => {
-  const { login, user } = useAuth();
+  const { login, mfaSetupRequired } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -499,7 +499,13 @@ export const LoginPage = ({
 
     {showForcePasswordChange && (
       <ForcePasswordChangeModal
-        mfaEnforced={user?.mfa_enforced ?? false}
+        /*
+         * Chain into 2FA setup only when enrolment is actually outstanding.
+         * `mfaSetupRequired` is resolved during login from the mandate (all
+         * employees, plus anyone flagged `mfa_enforced`) *and* whether a TOTP
+         * factor already exists, so a user who is enrolled isn't asked again.
+         */
+        mfaEnforced={mfaSetupRequired}
         onComplete={() => {
           setShowForcePasswordChange(false);
           navigate("/dashboard", { replace: true });
