@@ -10,6 +10,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { captureException } from './sentry';
+
 const YT_API_SRC = 'https://www.youtube.com/iframe_api';
 const CF_SDK_SRC = 'https://embed.cloudflarestream.com/embed/sdk.latest.js';
 
@@ -46,15 +48,24 @@ export function loadYouTubeApi(): Promise<any> {
     const previous = w.onYouTubeIframeAPIReady;
     w.onYouTubeIframeAPIReady = () => {
       if (typeof previous === 'function') {
-        try { previous(); } catch { /* a foreign handler must not break ours */ }
+        try { previous(); } catch (err) {
+          // A foreign handler must not break ours, but swallowing it silently
+          // would hide a genuine conflict with another embed on the page.
+          console.warn('[videoSdk] a pre-existing onYouTubeIframeAPIReady handler threw:', err);
+        }
       }
       resolve(w.YT);
     };
 
     const tag = injectScript(YT_API_SRC);
-    tag.addEventListener('error', () => {
+    tag.addEventListener('error', (event) => {
+      // Usually an ad-blocker, a corporate proxy or an offline client. The
+      // player shows its own message; this is what tells us which it was.
+      const err = new Error(`Failed to load the YouTube IFrame API from ${YT_API_SRC}`);
+      console.error('[videoSdk]', err.message, event);
+      captureException(err, { scope: 'videoSdk.loadYouTubeApi', src: YT_API_SRC });
       ytPromise = null;
-      reject(new Error('Failed to load the YouTube IFrame API'));
+      reject(err);
     });
   });
 
@@ -76,13 +87,19 @@ export function loadCloudflareStreamSdk(): Promise<any> {
     tag.addEventListener('load', () => {
       if (w.Stream) resolve(w.Stream);
       else {
+        const err = new Error('Cloudflare Stream SDK loaded without a Stream global');
+        console.error('[videoSdk]', err.message);
+        captureException(err, { scope: 'videoSdk.loadCloudflareStreamSdk', src: CF_SDK_SRC });
         cfPromise = null;
-        reject(new Error('Cloudflare Stream SDK loaded without a Stream global'));
+        reject(err);
       }
     });
-    tag.addEventListener('error', () => {
+    tag.addEventListener('error', (event) => {
+      const err = new Error(`Failed to load the Cloudflare Stream SDK from ${CF_SDK_SRC}`);
+      console.error('[videoSdk]', err.message, event);
+      captureException(err, { scope: 'videoSdk.loadCloudflareStreamSdk', src: CF_SDK_SRC });
       cfPromise = null;
-      reject(new Error('Failed to load the Cloudflare Stream SDK'));
+      reject(err);
     });
   });
 

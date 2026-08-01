@@ -8,6 +8,7 @@ import {
   toYouTubeEmbedUrl,
 } from '../lib/video';
 import { loadCloudflareStreamSdk, loadYouTubeApi } from '../lib/videoSdk';
+import { captureException } from '../lib/sentry';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -132,6 +133,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
   const L = isAr ? STRINGS.ar : STRINGS.en;
   const embedUrl = useMemo(() => resolveEmbedUrl(props, locked), [props, locked]);
 
+  /*
+   * A configured video that yields no embed URL is a content bug an admin has to
+   * fix (a malformed YouTube link, or a Cloudflare asset with neither uid nor
+   * playback URL). The learner just sees an empty frame, so without this the
+   * only symptom is a support ticket saying "the video doesn't work".
+   */
+  const unresolvedSource = props.youtubeUrl || props.cloudflarePlaybackUrl || props.cloudflareVideoUid || null;
+  useEffect(() => {
+    if (embedUrl || !unresolvedSource) return;
+    const err = new Error(`Course video could not be resolved to an embed URL (provider=${provider})`);
+    console.error('[VideoPlayer]', err.message, { source: unresolvedSource, title });
+    captureException(err, { scope: 'VideoPlayer.resolveEmbedUrl', provider, source: unresolvedSource, title });
+  }, [embedUrl, unresolvedSource, provider, title]);
+
   const frameStyle: React.CSSProperties = {
     position: 'relative', paddingTop: '56.25%', background: '#000',
     borderRadius: 10, overflow: 'hidden', border: `1px solid ${borderColor}`,
@@ -146,6 +161,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
             <img src={poster} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.35 }} />
           )}
           <PlayCircle size={48} style={{ color: mutedColor, opacity: 0.5, zIndex: 1 }} />
+          {locked && unresolvedSource && (
+            <p style={{ fontSize: 13, color: mutedColor, textAlign: 'center', margin: 0, padding: '0 20px', zIndex: 1 }}>
+              {isAr
+                ? 'هذا الفيديو غير متاح حالياً. يرجى إبلاغ المسؤول.'
+                : 'This video is unavailable. Please let your administrator know.'}
+            </p>
+          )}
           {props.youtubeUrl && !locked && (
             <a
               href={props.youtubeUrl}
@@ -237,6 +259,15 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
               setPlaying(e.data === YT.PlayerState.PLAYING);
               setBuffering(e.data === YT.PlayerState.BUFFERING);
             },
+            onError: (e: any) => {
+              // YouTube error codes: 2 bad id, 5 HTML5 player, 100 removed/private,
+              // 101/150 embedding disabled by the uploader. The last two are the
+              // common ones for course content and need an admin to fix the link.
+              const err = new Error(`YouTube player error ${e?.data} for ${embedUrl}`);
+              console.error('[VideoPlayer]', err.message);
+              captureException(err, { scope: 'VideoPlayer.youtube', code: e?.data, embedUrl });
+              if (!cancelled) setFailed(true);
+            },
           },
         });
       });
@@ -283,13 +314,23 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
         engineRef.current = engine;
         setReady(true);
       })
-      .catch(() => {
+      .catch((err) => {
+        // The learner sees the failure message below; this is what lets us tell
+        // an ad-blocker apart from a bad video id or a removed video.
+        console.error(`[VideoPlayer] could not attach the ${provider} player:`, err, { embedUrl });
+        captureException(err, { scope: 'VideoPlayer.attach', provider, embedUrl });
         if (!cancelled) setFailed(true);
       });
 
     return () => {
       cancelled = true;
-      try { engineRef.current?.destroy(); } catch { /* teardown is best-effort */ }
+      try {
+        engineRef.current?.destroy();
+      } catch (err) {
+        // Teardown is best-effort, but a throw here usually means the player and
+        // React are fighting over the same node — worth seeing in the console.
+        console.warn('[VideoPlayer] player teardown threw:', err);
+      }
       engineRef.current = null;
     };
   }, [embedUrl, provider]);
