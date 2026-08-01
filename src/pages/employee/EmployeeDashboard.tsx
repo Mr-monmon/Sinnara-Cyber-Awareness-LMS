@@ -269,10 +269,19 @@ const EmployeeDashboardInner: React.FC = () => {
    * the moment the gate clears; only the *effective* page is overridden.
    */
   const examGate = useMandatoryExamGate(user?.id);
-  const effectivePage = examGate.blocked ? "my-exams" : activePage;
+  const effectivePage =
+    examGate.blocked && !["my-exams", "account"].includes(activePage) ? "my-exams" : activePage;
+
+  /*
+   * Account settings stays reachable while the gate is up. It is where password
+   * and 2FA management live, and two-factor enrolment is mandatory — locking it
+   * behind an outstanding assessment would leave an employee who needs to
+   * re-enrol a factor with nowhere to go.
+   */
+  const ALWAYS_ALLOWED = ["my-exams", "account"];
 
   const handleNavigate = (page: string) => {
-    if (examGate.blocked && page !== "my-exams") return;
+    if (examGate.blocked && !ALWAYS_ALLOWED.includes(page)) return;
     setActivePage(page);
   };
 
@@ -596,7 +605,7 @@ const EmployeeDashboardInner: React.FC = () => {
 
   return (
     <>
-      {isLoading || examGate.loading ? (
+      {isLoading || !examGate.settled ? (
         <LoadingScreen />
       ) : (company?.is_active !== false || companyReadFailed) ? (
         <DashboardLayout activePage={effectivePage} onNavigate={handleNavigate}>

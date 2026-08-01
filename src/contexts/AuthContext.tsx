@@ -256,9 +256,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (updateError) return { ok: false, error: updateError.message };
 
       if (user?.id) {
-        await supabase.from("users").update({ requires_password_change: false }).eq("id", user.id);
+        const { error: profileError } = await supabase
+          .from("users")
+          .update({ requires_password_change: false })
+          .eq("id", user.id);
+        if (profileError) {
+          // The auth password did change, so this is not a failed change — but
+          // leaving the flag set means the user is asked to change it again on
+          // the next login, which looks like the save silently failed.
+          console.error("[auth] password changed but clearing requires_password_change failed:", profileError.message, profileError);
+          captureException(profileError, { scope: "AuthContext.changePassword.clearFlag", userId: user.id });
+        }
         setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
       }
+
+      /*
+       * A new password invalidates every remembered browser.
+       *
+       * Otherwise an attacker who obtained the old password and had once passed
+       * a challenge keeps a 2FA-free path in on that browser for the rest of the
+       * trust window. This is done here rather than by a database trigger
+       * because the password lives in `auth.users` and this schema has no column
+       * whose change a trigger could key off.
+       */
+      await revokeTrustedDevices();
 
       setForcePasswordChange(false);
       return { ok: true };
@@ -270,18 +291,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const enrollTotp = async (): Promise<{ qrCode: string; secret: string; factorId: string } | null> => {
     try {
+      /*
+       * Clear out abandoned enrolments before starting a new one.
+       *
+       * Every call mints a fresh factor with a unique friendly name, and an
+       * enrolment the user walks away from leaves an unverified factor behind
+       * forever. Since 2FA setup is now mandatory and non-dismissible, those
+       * accumulate on exactly the accounts that keep retrying — until the
+       * per-user factor cap is hit and `enroll` starts failing outright, which
+       * strands the user on an unskippable modal. Unverified factors carry no
+       * value, so removing them is safe.
+       */
+      const { data: existing, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) {
+        console.warn("[auth] could not list factors before enrolling:", listError.message);
+      } else {
+        const stale = (existing?.totp ?? []).filter((f) => f.status !== "verified");
+        for (const factor of stale) {
+          const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          if (unenrollError) {
+            console.warn("[auth] could not remove an unverified factor:", factor.id, unenrollError.message);
+          }
+        }
+      }
+
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         issuer: "Awareone",
         friendlyName: `Awareone-${Date.now()}`,
       });
-      if (error || !data) return null;
+      if (error || !data) {
+        // The modal shows a retry, but without this the underlying cause of a
+        // repeated failure (factor cap, rate limit, project config) is invisible.
+        console.error("[auth] TOTP enrolment failed:", error?.message, error);
+        captureException(error ?? new Error("mfa.enroll returned no data"), { scope: "AuthContext.enrollTotp" });
+        return null;
+      }
       return {
         qrCode: data.totp.qr_code,
         secret: data.totp.secret,
         factorId: data.id,
       };
-    } catch {
+    } catch (err) {
+      console.error("[auth] TOTP enrolment threw:", err);
+      captureException(err, { scope: "AuthContext.enrollTotp" });
       return null;
     }
   };

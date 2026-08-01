@@ -74,7 +74,7 @@ interface Props {
 }
 
 export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => {
-  const { enrollTotp, verifyTotpEnrollment } = useAuth();
+  const { enrollTotp, verifyTotpEnrollment, logout } = useAuth();
   const [step, setStep] = useState<"loading" | "scan" | "verify" | "success" | "error">("loading");
   const [qrCode, setQrCode] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
@@ -83,9 +83,11 @@ export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => 
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [enrollAttempt, setEnrollAttempt] = useState(0);
 
   useEffect(() => {
     const start = async () => {
+      setStep("loading");
       const result = await enrollTotp();
       if (!result) {
         setStep("error");
@@ -97,7 +99,7 @@ export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => 
       setStep("scan");
     };
     void start();
-  }, [enrollTotp]);
+  }, [enrollTotp, enrollAttempt]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,14 +150,34 @@ export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => 
           </div>
         )}
 
+        {/*
+          This modal is non-dismissible when 2FA is mandatory, so a failed
+          enrolment must never be a dead end. Without a retry and a sign-out the
+          user is stranded on a full-screen overlay with no way back — locked out
+          of the whole product by a transient network error.
+        */}
         {step === "error" && (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <p style={{ color: T.red, fontSize: 14 }}>Failed to initialize 2FA setup. Please try again later.</p>
-            {onSkip && (
-              <button className="tfs-btn-ghost" style={{ marginTop: 16 }} onClick={onSkip}>
-                Skip for now
+            <p style={{ color: T.red, fontSize: 14, marginBottom: 20 }}>
+              Failed to start two-factor setup. This is usually a temporary network problem.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button className="tfs-btn-accent" onClick={() => setEnrollAttempt((n) => n + 1)}>
+                Try again
               </button>
-            )}
+              {onSkip ? (
+                <button className="tfs-btn-ghost" onClick={onSkip}>
+                  Skip for now
+                </button>
+              ) : (
+                <button className="tfs-btn-ghost" onClick={() => { void logout(); }}>
+                  Sign out
+                </button>
+              )}
+            </div>
+            <p style={{ color: T.textMuted, fontSize: 12, marginTop: 16 }}>
+              If this keeps happening, contact your administrator.
+            </p>
           </div>
         )}
 

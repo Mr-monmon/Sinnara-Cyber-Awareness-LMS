@@ -34,6 +34,27 @@ CREATE TABLE IF NOT EXISTS public.mfa_trusted_devices (
   CONSTRAINT mfa_trusted_devices_unique UNIQUE (user_id, device_id)
 );
 
+-- `CREATE TABLE IF NOT EXISTS` skips the constraints above entirely if the
+-- table already exists, so add them idempotently for a re-run against a
+-- partially-applied database.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'mfa_trusted_devices_device_id_len'
+  ) THEN
+    ALTER TABLE public.mfa_trusted_devices
+      ADD CONSTRAINT mfa_trusted_devices_device_id_len
+      CHECK (char_length(device_id) BETWEEN 16 AND 128);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'mfa_trusted_devices_unique'
+  ) THEN
+    ALTER TABLE public.mfa_trusted_devices
+      ADD CONSTRAINT mfa_trusted_devices_unique UNIQUE (user_id, device_id);
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS mfa_trusted_devices_user_expires_idx
   ON public.mfa_trusted_devices (user_id, expires_at DESC);
 
@@ -71,6 +92,9 @@ AS $$ SELECT interval '15 days' $$;
 COMMENT ON FUNCTION public.mfa_device_trust_window() IS
   'How long a device may skip the TOTP challenge after passing one.';
 
+REVOKE ALL ON FUNCTION public.mfa_device_trust_window() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.mfa_device_trust_window() TO authenticated;
+
 -- ============================================================================
 -- 4) Is this device still trusted for the calling user?
 -- ============================================================================
@@ -78,7 +102,7 @@ CREATE OR REPLACE FUNCTION public.is_mfa_device_trusted(p_device_id text)
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user uuid := auth.uid();
@@ -107,7 +131,7 @@ CREATE OR REPLACE FUNCTION public.trust_mfa_device(p_device_id text, p_user_agen
 RETURNS timestamptz
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user    uuid := auth.uid();
@@ -147,7 +171,7 @@ CREATE OR REPLACE FUNCTION public.revoke_mfa_trusted_devices()
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user    uuid := auth.uid();
@@ -167,35 +191,20 @@ REVOKE ALL ON FUNCTION public.revoke_mfa_trusted_devices() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.revoke_mfa_trusted_devices() TO authenticated;
 
 -- ============================================================================
--- 7) A password change invalidates every remembered device
+-- 7) Password changes and device trust
 -- ============================================================================
--- If a password is reset or rotated, the previous "this browser is fine" grants
--- must not survive: otherwise an attacker who obtained the old password and had
--- once passed 2FA would keep a 2FA-free path in.
-CREATE OR REPLACE FUNCTION public.drop_mfa_trust_on_password_change()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.password_changed_at IS DISTINCT FROM OLD.password_changed_at THEN
-    DELETE FROM public.mfa_trusted_devices WHERE user_id = NEW.id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'password_changed_at'
-  ) THEN
-    DROP TRIGGER IF EXISTS trg_drop_mfa_trust_on_password_change ON public.users;
-    CREATE TRIGGER trg_drop_mfa_trust_on_password_change
-      AFTER UPDATE OF password_changed_at ON public.users
-      FOR EACH ROW
-      EXECUTE FUNCTION public.drop_mfa_trust_on_password_change();
-  END IF;
-END $$;
+-- A new password must invalidate every remembered browser, otherwise an
+-- attacker holding the old password who had once passed a challenge keeps a
+-- 2FA-free path in for the rest of the window.
+--
+-- This is NOT enforced by a trigger here. Passwords live in `auth.users`, and
+-- `public.users` has no column tracking password changes that a trigger could
+-- key off — an earlier draft guarded on a `password_changed_at` column that
+-- does not exist in this schema, so the trigger was silently never created and
+-- the protection was dead code. The revocation is therefore done by the client
+-- immediately after a successful password update, via
+-- `revoke_mfa_trusted_devices()` in AuthContext.changePassword.
+--
+-- If a future migration adds a password-change timestamp to `public.users`,
+-- move this to a trigger on that column so the guarantee no longer depends on
+-- the client completing the call.

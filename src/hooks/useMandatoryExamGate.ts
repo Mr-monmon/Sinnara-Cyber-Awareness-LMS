@@ -33,10 +33,11 @@ import type { EmployeeAvailableExam } from '../lib/types';
  *   - Pre-assessments whose single attempt has been used. A pre-assessment
  *     measures a starting level, so failing one is an expected outcome and not
  *     a problem to escalate — once it has been sat, its job is done.
- *   - Post-assessments with no attempts left and no pass. Nothing the employee
- *     does can clear these, so holding them hostage would lock them out of the
- *     platform permanently. They are surfaced as needing an administrator to
- *     reset attempts instead (see `exhausted`).
+ *   - Post-assessments with no attempts left and no pass, and assignments whose
+ *     `max_attempts` is missing or non-positive. Nothing the employee does can
+ *     clear either, so holding them hostage would lock them out of the platform
+ *     permanently. They are surfaced as needing an administrator instead (see
+ *     `exhausted`).
  */
 
 /** The view exposes more than the shared type declares; these are the extra columns used here. */
@@ -48,6 +49,13 @@ type AvailableExamRow = EmployeeAvailableExam & {
 
 export interface MandatoryExamGate {
   loading: boolean;
+  /**
+   * False only until the first evaluation completes. Callers should gate their
+   * shell on this rather than on `loading`: `refresh()` sets `loading` on every
+   * call, so blanking the page on it would tear the whole dashboard down and
+   * rebuild it every time an assessment is finished.
+   */
+  settled: boolean;
   /** Mandatory assessments the employee must sit now — non-empty means the UI is locked. */
   blocking: AvailableExamRow[];
   /**
@@ -71,11 +79,26 @@ function isPreAssessment(exam: AvailableExamRow): boolean {
   return exam.exam_type === 'PRE_ASSESSMENT';
 }
 
-/** Attempts are unlimited when max_attempts isn't a positive number. */
-function hasAttemptsLeft(exam: AvailableExamRow): boolean {
+/**
+ * Whether the employee can actually start this assessment right now.
+ *
+ * This must agree exactly with MyExamsPage's `attempts_used < max_attempts`,
+ * because that screen is the only place the gate lets them reach. Disagreeing
+ * is a lockout: `assigned_exams.max_attempts` is nullable (and an admin can set
+ * it to 0), and treating a null as "unlimited" here while the exams screen
+ * renders a disabled button would hold the employee on a page that offers them
+ * nothing to do, with no state transition that could ever release them.
+ *
+ * So a missing or non-positive limit means "cannot be taken", not "unlimited".
+ * Such an assignment is a misconfiguration only an admin can fix, and is
+ * reported through `exhausted` rather than used to lock the account.
+ */
+function canBeTakenNow(exam: AvailableExamRow): boolean {
   const max = Number(exam.max_attempts);
-  if (!Number.isFinite(max) || max <= 0) return true;
-  return Number(exam.attempts_used) < max;
+  const used = Number(exam.attempts_used);
+  if (!Number.isFinite(max) || max <= 0) return false;
+  if (!Number.isFinite(used)) return false;
+  return used < max;
 }
 
 export function useMandatoryExamGate(employeeId: string | undefined): MandatoryExamGate {
@@ -83,6 +106,7 @@ export function useMandatoryExamGate(employeeId: string | undefined): MandatoryE
   const [blocking, setBlocking] = useState<AvailableExamRow[]>([]);
   const [exhausted, setExhausted] = useState<AvailableExamRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [settled, setSettled] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!employeeId) {
@@ -90,6 +114,7 @@ export function useMandatoryExamGate(employeeId: string | undefined): MandatoryE
       setExhausted([]);
       setError(null);
       setLoading(false);
+      setSettled(true);
       return;
     }
 
@@ -133,13 +158,13 @@ export function useMandatoryExamGate(employeeId: string | undefined): MandatoryE
         completedCourseIds = new Set((progress ?? []).map((p) => p.course_id as string));
       }
 
-      const takeableNow = rows.filter(
+      const prereqMet = rows.filter(
         (r) => !r.prerequisite_course_id || completedCourseIds.has(r.prerequisite_course_id),
       );
 
-      setBlocking(takeableNow.filter(hasAttemptsLeft));
+      setBlocking(prereqMet.filter(canBeTakenNow));
       setExhausted(
-        takeableNow.filter((r) => !hasAttemptsLeft(r) && !isPreAssessment(r)),
+        prereqMet.filter((r) => !canBeTakenNow(r) && !isPreAssessment(r)),
       );
     } catch (err) {
       // A failed lookup must not lock an employee out of their training, so the
@@ -154,6 +179,7 @@ export function useMandatoryExamGate(employeeId: string | undefined): MandatoryE
       setExhausted([]);
     } finally {
       setLoading(false);
+      setSettled(true);
     }
   }, [employeeId]);
 
@@ -161,5 +187,5 @@ export function useMandatoryExamGate(employeeId: string | undefined): MandatoryE
     void refresh();
   }, [refresh]);
 
-  return { loading, blocking, exhausted, blocked: blocking.length > 0, error, refresh };
+  return { loading, settled, blocking, exhausted, blocked: blocking.length > 0, error, refresh };
 }
