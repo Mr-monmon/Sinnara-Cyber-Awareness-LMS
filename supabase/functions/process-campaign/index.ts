@@ -553,7 +553,19 @@ Deno.serve(async (req) => {
         const hour  = getHourInTimezone(tz);
 
         if (!isBusinessHour(hour, start, end)) {
-          const reschedule = nextBusinessHourStart(start, end, tz);
+          // Spread deferred rows randomly across the business window rather than
+          // stacking them all on the exact opening instant. Rescheduling every
+          // out-of-hours row to the same nextBusinessHourStart made them all
+          // become due together at open, so the worker drained them at the 50 ms
+          // in-loop floor — a burst of the whole campaign in seconds that
+          // ignores emails_per_minute and looks to a mail provider exactly like
+          // spam (rate-limit / reputation hit). A random offset over the window
+          // keeps arrivals human-paced and, unlike a per-batch counter, stays
+          // correct across the multiple cron runs a large deferral takes.
+          const base       = nextBusinessHourStart(start, end, tz).getTime();
+          const windowHrs  = Math.max(end - start, 1);
+          const jitterMs   = Math.floor(Math.random() * windowHrs * 3600 * 1000);
+          const reschedule = new Date(base + jitterMs);
           await supabase.from("campaign_email_queue")
             .update({ scheduled_at: reschedule.toISOString() })
             .eq("id", job.id);
@@ -815,7 +827,14 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Micro-delay to avoid hammering the SMTP server
+      // The send RATE is enforced by scheduled_at spacing set at launch time
+      // (each target is spaced 60000/emails_per_minute ms apart), not by this
+      // loop — the batch query only returns rows whose scheduled_at is already
+      // due, so a slow-rate campaign naturally trickles a few per run. This 50 ms
+      // pause is only SMTP politeness between the handful due at once; it is not
+      // the rate limiter. (The one path that used to bypass the spacing — the
+      // business-hours reschedule stacking everything on the opening instant —
+      // is fixed above by jittering across the window.)
       await new Promise(r => setTimeout(r, 50));
     }
 
