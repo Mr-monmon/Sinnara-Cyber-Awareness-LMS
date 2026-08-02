@@ -12,6 +12,7 @@ import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import { SubscriptionBanner } from "../../components/SubscriptionBanner";
 import { getActiveSubscription, type SubscriptionInfo } from "../../lib/subscription";
+import { DepartmentMaturityTrend } from "../../components/charts/DepartmentMaturityTrend";
 
 const EmployeesPage = lazy(() => import("./EmployeesPage").then(m => ({ default: m.EmployeesPage })));
 const AnalyticsPage = lazy(() => import("./AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
@@ -531,6 +532,24 @@ export const CompanyDashboard = () => {
             ))}
           </div>
         </div>
+
+        {/*
+          Every other tile on this dashboard is a snapshot. This is the only
+          thing that answers "are we getting better?", so it sits with them
+          rather than only on the reports page.
+        */}
+        <DepartmentMaturityTrend
+          companyId={user?.company_id ?? undefined}
+          months={12}
+          tokens={{
+            bgCard: T.bgCard,
+            border: T.border,
+            text: T.white,
+            textMuted: T.textMuted,
+            textSub: T.textBody,
+            accent: T.accent,
+          }}
+        />
 
       </div>
     );
