@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Loader2,
   Mail,
   MessageSquare,
@@ -7,12 +8,13 @@ import {
   AlertCircle,
   Clock,
   X,
-  Send,
   ChevronDown,
   User,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { brandedEmailLayout } from "../../lib/email";
+import { SupportThread, type SupportMessage } from "../../components/support/SupportThread";
+import { notifySupportReply } from "../../lib/supportNotify";
+import { useAuth } from "../../contexts/AuthContext";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -208,9 +210,9 @@ const SupportRequestsPage = () => {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [replyMap, setReplyMap] = useState<Record<string, string>>({});
-  const [sendingId, setSendingId] = useState<string | null>(null);
-  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const { user: currentUser } = useAuth();
+  const currentUserId = currentUser?.id;
+  const [notifyState, setNotifyState] = useState<Record<string, { ok: boolean; error?: string }>>({});
   const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -261,6 +263,28 @@ const SupportRequestsPage = () => {
     }
   };
 
+  /**
+   * A staff reply is already saved in the thread by the time this runs, so the
+   * email is strictly a notification — and its failure is reported without
+   * pretending the reply itself failed. Internal notes notify nobody.
+   */
+  const handleReplyPosted = async (ticket: SupportTicketRow, message: SupportMessage) => {
+    if (message.is_internal) return;
+
+    const email = ticket.users?.email;
+    if (!email) {
+      setNotifyState(prev => ({ ...prev, [ticket.id]: { ok: false, error: "this ticket has no email address on file" } }));
+      return;
+    }
+
+    const result = await notifySupportReply({
+      toEmail: email,
+      recipientName: ticket.users?.full_name || "there",
+      ticketSubject: ticket.subject,
+    });
+    setNotifyState(prev => ({ ...prev, [ticket.id]: result }));
+  };
+
   const handleStatusChange = async (id: string, status: TicketStatus) => {
     setUpdatingId(id);
     try {
@@ -279,73 +303,6 @@ const SupportRequestsPage = () => {
       setError("Failed to update status. Please try again.");
     } finally {
       setUpdatingId(null);
-    }
-  };
-
-  const buildReplyHtml = (fullName: string, subject: string, reply: string) =>
-    brandedEmailLayout(`
-      <div style="padding:32px; background:linear-gradient(135deg, #12140a 0%, #1f2610 100%); color:#ffffff; border-bottom:1px solid rgba(255,255,255,0.10);">
-        <p style="margin:0 0 10px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase; color:#c8ff00;">Awareone Support</p>
-        <h1 style="margin:0; font-size:28px; line-height:1.3;">Reply to your support request, ${fullName}</h1>
-      </div>
-      <div style="padding:32px;">
-        <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
-          We reviewed your support request: <strong>${subject}</strong>
-        </p>
-        <p style="margin:0 0 18px; font-size:15px; line-height:1.8; color:#94a3b8;">
-          Our reply: <strong>${reply}</strong>
-        </p>
-        <p style="margin:24px 0 0; font-size:15px; line-height:1.8; color:#94a3b8;">
-          If you need more help, reply to this email or create another support request from your dashboard.
-        </p>
-      </div>
-    `);
-
-  const handleSendReply = async (
-    e: FormEvent<HTMLFormElement>,
-    ticket: SupportTicketRow
-  ) => {
-    e.preventDefault();
-    const reply = (replyMap[ticket.id] || "").trim();
-    const email = ticket.users?.email;
-    if (!reply) {
-      setError("Please enter a reply message.");
-      return;
-    }
-    if (!email) {
-      setError("This ticket has no valid email.");
-      return;
-    }
-    setSendingId(ticket.id);
-    setError("");
-    try {
-      const { error: fnErr } = await supabase.functions.invoke("send-email", {
-        body: {
-          to: email,
-          subject: `Support Reply: ${ticket.subject}`,
-          html: buildReplyHtml(
-            ticket.users?.full_name || "User",
-            ticket.subject,
-            reply
-          ),
-        },
-      });
-      if (fnErr) throw fnErr;
-      setReplyMap((prev) => ({ ...prev, [ticket.id]: "" }));
-      setSentIds((prev) => new Set([...prev, ticket.id]));
-      setTimeout(
-        () =>
-          setSentIds((prev) => {
-            const n = new Set(prev);
-            n.delete(ticket.id);
-            return n;
-          }),
-        3000
-      );
-    } catch {
-      setError("Failed to send reply. Please try again.");
-    } finally {
-      setSendingId(null);
     }
   };
 
@@ -586,7 +543,6 @@ const SupportRequestsPage = () => {
             const cfg = STATUS_CFG[ticket.status];
             const Icon = cfg.icon;
             const isExpand = expanded.has(ticket.id);
-            const isSent = sentIds.has(ticket.id);
 
             return (
               <div
@@ -774,7 +730,7 @@ const SupportRequestsPage = () => {
                   </div>
                 </div>
 
-                {/* Expanded reply area */}
+                {/* Expanded conversation */}
                 {isExpand && (
                   <div
                     style={{
@@ -783,77 +739,37 @@ const SupportRequestsPage = () => {
                       paddingTop: 16,
                     }}
                   >
-                    <form onSubmit={(e) => handleSendReply(e, ticket)}>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: T.textMuted,
-                          marginBottom: 8,
-                        }}
-                      >
-                        Reply Message
-                      </label>
-                      <textarea
-                        className="aw-sr-textarea"
-                        placeholder="Write your support reply here…"
-                        rows={4}
-                        value={replyMap[ticket.id] || ""}
-                        onChange={(e) =>
-                          setReplyMap((prev) => ({
-                            ...prev,
-                            [ticket.id]: e.target.value,
-                          }))
-                        }
-                      />
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginTop: 10,
-                          gap: 12,
-                        }}
-                      >
-                        {isSent && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              fontSize: 12,
-                              color: T.green,
-                            }}
-                          >
-                            <CheckCircle size={13} /> Reply sent successfully!
-                          </div>
-                        )}
-                        <div style={{ marginLeft: "auto" }}>
-                          <button
-                            type="submit"
-                            className="aw-sr-reply-btn"
-                            disabled={sendingId === ticket.id}
-                          >
-                            {sendingId === ticket.id ? (
-                              <>
-                                <Loader2
-                                  size={13}
-                                  style={{
-                                    animation: "aw-spin 0.8s linear infinite",
-                                  }}
-                                />{" "}
-                                Sending…
-                              </>
-                            ) : (
-                              <>
-                                <Send size={13} /> Send Reply via Email
-                              </>
-                            )}
-                          </button>
-                        </div>
+                    {/*
+                      The reply is written to the ticket thread, not emailed.
+                      The customer reads it in the platform; the email that goes
+                      out is only a notification with a link, so support detail
+                      never leaves the tenant boundary.
+                    */}
+                    <SupportThread
+                      ticketId={ticket.id}
+                      currentUserId={currentUserId}
+                      canPostInternal
+                      readOnly={ticket.status === "closed"}
+                      onPosted={(message) => { void handleReplyPosted(ticket, message); }}
+                      tokens={{
+                        bgCard: T.bg,
+                        bgHover: "rgba(255,255,255,0.04)",
+                        border: T.border,
+                        text: T.white,
+                        textMuted: T.textMuted,
+                        textSub: T.textBody,
+                        accent: T.accent,
+                        accentText: T.bg,
+                      }}
+                    />
+
+                    {notifyState[ticket.id] && (
+                      <div style={{ marginTop: 10, fontSize: 12, color: notifyState[ticket.id]!.ok ? T.green : T.orange, display: "flex", alignItems: "center", gap: 6 }}>
+                        {notifyState[ticket.id]!.ok
+                          ? <><CheckCircle size={13} /> Reply saved and the customer has been notified by email.</>
+                          : <><AlertTriangle size={13} /> Reply saved, but the notification email failed: {notifyState[ticket.id]!.error}</>}
                       </div>
-                    </form>
+                    )}
                   </div>
                 )}
               </div>
