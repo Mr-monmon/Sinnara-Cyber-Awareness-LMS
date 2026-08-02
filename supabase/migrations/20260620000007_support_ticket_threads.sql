@@ -23,6 +23,58 @@
 -- adopted here and any stray upper-case rows are normalised — the file and the
 -- database stop disagreeing.
 
+-- MISSING COLUMNS. `support_ticket` was created by an early migration using
+-- CREATE TABLE IF NOT EXISTS against a table that already existed in a different
+-- shape, so several declared columns — `company_id` among them — never actually
+-- appeared. Anything downstream that referenced them (the company-admin read
+-- policy, the set-company trigger) has therefore been broken or absent. This
+-- migration adds what it needs rather than assuming, and backfills it.
+
+-- ============================================================================
+-- 0) Make the table match what the rest of this file expects
+-- ============================================================================
+ALTER TABLE public.support_ticket
+  ADD COLUMN IF NOT EXISTS company_id uuid REFERENCES public.companies(id) ON DELETE SET NULL;
+
+ALTER TABLE public.support_ticket
+  ADD COLUMN IF NOT EXISTS description text;
+
+ALTER TABLE public.support_ticket
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- Existing tickets predate the column; derive their company from the requester.
+UPDATE public.support_ticket t
+SET company_id = u.company_id
+FROM public.users u
+WHERE u.id = t.user_id
+  AND t.company_id IS DISTINCT FROM u.company_id
+  AND u.company_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_support_ticket_company_id
+  ON public.support_ticket (company_id);
+
+-- Keep it populated from here on. Declared in 20260606000001, but that could not
+-- have taken effect while the column was absent.
+CREATE OR REPLACE FUNCTION public.support_ticket_set_company()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NEW.company_id IS NULL AND NEW.user_id IS NOT NULL THEN
+    SELECT company_id INTO NEW.company_id FROM public.users WHERE id = NEW.user_id;
+  END IF;
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_support_ticket_set_company ON public.support_ticket;
+CREATE TRIGGER trg_support_ticket_set_company
+  BEFORE INSERT OR UPDATE ON public.support_ticket
+  FOR EACH ROW EXECUTE FUNCTION public.support_ticket_set_company();
+
 -- ============================================================================
 -- 1) Reconcile status with what is actually deployed
 -- ============================================================================
