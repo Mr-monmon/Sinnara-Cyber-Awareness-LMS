@@ -4,12 +4,25 @@ import { supabase } from "../../lib/supabase";
 import { captureException } from "../../lib/sentry";
 
 /**
- * DepartmentMaturityTrend — one line per department, months across the bottom,
- * security maturity (0–100) up the side.
+ * DepartmentTrendChart — one line per department, months across the bottom, the
+ * chosen metric (0–100) up the side. Higher and rising is always better.
  *
- * Maturity is the inverse of the risk score used everywhere else in the product
- * (maturity = 100 − risk), so the rightmost point of a line is 100 minus that
- * department's current risk figure. Higher and rising is better.
+ * Three metrics share this component because they share a shape and a story;
+ * the caller picks which one is plotted:
+ *
+ *   courseProgress — share of assigned training completed. Are they doing it?
+ *   awareness      — assessment results and phishing resistance, weighted 2:1.
+ *                    Do they actually know it, and do they fall for attacks?
+ *   maturity       — all three components together; the headline number.
+ *
+ * Data comes from `department_metric_snapshots`, written monthly by cron. The
+ * chart never recomputes history on load: doing that per page view was tens of
+ * thousands of index lookups at ten companies and 1500 employees.
+ *
+ * Every metric scores missing evidence as the worst case, not the best. An
+ * employee nobody has trained or tested counts as 0, so a department starts low
+ * and climbs as the work gets done — which is the line a customer is paying to
+ * see, and the honest one.
  *
  * The series palette is the validated categorical set for a dark surface: eight
  * fixed slots, assigned in order and never cycled. Colour follows the department,
@@ -36,14 +49,42 @@ const SERIES_COLORS = [
 const OTHER_COLOR = "#8a9a6a";
 const MAX_SERIES = SERIES_COLORS.length;
 
+export type DepartmentMetric = "courseProgress" | "awareness" | "maturity";
+
 interface TrendRow {
   month_start: string;
   department_id: string;
   department_name: string;
+  course_progress: number | null;
+  awareness: number | null;
   maturity: number | null;
-  assessed_employees: number;
-  total_employees: number;
+  employees: number;
+  measured_employees: number;
 }
+
+const METRIC_COLUMN: Record<DepartmentMetric, "course_progress" | "awareness" | "maturity"> = {
+  courseProgress: "course_progress",
+  awareness: "awareness",
+  maturity: "maturity",
+};
+
+const METRIC_COPY: Record<DepartmentMetric, { title: string; caption: string }> = {
+  courseProgress: {
+    title: "Course progress by department",
+    caption:
+      "Share of assigned training completed each month. Employees with no courses assigned count as 0%, so a department is not flattered by never being given work.",
+  },
+  awareness: {
+    title: "Security awareness by department",
+    caption:
+      "Assessment results and phishing resistance combined, weighted 2:1. Never assessed and never simulated both count as 0 — untested is not the same as safe.",
+  },
+  maturity: {
+    title: "Overall maturity by department",
+    caption:
+      "Training, assessments and phishing resistance together — 100 minus the risk score. Higher is better.",
+  },
+};
 
 interface Series {
   key: string;
@@ -53,8 +94,10 @@ interface Series {
   points: (number | null)[];
 }
 
-export interface DepartmentMaturityTrendProps {
+export interface DepartmentTrendChartProps {
   companyId: string | undefined;
+  /** Which of the three measures to plot. */
+  metric: DepartmentMetric;
   months?: number;
   /** Theme tokens from the host page — this chart is embedded in two different shells. */
   tokens: {
@@ -83,13 +126,16 @@ function monthTitle(iso: string): string {
   return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-export const DepartmentMaturityTrend = ({
+export const DepartmentTrendChart = ({
   companyId,
+  metric,
   months = 12,
   tokens: T,
-  title = "Department maturity over time",
+  title,
   height = 320,
-}: DepartmentMaturityTrendProps) => {
+}: DepartmentTrendChartProps) => {
+  const copy = METRIC_COPY[metric];
+  const heading = title ?? copy.title;
   const [rows, setRows] = useState<TrendRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +152,7 @@ export const DepartmentMaturityTrend = ({
       setLoading(true);
       setError(null);
       try {
-        const { data, error: rpcError } = await supabase.rpc("get_department_maturity_trend", {
+        const { data, error: rpcError } = await supabase.rpc("get_department_metric_trend", {
           p_company_id: companyId,
           p_months: months,
         });
@@ -116,8 +162,8 @@ export const DepartmentMaturityTrend = ({
         const message = err instanceof Error ? err.message : String(err);
         // An empty chart with no explanation reads as "no departments", which is
         // a very different thing from "the query failed".
-        console.error("[DepartmentMaturityTrend] load failed:", message, err);
-        captureException(err, { scope: "DepartmentMaturityTrend", companyId });
+        console.error(`[DepartmentTrendChart:${metric}] load failed:`, message, err);
+        captureException(err, { scope: "DepartmentTrendChart", metric, companyId });
         if (!cancelled) { setError(message); setRows([]); }
       } finally {
         if (!cancelled) setLoading(false);
@@ -126,7 +172,7 @@ export const DepartmentMaturityTrend = ({
 
     void load();
     return () => { cancelled = true; };
-  }, [companyId, months]);
+  }, [companyId, months, metric]);
 
   /* ── Shape the flat rows into month buckets and per-department series ── */
   const { monthKeys, series, foldedCount } = useMemo(() => {
@@ -144,14 +190,15 @@ export const DepartmentMaturityTrend = ({
       }
       const i = idxOf.get(r.month_start);
       if (i !== undefined) {
-        const value = r.maturity === null ? null : Number(r.maturity);
+        const raw = r[METRIC_COLUMN[metric]];
+        const value = raw === null || raw === undefined ? null : Number(raw);
         entry.points[i] = value;
         if (value !== null) entry.latest = value;
       }
     }
 
-    // Rank by the most recent known value so the departments needing attention
-    // get their own colour rather than being folded away.
+    // Rank by the most recent known value, lowest first, so the departments that
+    // need attention keep their own colour instead of being folded into "Other".
     const ranked = Array.from(byDept.entries()).sort((a, b) => a[1].latest - b[1].latest);
 
     const kept = ranked.slice(0, MAX_SERIES);
@@ -175,7 +222,7 @@ export const DepartmentMaturityTrend = ({
     }
 
     return { monthKeys: keys, series: out, foldedCount: folded.length };
-  }, [rows]);
+  }, [rows, metric]);
 
   const visible = series.filter((s) => !hidden.has(s.key));
 
@@ -234,7 +281,7 @@ export const DepartmentMaturityTrend = ({
       <div style={card}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, color: T.textMuted, fontSize: 13 }}>
           <Loader2 size={15} style={{ animation: "aw-dmt-spin 0.8s linear infinite" }} />
-          Loading maturity trend…
+          Loading trend…
         </div>
         <style>{`@keyframes aw-dmt-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -247,7 +294,7 @@ export const DepartmentMaturityTrend = ({
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <AlertTriangle size={16} style={{ color: "#ff8800", flexShrink: 0, marginTop: 2 }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Could not load the maturity trend</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Could not load the trend</div>
             <div style={{ fontSize: 12, color: T.textMuted, marginTop: 4, lineHeight: 1.6 }}>{error}</div>
           </div>
         </div>
@@ -258,10 +305,10 @@ export const DepartmentMaturityTrend = ({
   if (series.length === 0 || n === 0) {
     return (
       <div style={card}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 6 }}>{title}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 6 }}>{heading}</div>
         <div style={{ fontSize: 13, color: T.textMuted, lineHeight: 1.6 }}>
-          No departments with employees yet. The trend appears once departments have staff with
-          training, assessment or phishing history.
+          No monthly data yet. Snapshots are written nightly, so this fills in from the first run
+          after departments have employees.
         </div>
       </div>
     );
@@ -274,11 +321,11 @@ export const DepartmentMaturityTrend = ({
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 2 }}>
         <TrendingUp size={16} style={{ color: T.accent }} />
-        <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{title}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{heading}</div>
       </div>
       <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 14, lineHeight: 1.6 }}>
-        Maturity is 100 minus the risk score — higher is better. Each line is a department.
-        {foldedCount > 0 && ` The ${foldedCount} most mature departments are combined into one "Other" line.`}
+        {copy.caption}
+        {foldedCount > 0 && ` The ${foldedCount} highest-scoring departments are combined into one "Other" line.`}
       </div>
 
       {/* ── Legend: identity is never colour alone ── */}
@@ -318,7 +365,7 @@ export const DepartmentMaturityTrend = ({
           width="100%"
           height={H}
           role="img"
-          aria-label={`Monthly security maturity per department, ${monthTitle(monthKeys[0])} to ${monthTitle(monthKeys[n - 1])}`}
+          aria-label={`${heading}, ${monthTitle(monthKeys[0])} to ${monthTitle(monthKeys[n - 1])}`}
           onPointerMove={onPointerMove}
           onPointerLeave={() => setHoverIdx(null)}
           style={{ display: "block", touchAction: "pan-y" }}
@@ -462,4 +509,4 @@ export const DepartmentMaturityTrend = ({
   );
 };
 
-export default DepartmentMaturityTrend;
+export default DepartmentTrendChart;

@@ -12,7 +12,7 @@ import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import { SubscriptionBanner } from "../../components/SubscriptionBanner";
 import { getActiveSubscription, type SubscriptionInfo } from "../../lib/subscription";
-import { DepartmentMaturityTrend } from "../../components/charts/DepartmentMaturityTrend";
+import { DepartmentTrendChart } from "../../components/charts/DepartmentTrendChart";
 
 const EmployeesPage = lazy(() => import("./EmployeesPage").then(m => ({ default: m.EmployeesPage })));
 const AnalyticsPage = lazy(() => import("./AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
@@ -68,6 +68,17 @@ const T = {
   redBg:       'rgba(248,113,113,0.08)',
   redBorder:   'rgba(248,113,113,0.22)',
 } as const;
+
+/* The trend charts live in two different shells, so they take their surface
+   colours as a prop rather than importing this page's palette. */
+const CHART_TOKENS = {
+  bgCard:    T.bgCard,
+  border:    T.border,
+  text:      T.white,
+  textMuted: T.textMuted,
+  textSub:   T.textBody,
+  accent:    T.accent,
+};
 
 /* ─────────────────────────────────────────
    CSS
@@ -534,22 +545,29 @@ export const CompanyDashboard = () => {
         </div>
 
         {/*
-          Every other tile on this dashboard is a snapshot. This is the only
-          thing that answers "are we getting better?", so it sits with them
-          rather than only on the reports page.
+          Every other tile here is a snapshot. These two are the only things that
+          answer "are we getting better?", so they sit with them rather than only
+          on the reports page.
+
+          Two charts rather than one because they are different questions with
+          different remedies: falling course progress means chase people to
+          finish their training; flat awareness despite finished training means
+          the training is not landing.
         */}
-        <DepartmentMaturityTrend
-          companyId={user?.company_id ?? undefined}
-          months={12}
-          tokens={{
-            bgCard: T.bgCard,
-            border: T.border,
-            text: T.white,
-            textMuted: T.textMuted,
-            textSub: T.textBody,
-            accent: T.accent,
-          }}
-        />
+        <div style={{ display: 'grid', gap: 16 }}>
+          <DepartmentTrendChart
+            companyId={user?.company_id ?? undefined}
+            metric="courseProgress"
+            months={12}
+            tokens={CHART_TOKENS}
+          />
+          <DepartmentTrendChart
+            companyId={user?.company_id ?? undefined}
+            metric="awareness"
+            months={12}
+            tokens={CHART_TOKENS}
+          />
+        </div>
 
       </div>
     );

@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
-import { DepartmentMaturityTrend } from "../../components/charts/DepartmentMaturityTrend";
+import { DepartmentTrendChart } from "../../components/charts/DepartmentTrendChart";
 
 const T = {
   bg: "#12140a", bgCard: "#1a1e0e", bgHover: "#1e2410",
@@ -18,6 +18,17 @@ const T = {
   yellowBg: "rgba(255,204,0,0.08)", yellowBorder: "rgba(255,204,0,0.20)",
   greenBg: "rgba(68,255,136,0.08)", greenBorder: "rgba(68,255,136,0.20)",
   blueBg: "rgba(68,136,255,0.08)", purpleBg: "rgba(170,136,255,0.08)",
+};
+
+/* Surface colours handed to the shared trend chart, which is also rendered
+   inside the company dashboard's different palette. */
+const ANALYTICS_CHART_TOKENS = {
+  bgCard: T.bgCard,
+  border: T.border,
+  text: T.text,
+  textMuted: T.textMuted,
+  textSub: T.textSub,
+  accent: T.accent,
 };
 
 /* ── Types ─────────────────────────────────────── */
@@ -620,23 +631,33 @@ export function AdvancedAnalyticsPage() {
       </Section>
 
       {/*
-        Maturity over time, directly above the current-risk bar chart: the bar
-        chart says where each department stands today, this says whether that is
-        an improvement. Maturity is 100 minus the risk score plotted below, so
-        the two read as inverses of each other by design.
+        Trends sit directly above the current-risk bar chart: the bar chart says
+        where each department stands today, these say whether that is an
+        improvement.
+
+        Course progress and awareness are separated because they fail for
+        different reasons and need different responses — unfinished training
+        versus training that finished but did not stick. Maturity combines them
+        and is the inverse of the bar chart below it, by design.
       */}
-      <div style={{ marginBottom: 20 }}>
-        <DepartmentMaturityTrend
+      <div style={{ display: "grid", gap: 20, marginBottom: 20 }}>
+        <DepartmentTrendChart
           companyId={user?.company_id ?? undefined}
+          metric="courseProgress"
           months={12}
-          tokens={{
-            bgCard: T.bgCard,
-            border: T.border,
-            text: T.text,
-            textMuted: T.textMuted,
-            textSub: T.textSub,
-            accent: T.accent,
-          }}
+          tokens={ANALYTICS_CHART_TOKENS}
+        />
+        <DepartmentTrendChart
+          companyId={user?.company_id ?? undefined}
+          metric="awareness"
+          months={12}
+          tokens={ANALYTICS_CHART_TOKENS}
+        />
+        <DepartmentTrendChart
+          companyId={user?.company_id ?? undefined}
+          metric="maturity"
+          months={12}
+          tokens={ANALYTICS_CHART_TOKENS}
         />
       </div>
 
