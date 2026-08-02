@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { SupportThread, type SupportMessage } from "../../components/support/SupportThread";
+import { SupportMetricsPanel } from "../../components/support/SupportMetricsPanel";
+import { PRIORITIES, CATEGORIES } from "../../lib/supportVocabulary";
 import { notifySupportReply } from "../../lib/supportNotify";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -190,8 +192,14 @@ interface SupportTicketRow {
   status: TicketStatus;
   created_at: string;
   updated_at: string;
+  priority: string;
+  category: string;
+  assigned_to: string | null;
+  first_response_at: string | null;
   users: { email: string; full_name: string } | null;
 }
+
+interface StaffOption { id: string; full_name: string | null; email: string }
 
 const fmt = (d: string) =>
   new Date(d).toLocaleDateString("en-SA", {
@@ -213,6 +221,39 @@ const SupportRequestsPage = () => {
   const { user: currentUser } = useAuth();
   const currentUserId = currentUser?.id;
   const [notifyState, setNotifyState] = useState<Record<string, { ok: boolean; error?: string }>>({});
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [filterPriority, setFilterPriority] = useState<string>("all");
+
+  useEffect(() => {
+    // Only platform admins can own a support ticket, so they are the only
+    // candidates for assignment.
+    const loadStaff = async () => {
+      const { data, error: e } = await supabase
+        .from("users").select("id, full_name, email").eq("role", "PLATFORM_ADMIN").order("full_name");
+      if (e) { console.warn("[SupportRequests] could not load assignees:", e.message); return; }
+      setStaff((data ?? []) as StaffOption[]);
+    };
+    void loadStaff();
+  }, []);
+
+  /** Triage edits are all the same shape, so they share one writer. */
+  const updateTicketField = async (
+    id: string,
+    patch: Partial<Pick<SupportTicketRow, "priority" | "category" | "assigned_to">>,
+  ) => {
+    setUpdatingId(id);
+    try {
+      const { error: e } = await supabase.from("support_ticket").update(patch).eq("id", id);
+      if (e) throw new Error(e.message);
+      setTickets(prev => prev.map(t => (t.id === id ? { ...t, ...patch } : t)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[SupportRequests] triage update failed:", message, err);
+      setError(`Could not update the ticket: ${message}`);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
   const [filterStatus, setFilterStatus] = useState<TicketStatus | "all">("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -225,13 +266,10 @@ const SupportRequestsPage = () => {
     [tickets]
   );
 
-  const filtered = useMemo(
-    () =>
-      filterStatus === "all"
-        ? sorted
-        : sorted.filter((t) => t.status === filterStatus),
-    [sorted, filterStatus]
-  );
+  const filtered = useMemo(() => {
+    const byStatus = filterStatus === "all" ? sorted : sorted.filter((t) => t.status === filterStatus);
+    return filterPriority === "all" ? byStatus : byStatus.filter((t) => t.priority === filterPriority);
+  }, [sorted, filterStatus, filterPriority]);
 
   useEffect(() => {
     loadTickets();
@@ -244,7 +282,7 @@ const SupportRequestsPage = () => {
       const { data, error: e } = await supabase
         .from("support_ticket")
         .select(
-          "id, user_id, subject, status, created_at, updated_at, users!support_ticket_user_id_fkey(email, full_name)"
+          "id, user_id, subject, status, created_at, updated_at, priority, category, assigned_to, first_response_at, users!support_ticket_user_id_fkey(email, full_name)"
         );
       if (e) throw e;
       const normalized: SupportTicketRow[] = ((data || []) as (Omit<SupportTicketRow, 'users'> & { users: SupportTicketRow['users'] | SupportTicketRow['users'][] })[]).map(
@@ -399,6 +437,24 @@ const SupportRequestsPage = () => {
         </div>
       )}
 
+      {/*
+        Response times sit above the queue, because they are what tells an
+        operator whether to work the queue differently today.
+      */}
+      <SupportMetricsPanel
+        tokens={{
+          bgCard: T.bgCard,
+          bgHover: "rgba(255,255,255,0.04)",
+          border: T.border,
+          borderFaint: T.borderFaint,
+          text: T.white,
+          textMuted: T.textMuted,
+          textSub: T.textBody,
+          accent: T.accent,
+          red: T.red,
+        }}
+      />
+
       {/* ── Stats + Filter tabs ── */}
       <div
         className="aw-fade-up"
@@ -416,7 +472,7 @@ const SupportRequestsPage = () => {
         }}
       >
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
           {[
             { key: "all", label: "All", count: counts.all },
             { key: "open", label: "Open", count: counts.open },
@@ -451,6 +507,23 @@ const SupportRequestsPage = () => {
               </span>
             </button>
           ))}
+
+          {/* Priority narrows the same list; the two filters combine. */}
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            aria-label="Filter by priority"
+            style={{
+              marginInlineStart: 8, padding: "6px 10px", borderRadius: 8,
+              background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`,
+              color: T.textBody, fontSize: 12, fontFamily: "inherit",
+            }}
+          >
+            <option value="all">All priorities</option>
+            {PRIORITIES.map((pr) => (
+              <option key={pr.value} value={pr.value}>{pr.label}</option>
+            ))}
+          </select>
         </div>
 
         {/* Status legend */}
@@ -739,6 +812,50 @@ const SupportRequestsPage = () => {
                       paddingTop: 16,
                     }}
                   >
+                    {/* Triage: priority, category, owner. */}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+                      {([
+                        { label: "Priority", value: ticket.priority, key: "priority" as const,
+                          options: PRIORITIES.map(p => ({ value: p.value as string, label: p.label as string })) },
+                        { label: "Category", value: ticket.category, key: "category" as const,
+                          options: CATEGORIES.map(c => ({ value: c.value as string, label: c.label as string })) },
+                      ]).map(({ label, value, key, options }) => (
+                        <label key={key} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, color: T.textMuted }}>
+                          {label}
+                          <select
+                            value={value}
+                            disabled={updatingId === ticket.id}
+                            onChange={(e) => { void updateTicketField(ticket.id, { [key]: e.target.value }); }}
+                            style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, color: T.textBody, fontSize: 12, fontFamily: "inherit" }}
+                          >
+                            {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </label>
+                      ))}
+
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, color: T.textMuted }}>
+                        Assigned to
+                        <select
+                          value={ticket.assigned_to ?? ""}
+                          disabled={updatingId === ticket.id}
+                          onChange={(e) => { void updateTicketField(ticket.id, { assigned_to: e.target.value || null }); }}
+                          style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, color: T.textBody, fontSize: 12, fontFamily: "inherit" }}
+                        >
+                          <option value="">Unassigned</option>
+                          {staff.map(sm => (
+                            <option key={sm.id} value={sm.id}>{sm.full_name || sm.email}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      {/* States the fact plainly rather than implying one exists. */}
+                      <span style={{ fontSize: 11, color: T.textMuted, marginInlineStart: "auto" }}>
+                        {ticket.first_response_at
+                          ? `First replied ${fmt(ticket.first_response_at)}`
+                          : "Not yet answered"}
+                      </span>
+                    </div>
+
                     {/*
                       The reply is written to the ticket thread, not emailed.
                       The customer reads it in the platform; the email that goes
