@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { DepartmentMaturityTrend } from "../../components/charts/DepartmentMaturityTrend";
 
 const T = {
   bg: "#12140a", bgCard: "#1a1e0e", bgHover: "#1e2410",
@@ -617,6 +618,27 @@ export function AdvancedAnalyticsPage() {
           </>
         )}
       </Section>
+
+      {/*
+        Maturity over time, directly above the current-risk bar chart: the bar
+        chart says where each department stands today, this says whether that is
+        an improvement. Maturity is 100 minus the risk score plotted below, so
+        the two read as inverses of each other by design.
+      */}
+      <div style={{ marginBottom: 20 }}>
+        <DepartmentMaturityTrend
+          companyId={user?.company_id ?? undefined}
+          months={12}
+          tokens={{
+            bgCard: T.bgCard,
+            border: T.border,
+            text: T.text,
+            textMuted: T.textMuted,
+            textSub: T.textSub,
+            accent: T.accent,
+          }}
+        />
+      </div>
 
       {/* Department Risk Bar Chart */}
       {deptStats.length > 0 && (
