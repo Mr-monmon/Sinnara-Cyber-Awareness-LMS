@@ -31,18 +31,18 @@
 -- shape. The statement succeeded and the declared columns silently did not
 -- arrive, so the live table has six of the fourteen the history describes.
 --
--- The consequences ran further than this feature. A policy cannot be created
--- against a column that does not exist, so `rls_support_ticket_company_admin_read`
--- and `..._update` from 20260606000001 were never created — meaning company
--- admins have never been able to see support tickets raised by their own staff.
--- The `support_ticket_set_company` trigger from the same migration could not
--- have been maintaining a column that was absent either.
+-- The policies from 20260606000001 that referenced `company_id` were therefore
+-- never created, and the `support_ticket_set_company` trigger could not have
+-- been maintaining a column that was absent. What the database has instead is a
+-- hand-written policy set under abbreviated names: `rls_support_pa`,
+-- `rls_support_owner` and `rls_support_ca`. The last of those does give company
+-- admins visibility of their staff's tickets — it derives the company by joining
+-- `users` rather than reading a column, which is why it works without one.
 --
--- This migration adds only the columns it needs, backfills them, and restores
--- those two policies now that they can exist. The remaining declared-but-absent
--- columns (priority, category, assigned_to, resolution_notes, resolved_at) are
--- left for the phase that actually uses them — adding dead columns now would
--- just re-create the same gap between file and database in the other direction.
+-- This migration adds only the columns it needs and leaves the rest
+-- (priority, category, assigned_to, resolution_notes, resolved_at) to the phase
+-- that uses them; adding dead columns now would re-create the same gap between
+-- file and database from the other side.
 
 -- ============================================================================
 -- 0) Make the table match what the rest of this file expects
@@ -89,11 +89,19 @@ CREATE TRIGGER trg_support_ticket_set_company
   BEFORE INSERT OR UPDATE ON public.support_ticket
   FOR EACH ROW EXECUTE FUNCTION public.support_ticket_set_company();
 
--- Company admins can now see their own organisation's tickets, which the
--- missing column has prevented until now. `get_my_role` / `get_my_company_id`
--- are used rather than the `is_company_admin_role` / `current_company_id` pair
--- referenced in 20260606000001, because those two are from a migration whose
--- effects are demonstrably incomplete here, while these are confirmed present.
+-- Company-admin visibility, consolidated onto one policy.
+--
+-- `rls_support_ca` already does this by joining `users`, so it is dropped rather
+-- than left in place: two permissive policies with the same intent but different
+-- mechanics are OR-ed together, which makes the effective rule hard to reason
+-- about and easy to widen by accident. The replacement reads the ticket's own
+-- `company_id`, which is the historically correct attribution — a ticket stays
+-- with the company it was raised under even if its author later moves.
+--
+-- It also admits COMPANY_SUPER_ADMIN, which `rls_support_ca` did not. That is a
+-- deliberate widening: a super admin who cannot see their own company's support
+-- history is a gap, not a safeguard.
+DROP POLICY IF EXISTS rls_support_ca ON public.support_ticket;
 DROP POLICY IF EXISTS rls_support_ticket_company_admin_read ON public.support_ticket;
 CREATE POLICY rls_support_ticket_company_admin_read ON public.support_ticket
   FOR SELECT TO authenticated
@@ -290,7 +298,34 @@ DROP POLICY IF EXISTS rls_stm_no_delete ON public.support_ticket_messages;
 -- The requester may withdraw a request nobody has worked on yet. Once anyone
 -- else has written on it, the thread is a record of work done and support given,
 -- and one party deleting it unilaterally destroys the other party's evidence.
+-- The owner's rights live in a single `FOR ALL` policy named `rls_support_owner`,
+-- which grants DELETE unconditionally. Adding a narrower DELETE policy beside it
+-- would achieve nothing: permissive policies are OR-ed, so the broad one alone
+-- would keep allowing the delete. The `FOR ALL` policy is therefore split into
+-- explicit per-command policies, and only the DELETE one carries the condition.
+--
+-- SELECT, INSERT and UPDATE are recreated with exactly the rule they had, so
+-- nothing the requester can do today stops working.
+DROP POLICY IF EXISTS rls_support_owner ON public.support_ticket;
+DROP POLICY IF EXISTS rls_support_ticket_owner ON public.support_ticket;
+DROP POLICY IF EXISTS rls_support_ticket_owner_select ON public.support_ticket;
+DROP POLICY IF EXISTS rls_support_ticket_owner_insert ON public.support_ticket;
+DROP POLICY IF EXISTS rls_support_ticket_owner_update ON public.support_ticket;
 DROP POLICY IF EXISTS rls_support_ticket_owner_delete ON public.support_ticket;
+
+CREATE POLICY rls_support_ticket_owner_select ON public.support_ticket
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY rls_support_ticket_owner_insert ON public.support_ticket
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY rls_support_ticket_owner_update ON public.support_ticket
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
 CREATE POLICY rls_support_ticket_owner_delete ON public.support_ticket
   FOR DELETE TO authenticated
   USING (
