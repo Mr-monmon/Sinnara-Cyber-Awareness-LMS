@@ -51,12 +51,34 @@ function isPrivateOrReservedIp(ip: string): boolean {
   }
   return false;
 }
+/**
+ * Normalise a numeric IPv4 host to dotted-quad, or null if it is not a bare
+ * numeric address. Browsers and getaddrinfo accept an IPv4 written as a single
+ * integer (2130706433), hex (0x7f000001), or octal (0177.0.0.1) — all of which
+ * resolve to the same address as 127.0.0.1. The block list below only matched
+ * the dotted-decimal form, so those alternate encodings slipped past the SSRF
+ * guard and reached fetch(), which then connected to the internal address. This
+ * canonicalises them so the private-range check sees the real target.
+ */
+function numericHostToDottedQuad(host: string): string | null {
+  // Pure decimal, hex (0x…), or octal (leading 0) 32-bit integer.
+  let n: number | null = null;
+  if (/^0x[0-9a-f]+$/.test(host)) n = parseInt(host, 16);
+  else if (/^0[0-7]+$/.test(host)) n = parseInt(host, 8);
+  else if (/^\d+$/.test(host)) n = parseInt(host, 10);
+  if (n === null || !Number.isInteger(n) || n < 0 || n > 0xffffffff) return null;
+  return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
+}
+
 function isBlockedHostname(hostname: string): boolean {
   const host = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
   if (!host) return true;
   if (host === "localhost" || host.endsWith(".localhost")) return true;
   if (host.endsWith(".local") || host.endsWith(".internal")) return true;
   if (host === "metadata" || host === "metadata.google.internal") return true;
+  // Canonicalise non-dotted numeric IPv4 encodings before the private check.
+  const numeric = numericHostToDottedQuad(host);
+  if (numeric) return isPrivateOrReservedIp(numeric);
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) return isPrivateOrReservedIp(host);
   return false;
 }
@@ -590,100 +612,10 @@ function injectVariables(html: string): string {
   });
 }
 
-// ─── Tracking script ──────────────────────────────────────────────────────────
-function buildTrackingScript(): string {
-  return `<script>
-(function(){
-  var SU='${SUPABASE_URL}';
-  // Block SPA router navigations so the page stays put
-  try{
-    var _push=history.pushState.bind(history);
-    history.pushState=function(){return _push.apply(history,arguments)};
-    window.addEventListener('popstate',function(e){e.stopImmediatePropagation()},true);
-  }catch(e){}
-
-  function getParams(){return new URLSearchParams(window.location.search)}
-
-  function sendEvent(path,body,cb){
-    var p=getParams(),c=p.get('c')||'',r=p.get('r')||'';
-    if(!c||!r)return cb&&cb();
-    var url=SU+'/functions/v1/phishing-track?t='+path+'&c='+c+'&r='+r;
-    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})
-      .then(function(){cb&&cb()}).catch(function(){cb&&cb()});
-  }
-
-  // Intercept XMLHttpRequest so API-driven logins are captured too
-  var _open=XMLHttpRequest.prototype.open;
-  var _send=XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open=function(m,u){this.__aw_method=m;this.__aw_url=u;return _open.apply(this,arguments)};
-  XMLHttpRequest.prototype.send=function(body){
-    var self=this;
-    var origOnLoad=self.onload;
-    self.onload=function(){
-      try{
-        if(self.__aw_url&&(self.__aw_url.includes('login')||self.__aw_url.includes('auth')||self.__aw_url.includes('signin')||self.__aw_url.includes('session'))){
-          var parsed={};
-          try{parsed=JSON.parse(body)}catch(e){
-            if(typeof body==='string'){
-              body.split('&').forEach(function(pair){var kv=pair.split('=');if(kv[0])parsed[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1]||'');});
-            }
-          }
-          if(parsed.password||parsed.pass)parsed.password='***';
-          sendEvent('submit',parsed,null);
-        }
-      }catch(e){}
-      if(origOnLoad)origOnLoad.apply(self,arguments);
-    };
-    return _send.apply(this,arguments);
-  };
-
-  // Intercept fetch() for API-driven login forms
-  var _fetch=window.fetch;
-  window.fetch=function(input,init){
-    var url=typeof input==='string'?input:(input&&input.url)||'';
-    if(url&&(url.includes('login')||url.includes('auth')||url.includes('signin')||url.includes('session'))){
-      var body=init&&init.body;
-      var parsed={};
-      try{parsed=JSON.parse(body)}catch(e){
-        if(typeof body==='string'){
-          body.split('&').forEach(function(pair){var kv=pair.split('=');if(kv[0])parsed[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1]||'');});
-        }
-      }
-      if(parsed.password||parsed.pass)parsed.password='***';
-      if(Object.keys(parsed).length>0)sendEvent('submit',parsed,null);
-    }
-    return _fetch.apply(window,arguments);
-  };
-
-  // Attach <form> submit handlers
-  function attachForms(){
-    document.querySelectorAll('form').forEach(function(form){
-      if(form.__aw_hooked)return;
-      form.__aw_hooked=true;
-      form.addEventListener('submit',function(e){
-        e.preventDefault();e.stopImmediatePropagation();
-        var data={};
-        form.querySelectorAll('input,select,textarea').forEach(function(inp){
-          if(inp.name)data[inp.name]=inp.type==='password'?'***':inp.value;
-        });
-        var p=getParams();
-        sendEvent('submit',data,function(){
-          setTimeout(function(){
-            window.location.href=p.get('redirect')||'https://www.google.com';
-          },500);
-        });
-      },true);
-    });
-  }
-
-  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',attachForms);}
-  else{attachForms();}
-  new MutationObserver(function(){attachForms();}).observe(
-    document.body||document.documentElement,{childList:true,subtree:true}
-  );
-})();
-</script>`;
-}
+// ─── Tracking script: removed ─────────────────────────────────────────────────
+// Form capture is injected once, at serve time, by serve-landing-page. Cloning no
+// longer bundles its own capture script — see Step 12 for why (duplicate events +
+// an open-redirect via ?redirect=).
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
@@ -824,11 +756,16 @@ Deno.serve(async (req) => {
       } catch { /* non-fatal */ }
     }
 
-    // ── Step 12: Inject tracking script ──────────────────────────────────────
-    const tracker = buildTrackingScript();
-    html = html.includes("</body>")
-      ? html.replace("</body>", tracker + "</body>")
-      : html + tracker;
+    // ── Step 12: (no tracking script here — serve-landing-page owns it) ───────
+    // The cloned HTML is always served through serve-landing-page, which injects
+    // its own form-capture + redirect interceptor at serve time. Injecting a
+    // second one here made every submission fire two `t=submit` events and run
+    // two redirect timers, and clone's script resolved its redirect from a
+    // `?redirect=` query param — an open-redirect that serve-landing-page
+    // deliberately avoids by resolving the destination server-side. Leaving
+    // capture solely to serve-landing-page removes the duplication and that
+    // open-redirect vector, and keeps one interceptor as the single source of
+    // truth for how a submission is recorded.
 
     // ── Step 13: Build response metadata ─────────────────────────────────────
     const formDetected    = /<form\b/i.test(html);
