@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { SupportThread } from '../../components/support/SupportThread';
+import { PRIORITIES, CATEGORIES } from '../../lib/supportVocabulary';
 import { supabase } from "../../lib/supabase";
 
 /* ─────────────────────────────────────────
@@ -126,6 +127,8 @@ interface SupportTicket {
   status: TicketStatus; created_at: string; updated_at: string;
   /** Null once support replies, until the requester opens the thread. */
   owner_last_read_at: string | null;
+  priority: string;
+  category: string;
 }
 
 const fmt = (d: string) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -137,6 +140,9 @@ export const SupportRequestsPage: React.FC = () => {
   const { user }    = useAuth();
   const [tickets, setTickets]       = useState<SupportTicket[]>([]);
   const [newSubject, setNewSubject]  = useState('');
+  const [newDetails, setNewDetails]  = useState('');
+  const [newPriority, setNewPriority] = useState('normal');
+  const [newCategory, setNewCategory] = useState('general');
   const [error, setError]           = useState('');
   const [isLoading, setIsLoading]   = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -157,7 +163,7 @@ export const SupportRequestsPage: React.FC = () => {
     try {
       const { data, error: e } = await supabase
         .from("support_ticket")
-        .select("id, user_id, subject, status, created_at, updated_at, owner_last_read_at")
+        .select("id, user_id, subject, status, created_at, updated_at, owner_last_read_at, priority, category")
         .eq("user_id", user.id);
       if (e) throw e;
       const rows = (data || []) as SupportTicket[];
@@ -188,16 +194,42 @@ export const SupportRequestsPage: React.FC = () => {
     e.preventDefault();
     if (!user?.id) { setError("Unable to identify current user. Please sign in again."); return; }
     const subject = newSubject.trim();
+    const details = newDetails.trim();
     if (!subject)       { setError("Please enter a subject for your request."); return; }
     if (subject.length < 5) { setError("Subject should be at least 5 characters."); return; }
     setIsCreating(true); setError('');
     try {
+      // Subject and description are separate fields now. Previously the whole
+      // request body was written into `subject`, which made a paragraph of
+      // detail into the ticket's title in every list and every email.
       const { data, error: e } = await supabase
-        .from("support_ticket").insert([{ user_id: user.id, subject }])
-        .select("id, user_id, subject, status, created_at, updated_at").single();
+        .from("support_ticket")
+        .insert([{
+          user_id: user.id,
+          subject,
+          description: details || null,
+          priority: newPriority,
+          category: newCategory,
+        }])
+        .select("id, user_id, subject, status, created_at, updated_at, owner_last_read_at, priority, category")
+        .single();
       if (e) throw e;
-      if (data) setTickets(prev => [data as SupportTicket, ...prev]);
+
+      const created = data as SupportTicket;
+      // The detail becomes the opening message so the whole request reads as one
+      // conversation rather than a title with a hidden field behind it.
+      if (details) {
+        const { error: msgErr } = await supabase
+          .from("support_ticket_messages")
+          .insert([{ ticket_id: created.id, author_id: user.id, body: details, is_internal: false }]);
+        if (msgErr) console.warn("[SupportRequests] could not post the opening message:", msgErr.message);
+      }
+
+      setTickets(prev => [created, ...prev]);
       setNewSubject('');
+      setNewDetails('');
+      setNewPriority('normal');
+      setNewCategory('general');
     } catch { setError("Failed to create support request. Please try again."); }
     finally { setIsCreating(false); }
   };
@@ -279,23 +311,63 @@ export const SupportRequestsPage: React.FC = () => {
           <Plus size={14} style={{ color: T.accent }} />
           <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>New Request</span>
         </div>
-        <form onSubmit={handleCreate} style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <form onSubmit={handleCreate} style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input
             className="aw-sp-input"
             type="text"
             id="support-subject"
-            placeholder="Describe what you need help with…"
+            placeholder="Short subject — e.g. Cannot assign a course to a department"
             value={newSubject}
             onChange={e => setNewSubject(e.target.value)}
-            maxLength={250}
+            maxLength={150}
             disabled={isCreating}
           />
+          <textarea
+            id="support-details"
+            placeholder="Describe what you need help with. Include what you tried and what happened."
+            value={newDetails}
+            onChange={e => setNewDetails(e.target.value)}
+            rows={3}
+            maxLength={5000}
+            disabled={isCreating}
+            style={{
+              width: '100%', resize: 'vertical', padding: '11px 14px', borderRadius: 9,
+              background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`,
+              color: T.white, fontSize: 13, fontFamily: 'inherit', outline: 'none', lineHeight: 1.6,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.textMuted }}>
+              Priority
+              <select
+                value={newPriority}
+                onChange={e => setNewPriority(e.target.value)}
+                disabled={isCreating}
+                style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.white, fontSize: 12, fontFamily: 'inherit' }}
+              >
+                {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.textMuted }}>
+              Category
+              <select
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                disabled={isCreating}
+                style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.white, fontSize: 12, fontFamily: 'inherit' }}
+              >
+                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </label>
+            <div style={{ marginInlineStart: 'auto' }}>
           <button type="submit" className="aw-sp-create-btn" disabled={isCreating}>
             {isCreating
               ? <><Loader2 size={14} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Creating…</>
               : <><Plus size={14} /> Create Ticket</>
             }
           </button>
+            </div>
+          </div>
         </form>
       </div>
 
@@ -349,6 +421,15 @@ export const SupportRequestsPage: React.FC = () => {
                           >
                             {ticket.subject}
                           </button>
+                          {(() => {
+                            const pr = PRIORITIES.find(p => p.value === ticket.priority);
+                            if (!pr || pr.value === 'normal') return null;
+                            return (
+                              <span style={{ padding: '2px 8px', borderRadius: 9999, fontSize: 9, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: `${pr.color}1a`, border: `1px solid ${pr.color}55`, color: pr.color, flexShrink: 0 }}>
+                                {pr.label}
+                              </span>
+                            );
+                          })()}
                           {ticket.owner_last_read_at === null && answeredIds.has(ticket.id) && (
                             <span style={{ padding: '2px 8px', borderRadius: 9999, fontSize: 9, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(200,255,0,0.12)', border: '1px solid rgba(200,255,0,0.30)', color: T.accent, flexShrink: 0 }}>
                               New reply
