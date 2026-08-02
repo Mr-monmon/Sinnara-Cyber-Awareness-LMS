@@ -379,7 +379,10 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
 
   const exportCSV = () => {
     const rows = campaigns.map(c => {
-      const targets = c.total_targets || 0;
+      // Match the rest of the dashboard: prefer total_queue_size and fall back
+      // to total_targets. Reading total_targets alone showed 0 for campaigns
+      // launched before that column started being populated.
+      const targets = c.total_queue_size || c.total_targets || 0;
       const sent    = c.emails_sent   || 0;
       const launchDate = c.launched_at || c.launch_date;
       const pct = (n: number, d: number) => d > 0 ? Math.round((n / d) * 100) : 0;

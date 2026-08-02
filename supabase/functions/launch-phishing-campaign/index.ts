@@ -276,6 +276,11 @@ Deno.serve(async (req) => {
       company_id:               companyId,
       name:                     (name as string).trim(),
       status,
+      // Number of distinct recipients. Set here because nothing else does:
+      // total_queue_size (written after the queue is built) counted the send
+      // queue, but total_targets stayed at its 0 default, so any dashboard or
+      // report path that read total_targets alone showed zero.
+      total_targets:            targetCount,
       smtp_profile_id:          smtp_profile_id ?? null,
       landing_page_id:          landing_page_id ?? null,
       group_ids:                group_ids,
