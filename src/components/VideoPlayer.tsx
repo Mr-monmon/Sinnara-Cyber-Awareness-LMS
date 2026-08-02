@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Pause, Play, PlayCircle, Volume1, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, Maximize, Minimize, Pause, Play, PlayCircle, Volume1, Volume2, VolumeX } from 'lucide-react';
 import {
   VideoProvider,
   buildCloudflareIframeUrl,
@@ -72,8 +72,16 @@ const SKIP_TOLERANCE_SECONDS = 1.5;
 const POLL_INTERVAL_MS = 250;
 
 const STRINGS = {
-  en: { play: 'Play', pause: 'Pause', mute: 'Mute', unmute: 'Unmute', volume: 'Volume', progress: 'Progress' },
-  ar: { play: 'تشغيل', pause: 'إيقاف مؤقت', mute: 'كتم الصوت', unmute: 'إلغاء الكتم', volume: 'مستوى الصوت', progress: 'التقدم' },
+  en: {
+    play: 'Play', pause: 'Pause', mute: 'Mute', unmute: 'Unmute',
+    volume: 'Volume', progress: 'Progress',
+    fullscreen: 'Full screen', exitFullscreen: 'Exit full screen',
+  },
+  ar: {
+    play: 'تشغيل', pause: 'إيقاف مؤقت', mute: 'كتم الصوت', unmute: 'إلغاء الكتم',
+    volume: 'مستوى الصوت', progress: 'التقدم',
+    fullscreen: 'ملء الشاشة', exitFullscreen: 'إنهاء ملء الشاشة',
+  },
 };
 
 /** Minimal uniform surface over the two provider SDKs. */
@@ -233,6 +241,7 @@ interface LockedPlayerProps {
 }
 
 const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, isAr, labels, frameStyle }) => {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // The IFrame API's documented pattern targets an element with an id; give it
   // a stable unique one rather than relying on the bare node reference.
@@ -250,6 +259,8 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
   const [maxWatched, setMaxWatched] = useState(0);
   const [volume, setVolumeState] = useState(100);
   const [muted, setMutedState] = useState(false);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
 
   /* ── Engine setup ── */
   useEffect(() => {
@@ -490,6 +501,67 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
     seekWithin(fraction * duration);
   }, [duration, isAr, seekWithin]);
 
+  /*
+   * Fullscreen targets OUR wrapper, not the iframe.
+   *
+   * Putting the iframe itself fullscreen would hand the screen to the provider
+   * and bring its own chrome back with it, undoing the lock. Expanding the
+   * wrapper keeps the shield and our control bar on top, so the video simply
+   * gets bigger and everything else still applies.
+   */
+  const enterFullscreen = useCallback(() => {
+    const el = wrapperRef.current as any;
+    if (!el) return;
+    const request = el.requestFullscreen ?? el.webkitRequestFullscreen ?? el.msRequestFullscreen;
+    if (typeof request !== 'function') {
+      // iOS Safari refuses fullscreen on non-video elements; a fixed overlay
+      // gives the same result without handing control to the provider.
+      setFallbackFullscreen(true);
+      return;
+    }
+    Promise.resolve(request.call(el)).catch((err: unknown) => {
+      console.warn('[VideoPlayer] native fullscreen refused, using overlay fallback:', err);
+      setFallbackFullscreen(true);
+    });
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    if (fallbackFullscreen) {
+      setFallbackFullscreen(false);
+      return;
+    }
+    const d = document as any;
+    const exit = d.exitFullscreen ?? d.webkitExitFullscreen ?? d.msExitFullscreen;
+    if (typeof exit === 'function') {
+      Promise.resolve(exit.call(d)).catch((err: unknown) => {
+        console.warn('[VideoPlayer] could not exit fullscreen:', err);
+      });
+    }
+  }, [fallbackFullscreen]);
+
+  const isFullscreen = nativeFullscreen || fallbackFullscreen;
+  const toggleFullscreen = useCallback(() => {
+    if (isFullscreen) exitFullscreen();
+    else enterFullscreen();
+  }, [isFullscreen, enterFullscreen, exitFullscreen]);
+
+  useEffect(() => {
+    const onChange = () => {
+      const d = document as any;
+      const active = Boolean(d.fullscreenElement ?? d.webkitFullscreenElement ?? d.msFullscreenElement);
+      setNativeFullscreen(active);
+      // Leaving native fullscreen by any route (Escape, the browser's own UI)
+      // must also clear the fallback, or the overlay would linger.
+      if (!active) setFallbackFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, []);
+
   /* Swallow the seek shortcuts the browser may still deliver to our container. */
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     const blocked = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'End', 'Home', 'PageUp', 'PageDown'];
@@ -501,21 +573,63 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
       e.preventDefault();
       togglePlay();
     }
-  }, [togglePlay]);
+    if (e.key === 'f') {
+      e.preventDefault();
+      toggleFullscreen();
+    }
+    if (e.key === 'Escape' && fallbackFullscreen) {
+      // Native fullscreen handles Escape itself; the overlay fallback cannot.
+      e.preventDefault();
+      setFallbackFullscreen(false);
+    }
+  }, [togglePlay, toggleFullscreen, fallbackFullscreen]);
 
   const pct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const watchedPct = duration > 0 ? Math.min(100, (maxWatched / duration) * 100) : 0;
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
+  /*
+   * The video area keeps its 16:9 box normally and grows to fill the screen in
+   * fullscreen. The control bar is a sibling BELOW it in both modes rather than
+   * an overlay: floating it over the bottom of the frame covered the subtitles
+   * burnt into course videos, which is exactly the part the learner needs.
+   */
+  // `paddingTop` (the 16:9 box) and `position` move to the inner video area;
+  // the shell keeps the border, radius and caller-supplied margin.
+  const { paddingTop, position, ...shellStyle } = frameStyle;
+  void position;
+  const wrapperStyle: React.CSSProperties = isFullscreen
+    ? {
+        position: fallbackFullscreen ? 'fixed' : 'relative',
+        inset: fallbackFullscreen ? 0 : undefined,
+        zIndex: fallbackFullscreen ? 9999 : undefined,
+        width: '100%',
+        height: '100%',
+        margin: 0,
+        border: 'none',
+        borderRadius: 0,
+        background: '#000',
+        display: 'flex',
+        flexDirection: 'column',
+      }
+    : { ...shellStyle, display: 'flex', flexDirection: 'column' };
+
+  const videoAreaStyle: React.CSSProperties = isFullscreen
+    ? { position: 'relative', flex: 1, minHeight: 0, background: '#000' }
+    : { position: 'relative', paddingTop, background: '#000' };
+
   return (
     <div
+      ref={wrapperRef}
       dir={isAr ? 'rtl' : 'ltr'}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
-      style={{ ...frameStyle, userSelect: 'none', outline: 'none' }}
+      style={{ ...wrapperStyle, userSelect: 'none', outline: 'none' }}
     >
       <style>{`@keyframes aw-vp-spin { to { transform: rotate(360deg); } }`}</style>
+
+      <div style={videoAreaStyle}>
       <iframe
         ref={iframeRef}
         id={frameId}
@@ -566,14 +680,16 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
         </button>
       )}
 
-      {/* ── Custom control bar: play/pause + volume only ── */}
+      </div>
+
+      {/* ── Custom control bar: play/pause, progress, volume, fullscreen ── */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 3,
+          flexShrink: 0, zIndex: 3,
           display: 'flex', alignItems: 'center', gap: 12,
-          padding: '10px 14px 10px',
-          background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0))',
+          padding: '10px 14px',
+          background: 'rgba(0,0,0,0.92)',
           opacity: ready ? 1 : 0, transition: 'opacity 200ms ease',
           pointerEvents: ready ? 'auto' : 'none',
         }}
@@ -628,6 +744,16 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
             style={{ width: 78, accentColor: '#fff', cursor: 'pointer' }}
           />
         </div>
+
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label={isFullscreen ? labels.exitFullscreen : labels.fullscreen}
+          title={isFullscreen ? labels.exitFullscreen : labels.fullscreen}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#fff', display: 'flex' }}
+        >
+          {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+        </button>
       </div>
     </div>
   );
