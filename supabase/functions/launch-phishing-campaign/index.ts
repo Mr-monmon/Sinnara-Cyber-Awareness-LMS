@@ -90,9 +90,24 @@ function resolveVariables(
   }
 
   const allVars = { ...builtIn, ...custom };
+
+  // Escape human-text values before they go into the HTML body. A target field
+  // or custom variable can contain arbitrary text (a name imported from CSV, an
+  // employee's full_name), and raw substitution would let `<img src=x
+  // onerror=…>` reach the rendered email/landing page. These tokens are the ones
+  // that carry the platform's OWN HTML/URLs and must stay verbatim: the tracking
+  // pixel is an <img> tag, and the click URLs are used inside href="…".
+  const RAW_TOKENS = new Set([
+    "{{.TrackingPixel}}", "{{.LoginURL}}", "{{.URL}}", "{{.TrackingURL}}",
+  ]);
+  const escapeHtml = (v: string): string =>
+    v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
   let result = html;
   for (const [token, value] of Object.entries(allVars)) {
-    result = result.split(token).join(value);
+    const out = RAW_TOKENS.has(token) ? value : escapeHtml(value);
+    result = result.split(token).join(out);
   }
   return result;
 }

@@ -245,6 +245,27 @@ export const PhishingCampaignResultsPage: React.FC = () => {
       const stats = calculateCampaignStats(csvData.records);
       const nowIso = new Date().toISOString();
 
+      // 0. Refuse to create a second campaign for a request that already has one.
+      //    There is no UNIQUE(request_id), so without this guard uploading twice
+      //    — a re-upload of corrected results, a double-click, or a request that
+      //    was also platform-launched — mints another phishing_campaigns row and
+      //    a full duplicate target set, double-counting every company and
+      //    per-employee number with no way to tell the two apart.
+      const { data: existing, error: existErr } = await supabase
+        .from('phishing_campaigns')
+        .select('id, name')
+        .eq('request_id', selectedCampaign.id)
+        .limit(1);
+      if (existErr) throw existErr;
+      if (existing && existing.length > 0) {
+        setError(
+          'Results have already been recorded for this campaign. Uploading again would double-count it. ' +
+          'Delete the existing campaign first if you need to re-upload corrected results.'
+        );
+        setUploading(false);
+        return;
+      }
+
       // 1. Create the campaign record. We populate BOTH the legacy and the new
       //    aggregate columns so every dashboard (Live Monitor + the company
       //    Phishing Dashboard, which computes rates from raw counts) reflects
