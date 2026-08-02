@@ -1,9 +1,12 @@
 -- Support tickets become conversations held inside the platform.
 --
 -- WHAT WAS WRONG. A reply was typed by an admin, emailed straight to the
--- requester, and then discarded: nothing was written to `admin_response` (which
--- exists and was never used) or anywhere else. The answer lived only in one
--- person's inbox. The requester saw a subject, a status and a Delete button, and
+-- requester, and then discarded: there was nowhere to write it. The live table
+-- has six columns — id, user_id, subject, status, created_at, updated_at — and
+-- nothing else. `admin_response`, `description`, `company_id`, `priority`,
+-- `category`, `assigned_to`, `resolution_notes` and `resolved_at` are all
+-- declared in the migration history and none of them exist. The answer lived
+-- only in one person's inbox. The requester saw a subject, a status and a Delete button, and
 -- never the reply. Replying to that email reached a mailbox the platform does
 -- not read — there is no inbound mail handling — so the thread died there. And
 -- the requester could delete the ticket at any time, taking the record with it.
@@ -24,11 +27,22 @@
 -- database stop disagreeing.
 
 -- MISSING COLUMNS. `support_ticket` was created by an early migration using
--- CREATE TABLE IF NOT EXISTS against a table that already existed in a different
--- shape, so several declared columns — `company_id` among them — never actually
--- appeared. Anything downstream that referenced them (the company-admin read
--- policy, the set-company trigger) has therefore been broken or absent. This
--- migration adds what it needs rather than assuming, and backfills it.
+-- CREATE TABLE IF NOT EXISTS against a table that already existed in a smaller
+-- shape. The statement succeeded and the declared columns silently did not
+-- arrive, so the live table has six of the fourteen the history describes.
+--
+-- The consequences ran further than this feature. A policy cannot be created
+-- against a column that does not exist, so `rls_support_ticket_company_admin_read`
+-- and `..._update` from 20260606000001 were never created — meaning company
+-- admins have never been able to see support tickets raised by their own staff.
+-- The `support_ticket_set_company` trigger from the same migration could not
+-- have been maintaining a column that was absent either.
+--
+-- This migration adds only the columns it needs, backfills them, and restores
+-- those two policies now that they can exist. The remaining declared-but-absent
+-- columns (priority, category, assigned_to, resolution_notes, resolved_at) are
+-- left for the phase that actually uses them — adding dead columns now would
+-- just re-create the same gap between file and database in the other direction.
 
 -- ============================================================================
 -- 0) Make the table match what the rest of this file expects
@@ -74,6 +88,31 @@ DROP TRIGGER IF EXISTS trg_support_ticket_set_company ON public.support_ticket;
 CREATE TRIGGER trg_support_ticket_set_company
   BEFORE INSERT OR UPDATE ON public.support_ticket
   FOR EACH ROW EXECUTE FUNCTION public.support_ticket_set_company();
+
+-- Company admins can now see their own organisation's tickets, which the
+-- missing column has prevented until now. `get_my_role` / `get_my_company_id`
+-- are used rather than the `is_company_admin_role` / `current_company_id` pair
+-- referenced in 20260606000001, because those two are from a migration whose
+-- effects are demonstrably incomplete here, while these are confirmed present.
+DROP POLICY IF EXISTS rls_support_ticket_company_admin_read ON public.support_ticket;
+CREATE POLICY rls_support_ticket_company_admin_read ON public.support_ticket
+  FOR SELECT TO authenticated
+  USING (
+    public.get_my_role() IN ('COMPANY_ADMIN', 'COMPANY_SUPER_ADMIN')
+    AND company_id::text = public.get_my_company_id()
+  );
+
+DROP POLICY IF EXISTS rls_support_ticket_company_admin_update ON public.support_ticket;
+CREATE POLICY rls_support_ticket_company_admin_update ON public.support_ticket
+  FOR UPDATE TO authenticated
+  USING (
+    public.get_my_role() IN ('COMPANY_ADMIN', 'COMPANY_SUPER_ADMIN')
+    AND company_id::text = public.get_my_company_id()
+  )
+  WITH CHECK (
+    public.get_my_role() IN ('COMPANY_ADMIN', 'COMPANY_SUPER_ADMIN')
+    AND company_id::text = public.get_my_company_id()
+  );
 
 -- ============================================================================
 -- 1) Reconcile status with what is actually deployed
