@@ -109,6 +109,7 @@ export const PhishingGroupsPage: React.FC = () => {
   const [searchMember, setSearchMember] = useState('');
   const [csvPreview, setCsvPreview] = useState<string[][] | null>(null);
   const [csvRaw, setCsvRaw] = useState<string[][] | null>(null);
+  const [csvHeader, setCsvHeader] = useState<string[]>([]);
   const [csvImporting, setCsvImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,6 +226,7 @@ export const PhishingGroupsPage: React.FC = () => {
       const text = e.target?.result as string;
       const rows = parseCSV(text);
       if (rows.length < 2) { alert('CSV must have at least a header row and one data row'); return; }
+      setCsvHeader(rows[0].map(h => h.trim().toLowerCase()));
       setCsvRaw(rows.slice(1)); // skip header
       setCsvPreview(rows.slice(0, 6)); // show header + 5 rows
     };
@@ -238,26 +240,90 @@ export const PhishingGroupsPage: React.FC = () => {
     else alert('Please drop a CSV file');
   };
 
+  // Resolve a column position by any of its accepted header names, falling back
+  // to a fixed position only when the header is unrecognised. Mapping by header
+  // rather than blindly by position means a CSV whose columns are in a different
+  // order no longer writes emails into `position` and so on.
+  const columnIndex = (names: string[], fallback: number): number => {
+    for (const n of names) {
+      const i = csvHeader.indexOf(n);
+      if (i !== -1) return i;
+    }
+    return csvHeader.length === 0 ? fallback : -1;
+  };
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const importCSV = async () => {
     if (!csvRaw || !activeGroup) return;
     setCsvImporting(true);
     try {
-      const rows = csvRaw.map(r => ({
-        group_id: activeGroup.id,
-        first_name: r[0] || '',
-        last_name: r[1] || '',
-        email: r[2] || '',
-        position: r[3] || '',
-        department: r[4] || '',
-      })).filter(r => r.first_name && r.email);
+      const idxFirst = columnIndex(['first_name', 'firstname', 'first name'], 0);
+      const idxLast  = columnIndex(['last_name', 'lastname', 'last name'], 1);
+      const idxEmail = columnIndex(['email', 'e-mail', 'email address'], 2);
+      const idxPos   = columnIndex(['position', 'title', 'job_title', 'job title'], 3);
+      const idxDept  = columnIndex(['department', 'dept'], 4);
 
-      const BATCH = 100;
-      for (let i = 0; i < rows.length; i += BATCH) {
-        await supabase.from('phishing_group_members').insert(rows.slice(i, i + BATCH));
+      if (idxEmail === -1) {
+        alert('CSV must have an "email" column (or exactly the columns first_name, last_name, email, position, department in that order).');
+        setCsvImporting(false);
+        return;
       }
-      setCsvPreview(null); setCsvRaw(null);
+
+      const at = (r: string[], i: number) => (i >= 0 ? (r[i] || '').trim() : '');
+
+      // Build rows, validating email and de-duplicating by lowercased email so a
+      // repeated address does not become a duplicate group member (and, at
+      // launch, a duplicate target that is emailed and counted twice — there is
+      // no UNIQUE(group_id, email) for CSV members, whose employee_id is null).
+      const seen = new Set<string>();
+      let invalid = 0, duplicate = 0;
+      const rows = [] as { group_id: string; first_name: string; last_name: string; email: string; position: string; department: string }[];
+      for (const r of csvRaw) {
+        const email = at(r, idxEmail).toLowerCase();
+        if (!EMAIL_RE.test(email)) { invalid++; continue; }
+        if (seen.has(email)) { duplicate++; continue; }
+        seen.add(email);
+        rows.push({
+          group_id: activeGroup.id,
+          first_name: at(r, idxFirst),
+          last_name:  at(r, idxLast),
+          email,
+          position:   at(r, idxPos),
+          department: at(r, idxDept),
+        });
+      }
+
+      if (rows.length === 0) {
+        alert(`No valid rows to import (${invalid} had an invalid email, ${duplicate} were duplicates).`);
+        setCsvImporting(false);
+        return;
+      }
+
+      // Insert in batches, checking the error on EACH batch. Previously the
+      // error was never read, so a rejected batch was silently skipped and the
+      // UI reported success — the admin thought members were imported when they
+      // were not.
+      const BATCH = 100;
+      let inserted = 0;
+      const errors: string[] = [];
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const slice = rows.slice(i, i + BATCH);
+        const { error } = await supabase.from('phishing_group_members').insert(slice);
+        if (error) errors.push(error.message);
+        else inserted += slice.length;
+      }
+
+      setCsvPreview(null); setCsvRaw(null); setCsvHeader([]);
       loadMembers(activeGroup.id);
       loadGroups();
+
+      // Tell the truth about what actually happened.
+      const parts = [`Imported ${inserted} member(s)`];
+      if (invalid)   parts.push(`${invalid} skipped (invalid email)`);
+      if (duplicate) parts.push(`${duplicate} skipped (duplicate)`);
+      if (errors.length) parts.push(`${rows.length - inserted} failed to save: ${errors[0]}`);
+      alert(parts.join(' · '));
     } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Import failed'); }
     finally { setCsvImporting(false); }
   };

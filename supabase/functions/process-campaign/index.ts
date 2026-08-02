@@ -458,6 +458,34 @@ Deno.serve(async (req) => {
     const campaign_id = body.campaign_id as string | undefined;
     const batch_size  = Math.min(body.batch_size ?? 50, 200); // max 200 per invocation
 
+    // ── Reap stranded SENDING rows ──
+    // A row is flipped to SENDING before the actual send; on success it becomes
+    // SENT, on failure it goes back to PENDING (retry) or FAILED. But if the
+    // function is killed between the claim and that final write — an SMTP hang,
+    // or the invocation exceeding its wall-clock limit mid-batch — the row is
+    // left in SENDING with no path back: the batch query only selects PENDING,
+    // so it is never retried (a lost email), and the completion check counts
+    // SENDING as in-flight, so the campaign hangs in RUNNING forever.
+    //
+    // Any row still SENDING after this window is not genuinely in flight (a real
+    // send completes in seconds), so return it to PENDING to be retried. The
+    // atomic claim below still guarantees exactly-once: a row a live worker is
+    // mid-send on would only be reaped after the timeout, and its own SENT/
+    // PENDING write already moved it out of SENDING before then.
+    const STUCK_SENDING_MS = 10 * 60 * 1000; // 10 minutes — far beyond any real send
+    {
+      const cutoff = new Date(Date.now() - STUCK_SENDING_MS).toISOString();
+      let reap = supabase
+        .from("campaign_email_queue")
+        .update({ status: "PENDING" })
+        .eq("status", "SENDING")
+        .lt("sending_at", cutoff);
+      if (campaign_id) reap = reap.eq("campaign_id", campaign_id);
+      if (callerCompanyId) reap = reap.eq("company_id", callerCompanyId);
+      const { error: reapErr } = await reap;
+      if (reapErr) console.error("[process-campaign] SENDING reaper failed:", reapErr.message);
+    }
+
     // Fetch PENDING jobs due now
     let query = supabase
       .from("campaign_email_queue")
@@ -537,7 +565,7 @@ Deno.serve(async (req) => {
       // Claim the job (optimistic lock — skip if another worker already claimed it)
       const { error: claimErr, count: claimed } = await supabase
         .from("campaign_email_queue")
-        .update({ status: "SENDING" }, { count: "exact" })
+        .update({ status: "SENDING", sending_at: new Date().toISOString() }, { count: "exact" })
         .eq("id", job.id)
         .eq("status", "PENDING");
       if (claimErr || claimed === 0) { skipped++; continue; }
