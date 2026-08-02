@@ -4,7 +4,21 @@ import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
 import { fetchTenantCompanyBySubdomain } from "../lib/tenantAccess";
 import { extractTenantSubdomain, getHostAccessMode } from "../lib/tenant";
-import { setSentryUser } from "../lib/sentry";
+import { captureException, setSentryUser } from "../lib/sentry";
+import { isDeviceTrusted, revokeTrustedDevices, trustThisDevice } from "../lib/deviceTrust";
+
+/**
+ * Whether this account must have two-factor enabled.
+ *
+ * Employees are always in scope: they are the population targeted by phishing
+ * simulations, so their accounts are the ones a compromised password matters
+ * most for. Other roles opt in through the `mfa_enforced` profile flag, which
+ * company admins control.
+ */
+export function isMfaMandatory(profile: { role?: string | null; mfa_enforced?: boolean | null } | null): boolean {
+  if (!profile) return false;
+  return profile.role === "EMPLOYEE" || profile.mfa_enforced === true;
+}
 
 export type LoginResult =
   | "success"
@@ -20,6 +34,12 @@ interface AuthContextType {
   forcePasswordChange: boolean;
   mfaRequired: boolean;
   mfaFactorId: string | null;
+  /**
+   * True when the signed-in account must enrol a TOTP factor before it can use
+   * the platform. Set during login so the forced-password-change step knows to
+   * chain straight into 2FA setup instead of dropping the user on the dashboard.
+   */
+  mfaSetupRequired: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   verifyMfa: (code: string) => Promise<{ ok: boolean; error?: string }>;
@@ -51,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaSetupRequired, setMfaSetupRequired] = useState(false);
 
   useEffect(() => {
     const syncUserFromSession = async (session: Session | null) => {
@@ -110,13 +131,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Check MFA assurance level
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aalData && aalData.nextLevel === "aal2" && aalData.currentLevel === "aal1") {
-      // Get the factor ID
-      const { data: factorsData } = await supabase.auth.mfa.listFactors();
-      const totp = factorsData?.totp?.[0] ?? null;
-      setMfaFactorId(totp?.id ?? null);
-      setMfaRequired(true);
-      return "mfa_required";
+    const needsChallenge =
+      aalData && aalData.nextLevel === "aal2" && aalData.currentLevel === "aal1";
+
+    if (needsChallenge) {
+      // A browser that passed a challenge within the trust window (15 days) is
+      // let through without re-entering a code. The session stays at aal1 — no
+      // policy in this schema requires aal2, and the check is server-side and
+      // keyed on auth.uid(), so a forged device id cannot buy a skip.
+      const trusted = await isDeviceTrusted();
+      if (!trusted) {
+        // Get the factor ID
+        const { data: factorsData } = await supabase.auth.mfa.listFactors();
+        const totp = factorsData?.totp?.[0] ?? null;
+        setMfaFactorId(totp?.id ?? null);
+        setMfaRequired(true);
+        return "mfa_required";
+      }
     }
 
     const profile = data.user ? await fetchProfile(data.user.id) : null;
@@ -135,20 +166,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
+    // Resolve the outstanding 2FA enrolment up front, because the forced
+    // password change below has to know whether to chain into 2FA setup once
+    // the new password is saved. The mandated order for a first login is:
+    // change password → enrol 2FA → (dashboard, where the exam gate takes over).
+    let needsMfaEnrolment = false;
+    if (isMfaMandatory(profile)) {
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+      if (factorsError) {
+        // "Couldn't check" must not become "not enrolled": that would push an
+        // already-enrolled user into a setup flow they cannot dismiss. Let them
+        // in and re-check on the next sign-in, but make the failure visible.
+        console.error("[auth] listFactors failed during login; skipping 2FA enrolment gate:", factorsError.message, factorsError);
+        captureException(factorsError, { scope: "AuthContext.login.listFactors", userId: profile?.id });
+      } else {
+        // Only a verified factor satisfies the mandate; an abandoned enrolment
+        // leaves an unverified one behind.
+        needsMfaEnrolment = (factorsData?.totp ?? []).every((f) => f.status !== "verified");
+      }
+    }
+    setMfaSetupRequired(needsMfaEnrolment);
+
     if (profile?.requires_password_change) {
       setForcePasswordChange(true);
       setUser(profile);
       return "force_password_change";
     }
 
-    // If MFA is enforced but user has no enrolled TOTP factor yet, require setup
-    if (profile?.mfa_enforced) {
-      const { data: factorsData } = await supabase.auth.mfa.listFactors();
-      const hasTotp = (factorsData?.totp?.length ?? 0) > 0;
-      if (!hasTotp) {
-        setUser(profile);
-        return "mfa_setup_required";
-      }
+    if (needsMfaEnrolment) {
+      setUser(profile);
+      return "mfa_setup_required";
     }
 
     setUser(profile);
@@ -162,6 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setForcePasswordChange(false);
     setMfaRequired(false);
     setMfaFactorId(null);
+    setMfaSetupRequired(false);
   };
 
   const verifyMfa = async (code: string): Promise<{ ok: boolean; error?: string }> => {
@@ -182,6 +230,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         code,
       });
       if (verifyError) return { ok: false, error: verifyError.message };
+
+      // The code was correct, so this browser has proven possession of the
+      // factor and may skip the challenge until the trust window lapses.
+      await trustThisDevice();
 
       // MFA succeeded — load profile
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -204,9 +256,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (updateError) return { ok: false, error: updateError.message };
 
       if (user?.id) {
-        await supabase.from("users").update({ requires_password_change: false }).eq("id", user.id);
+        const { error: profileError } = await supabase
+          .from("users")
+          .update({ requires_password_change: false })
+          .eq("id", user.id);
+        if (profileError) {
+          // The auth password did change, so this is not a failed change — but
+          // leaving the flag set means the user is asked to change it again on
+          // the next login, which looks like the save silently failed.
+          console.error("[auth] password changed but clearing requires_password_change failed:", profileError.message, profileError);
+          captureException(profileError, { scope: "AuthContext.changePassword.clearFlag", userId: user.id });
+        }
         setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
       }
+
+      /*
+       * A new password invalidates every remembered browser.
+       *
+       * Otherwise an attacker who obtained the old password and had once passed
+       * a challenge keeps a 2FA-free path in on that browser for the rest of the
+       * trust window. This is done here rather than by a database trigger
+       * because the password lives in `auth.users` and this schema has no column
+       * whose change a trigger could key off.
+       */
+      await revokeTrustedDevices();
 
       setForcePasswordChange(false);
       return { ok: true };
@@ -218,18 +291,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const enrollTotp = async (): Promise<{ qrCode: string; secret: string; factorId: string } | null> => {
     try {
+      /*
+       * Clear out abandoned enrolments before starting a new one.
+       *
+       * Every call mints a fresh factor with a unique friendly name, and an
+       * enrolment the user walks away from leaves an unverified factor behind
+       * forever. Since 2FA setup is now mandatory and non-dismissible, those
+       * accumulate on exactly the accounts that keep retrying — until the
+       * per-user factor cap is hit and `enroll` starts failing outright, which
+       * strands the user on an unskippable modal. Unverified factors carry no
+       * value, so removing them is safe.
+       */
+      const { data: existing, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) {
+        console.warn("[auth] could not list factors before enrolling:", listError.message);
+      } else {
+        const stale = (existing?.totp ?? []).filter((f) => f.status !== "verified");
+        for (const factor of stale) {
+          const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          if (unenrollError) {
+            console.warn("[auth] could not remove an unverified factor:", factor.id, unenrollError.message);
+          }
+        }
+      }
+
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         issuer: "Awareone",
         friendlyName: `Awareone-${Date.now()}`,
       });
-      if (error || !data) return null;
+      if (error || !data) {
+        // The modal shows a retry, but without this the underlying cause of a
+        // repeated failure (factor cap, rate limit, project config) is invisible.
+        console.error("[auth] TOTP enrolment failed:", error?.message, error);
+        captureException(error ?? new Error("mfa.enroll returned no data"), { scope: "AuthContext.enrollTotp" });
+        return null;
+      }
       return {
         qrCode: data.totp.qr_code,
         secret: data.totp.secret,
         factorId: data.id,
       };
-    } catch {
+    } catch (err) {
+      console.error("[auth] TOTP enrolment threw:", err);
+      captureException(err, { scope: "AuthContext.enrollTotp" });
       return null;
     }
   };
@@ -245,6 +350,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         code,
       });
       if (verifyError) return { ok: false, error: verifyError.message };
+
+      // A fresh factor invalidates trust granted against the previous one; the
+      // browser doing the enrolment then earns the window it just proved.
+      await revokeTrustedDevices();
+      await trustThisDevice();
+      setMfaSetupRequired(false);
       return { ok: true };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
@@ -260,6 +371,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         forcePasswordChange,
         mfaRequired,
         mfaFactorId,
+        mfaSetupRequired,
         login,
         logout,
         verifyMfa,
