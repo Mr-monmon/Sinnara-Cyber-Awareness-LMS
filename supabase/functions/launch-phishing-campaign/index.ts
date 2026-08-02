@@ -339,8 +339,15 @@ Deno.serve(async (req) => {
   const rateMs           = 60000 / Math.max(Number(emails_per_minute ?? 10), 1);
   const baseTime         = campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : Date.now();
   const finalRedirectUrl = safeRedirectUrl;
-  const fromAddr         = String(from_address || "noreply@awareone.io");
-  const fromNm           = String(from_name    || "AwareOne Security");
+  // Leave these BLANK when the operator did not set them. process-campaign
+  // resolves `params.from_address || profile.from_address`, so an empty value
+  // correctly falls back to the SMTP profile's own verified sender. Forcing a
+  // default here ("noreply@awareone.io") is always truthy and so overrode the
+  // profile every time — sending From an address the company's own SMTP is not
+  // authorised for, which fails SPF/DMARC and gets rejected. An explicit
+  // operator-typed address is still honoured as an override.
+  const fromAddr         = String(from_address ?? "").trim();
+  const fromNm           = String(from_name    ?? "").trim();
   const emailSubjectStr  = String(email_subject);
   const emailHtmlStr     = String(email_html);
 

@@ -269,7 +269,12 @@ export const PhishingScenariosPage: React.FC = () => {
   const save = async () => {
     if (!form.name.trim() || !form.email_subject.trim()) { setError('Name and email subject are required.'); return; }
     setSaving(true); setError('');
-    const payload = { ...form, tags: form.tags_str.split(',').map(t => t.trim()).filter(Boolean) };
+    // tags_str is a UI-only field for editing tags as a comma string; it must
+    // NOT reach the insert/update — phishing_scenarios has `tags text[]`, no
+    // `tags_str`, and PostgREST rejects an unknown write column (PGRST204), so
+    // including it made every scenario save throw.
+    const { tags_str, ...rest } = form;
+    const payload = { ...rest, tags: tags_str.split(',').map(t => t.trim()).filter(Boolean) };
     try {
       if (modal === 'add') {
         const { error: e } = await supabase.from('phishing_scenarios').insert(payload);
