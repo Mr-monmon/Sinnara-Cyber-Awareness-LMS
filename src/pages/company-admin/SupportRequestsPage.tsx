@@ -4,6 +4,7 @@ import {
   AlertCircle, CheckCircle, Clock, X,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { SupportThread } from '../../components/support/SupportThread';
 import { supabase } from "../../lib/supabase";
 
 /* ─────────────────────────────────────────
@@ -123,6 +124,8 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-sp-styles'))
 interface SupportTicket {
   id: string; user_id: string; subject: string;
   status: TicketStatus; created_at: string; updated_at: string;
+  /** Null once support replies, until the requester opens the thread. */
+  owner_last_read_at: string | null;
 }
 
 const fmt = (d: string) => new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -138,6 +141,8 @@ export const SupportRequestsPage: React.FC = () => {
   const [isLoading, setIsLoading]   = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
+  const [openTicket, setOpenTicket] = useState<SupportTicket | null>(null);
 
   const sorted = useMemo(() =>
     [...tickets].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
@@ -152,10 +157,29 @@ export const SupportRequestsPage: React.FC = () => {
     try {
       const { data, error: e } = await supabase
         .from("support_ticket")
-        .select("id, user_id, subject, status, created_at, updated_at")
+        .select("id, user_id, subject, status, created_at, updated_at, owner_last_read_at")
         .eq("user_id", user.id);
       if (e) throw e;
-      setTickets((data || []) as SupportTicket[]);
+      const rows = (data || []) as SupportTicket[];
+      setTickets(rows);
+
+      // Which tickets carry a reply from someone else — that both drives the
+      // "new reply" marker and decides whether Delete is still allowed, so the
+      // button never offers an action the database will refuse.
+      const ids = rows.map(t => t.id);
+      if (ids.length > 0) {
+        const { data: msgs } = await supabase
+          .from("support_ticket_messages")
+          .select("ticket_id, author_id, created_at")
+          .in("ticket_id", ids);
+        const answered = new Set<string>();
+        (msgs || []).forEach(m => {
+          if (m.author_id !== user.id) answered.add(m.ticket_id as string);
+        });
+        setAnsweredIds(answered);
+      } else {
+        setAnsweredIds(new Set());
+      }
     } catch { setError("Failed to load support requests. Please refresh and try again."); }
     finally { setIsLoading(false); }
   };
@@ -178,8 +202,25 @@ export const SupportRequestsPage: React.FC = () => {
     finally { setIsCreating(false); }
   };
 
+  /* Clearing the unread marker is a convenience, so a failure is logged rather
+     than surfaced — it must never block opening the conversation. */
+  const markRead = async (id: string) => {
+    try {
+      const { error: e } = await supabase.rpc("mark_support_ticket_read", { p_ticket_id: id });
+      if (e) { console.warn("[SupportRequests] mark_support_ticket_read failed:", e.message); return; }
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, owner_last_read_at: new Date().toISOString() } : t));
+    } catch (err) {
+      console.warn("[SupportRequests] mark_support_ticket_read threw:", err);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!user?.id) { setError("Unable to identify current user."); return; }
+    if (answeredIds.has(id)) {
+      // The database enforces this too; saying it here avoids a confusing error.
+      setError("This request has replies and can no longer be deleted. It stays as a record of the conversation.");
+      return;
+    }
     if (!window.confirm("Delete this support request?")) return;
     setDeletingId(id); setError('');
     try {
@@ -301,7 +342,18 @@ export const SupportRequestsPage: React.FC = () => {
                           <div style={{ width: 28, height: 28, borderRadius: 7, background: cfg.bg, border: `1px solid ${cfg.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Icon size={13} style={{ color: cfg.color }} />
                           </div>
-                          <span style={{ fontWeight: 600, color: T.white }}>{ticket.subject}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setOpenTicket(ticket); void markRead(ticket.id); }}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 600, color: T.white, textAlign: 'start' }}
+                          >
+                            {ticket.subject}
+                          </button>
+                          {ticket.owner_last_read_at === null && answeredIds.has(ticket.id) && (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, fontSize: 9, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(200,255,0,0.12)', border: '1px solid rgba(200,255,0,0.30)', color: T.accent, flexShrink: 0 }}>
+                              New reply
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -312,13 +364,31 @@ export const SupportRequestsPage: React.FC = () => {
                       <td style={{ color: T.textMuted, fontSize: 12 }}>{fmt(ticket.created_at)}</td>
                       <td style={{ color: T.textMuted, fontSize: 12 }}>{fmt(ticket.updated_at)}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="aw-sp-del-btn" onClick={() => handleDelete(ticket.id)} disabled={deletingId === ticket.id}>
-                          {deletingId === ticket.id
-                            ? <Loader2 size={12} style={{ animation: 'aw-spin 0.8s linear infinite' }} />
-                            : <Trash2 size={12} />
-                          }
-                          Delete
-                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            className="aw-sp-del-btn"
+                            style={{ borderColor: 'rgba(200,255,0,0.30)', color: T.accent }}
+                            onClick={() => { setOpenTicket(ticket); void markRead(ticket.id); }}
+                          >
+                            <MessageSquare size={12} />
+                            Open
+                          </button>
+                          <button
+                            className="aw-sp-del-btn"
+                            onClick={() => handleDelete(ticket.id)}
+                            disabled={deletingId === ticket.id || answeredIds.has(ticket.id)}
+                            title={answeredIds.has(ticket.id)
+                              ? 'Requests with replies are kept as a record and cannot be deleted.'
+                              : 'Delete this request'}
+                            style={answeredIds.has(ticket.id) ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                          >
+                            {deletingId === ticket.id
+                              ? <Loader2 size={12} style={{ animation: 'aw-spin 0.8s linear infinite' }} />
+                              : <Trash2 size={12} />
+                            }
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -341,11 +411,49 @@ export const SupportRequestsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Conversation ── */}
+      {openTicket && (
+        <div className="aw-fade-up" style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: T.white, wordBreak: 'break-word' }}>{openTicket.subject}</div>
+              <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3 }}>
+                Opened {fmt(openTicket.created_at)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setOpenTicket(null); void loadTickets(); }}
+              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 8, padding: '6px 12px', color: T.textBody, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }}
+            >
+              Close
+            </button>
+          </div>
+
+          <SupportThread
+            ticketId={openTicket.id}
+            currentUserId={user?.id}
+            readOnly={openTicket.status === 'closed'}
+            onPosted={() => { void loadTickets(); }}
+            tokens={{
+              bgCard: T.bg,
+              bgHover: 'rgba(255,255,255,0.04)',
+              border: T.border,
+              text: T.white,
+              textMuted: T.textMuted,
+              textSub: T.textBody,
+              accent: T.accent,
+              accentText: T.bg,
+            }}
+          />
+        </div>
+      )}
+
       {/* ── Help hint ── */}
       {sorted.length > 0 && (
         <div className="aw-fade-up" style={{ animationDelay: '0.12s', padding: '12px 16px', background: T.bgCard, border: `1px solid ${T.borderFaint}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: T.textMuted }}>
           <CheckCircle size={13} style={{ color: T.green, flexShrink: 0 }} />
-          Our support team will review your requests and reply to you by email. Please check your inbox regularly.
+          Replies appear here in the conversation. We email you a notification when one arrives — for your security the reply itself stays in the platform.
         </div>
       )}
     </div>
