@@ -211,6 +211,7 @@ export const ExamsPage: React.FC = () => {
   const [qForm, setQForm]               = useState({ ...defaultQForm });
   const [saving, setSaving]             = useState(false);
   const [addingQ, setAddingQ]           = useState(false);
+  const [editingQ, setEditingQ]         = useState<ExamQuestion | null>(null);
 
   useEffect(() => { loadExams(); }, []);
 
@@ -273,6 +274,34 @@ export const ExamsPage: React.FC = () => {
     if (data) setQuestions(data);
   };
 
+  /**
+   * Load a question back into the form for editing.
+   *
+   * `options` is a variable-length array while the form has four fixed slots, so
+   * they are mapped back by position — the same positional contract the Arabic
+   * options rely on. Slots beyond the stored options are blanked rather than
+   * left holding the previous question's text.
+   */
+  const handleEditQ = (q: ExamQuestion) => {
+    const opts = Array.isArray(q.options) ? q.options : [];
+    const optsAr = Array.isArray(q.options_ar) ? q.options_ar : [];
+    setEditingQ(q);
+    setQForm({
+      question: q.question,
+      question_ar: q.question_ar || '',
+      option1: opts[0] || '', option2: opts[1] || '', option3: opts[2] || '', option4: opts[3] || '',
+      option1_ar: optsAr[0] || '', option2_ar: optsAr[1] || '', option3_ar: optsAr[2] || '', option4_ar: optsAr[3] || '',
+      correct_answer: q.correct_answer,
+      explanation: q.explanation || '',
+      explanation_ar: q.explanation_ar || '',
+    });
+  };
+
+  const cancelEditQ = () => {
+    setEditingQ(null);
+    setQForm({ ...defaultQForm });
+  };
+
   const handleAddQ = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedExam) return;
@@ -305,8 +334,7 @@ export const ExamsPage: React.FC = () => {
 
     setAddingQ(true);
     try {
-      const { error } = await supabase.from('exam_questions').insert([{
-        exam_id: selectedExam.id,
+      const payload = {
         question: qForm.question,
         question_ar: qForm.question_ar.trim() || null,
         options,
@@ -314,12 +342,30 @@ export const ExamsPage: React.FC = () => {
         correct_answer: qForm.correct_answer,
         explanation: qForm.explanation,
         explanation_ar: qForm.explanation_ar.trim() || null,
-        order_index: questions.length,
-      }]);
-      if (error) throw error;
+      };
+
+      if (editingQ) {
+        // order_index is left alone: editing a question should not move it.
+        const { error } = await supabase
+          .from('exam_questions').update(payload).eq('id', editingQ.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('exam_questions').insert([{
+          ...payload,
+          exam_id: selectedExam.id,
+          order_index: questions.length,
+        }]);
+        if (error) throw error;
+      }
+
+      setEditingQ(null);
       setQForm({ ...defaultQForm });
       await reloadQuestions(selectedExam.id);
-    } catch { alert('Failed to add question'); }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[ExamsPage] question save failed:', message, err);
+      alert(`Failed to save the question: ${message}`);
+    }
     finally { setAddingQ(false); }
   };
 
@@ -552,7 +598,7 @@ export const ExamsPage: React.FC = () => {
                   {questions.length} questions
                 </span>
               </div>
-              <button onClick={() => { setShowQModal(false); setSelectedExam(null); setQuestions([]); }}
+              <button onClick={() => { setShowQModal(false); setSelectedExam(null); setQuestions([]); cancelEditQ(); }}
                 style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, cursor: 'pointer' }}>
                 <X size={14} />
               </button>
@@ -564,8 +610,18 @@ export const ExamsPage: React.FC = () => {
               {/* LEFT: Add question */}
               <div style={{ borderRight: `1px solid ${T.borderFaint}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ padding: '12px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <Plus size={13} style={{ color: T.accent }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Add Question</span>
+                  {editingQ ? <Edit2 size={13} style={{ color: T.accent }} /> : <Plus size={13} style={{ color: T.accent }} />}
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>
+                    {editingQ
+                      ? `Edit question ${questions.findIndex(x => x.id === editingQ.id) + 1}`
+                      : 'Add Question'}
+                  </span>
+                  {editingQ && (
+                    <button type="button" onClick={cancelEditQ}
+                      style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.borderFaint}`, color: T.textMuted, fontSize: 11, fontFamily: 'inherit', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
                 <form onSubmit={handleAddQ} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <div className="aw-exp-scroll" style={{ overflowY: 'auto', flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -645,8 +701,10 @@ export const ExamsPage: React.FC = () => {
                   <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.borderFaint}`, flexShrink: 0 }}>
                     <button type="submit" className="aw-exp-add-q-btn" disabled={addingQ}>
                       {addingQ
-                        ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Adding…</>
-                        : <><Plus size={13} /> Add Question</>
+                        ? <><Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> Saving…</>
+                        : editingQ
+                          ? <><Save size={13} /> Save Changes</>
+                          : <><Plus size={13} /> Add Question</>
                       }
                     </button>
                   </div>
@@ -668,16 +726,23 @@ export const ExamsPage: React.FC = () => {
                     </div>
                   ) : (
                     questions.map((q, idx) => (
-                      <div key={q.id} className="aw-exp-q-card">
+                      <div key={q.id} className="aw-exp-q-card"
+                        style={editingQ?.id === q.id ? { borderColor: T.accent, background: 'rgba(200,255,0,0.04)' } : undefined}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: T.white, lineHeight: '20px' }}>
                             <span style={{ color: T.textMuted, fontWeight: 400, marginRight: 5 }}>{idx + 1}.</span>
                             {q.question}
                           </span>
-                          <button onClick={() => handleDeleteQ(q.id)}
-                            style={{ width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.redBg, border: `1px solid ${T.redBorder}`, color: T.red, cursor: 'pointer', flexShrink: 0 }}>
-                            <Trash2 size={11} />
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <button onClick={() => handleEditQ(q)} title="Edit this question"
+                              style={{ width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer' }}>
+                              <Edit2 size={11} />
+                            </button>
+                            <button onClick={() => handleDeleteQ(q.id)} title="Delete this question"
+                              style={{ width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.redBg, border: `1px solid ${T.redBorder}`, color: T.red, cursor: 'pointer' }}>
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {q.options.map((opt: string, i: number) => (

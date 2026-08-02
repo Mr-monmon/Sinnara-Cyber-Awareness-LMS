@@ -6,6 +6,14 @@ export interface ExamQuestion {
   correct_answer: string;
   order_index: number;
   explanation?: string;
+  /**
+   * Arabic translations. `options_ar` is positionally paired with `options`
+   * — scoring maps a submitted Arabic answer back to English by index, so the
+   * two arrays must stay the same length and order.
+   */
+  question_ar?: string | null;
+  options_ar?: string[] | null;
+  explanation_ar?: string | null;
 }
 
 export interface Exam {
