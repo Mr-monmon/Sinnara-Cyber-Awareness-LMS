@@ -259,6 +259,15 @@ async function logEvent(params: {
 
   if (tsField[event_type] && isFirstForStage) {
     const update: Record<string, unknown> = { [tsField[event_type]]: new Date().toISOString() };
+    // A submission is the moment credentials were entered. The per-target
+    // boolean must be set here, not only the timestamp: department vulnerability
+    // stats and the employee risk view both aggregate
+    // `phishing_campaign_targets.credentials_entered`, and nothing else ever
+    // writes it — so without this every per-target "credentials" count reads
+    // zero even while the campaign-level counter is correct.
+    if (event_type === "FORM_SUBMITTED") {
+      update.credentials_entered = true;
+    }
     // Reporting is independent of the open→click→submit funnel and must not move status.
     const newStatus = statusMap[event_type];
     if (newStatus) {
