@@ -266,22 +266,46 @@ const AccountSettings = () => {
   const [error, setError]           = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /*
+   * This screen is shared with the employee dashboard, which is how employees
+   * ended up seeing their company's subscription type, licence limit and
+   * contract dates. Billing is an administrator concern, so the Overview tab
+   * only exists for company admins — everyone else gets Security alone.
+   *
+   * The real boundary is RLS (see 20260620000002_restrict_billing_reads_to_admins),
+   * which now refuses these rows to non-admins. This check is what stops the
+   * request being made at all, so a non-admin doesn't sit through a load that
+   * can only end in an empty panel.
+   */
+  const canViewBilling =
+    user?.role === "COMPANY_ADMIN" ||
+    user?.role === "COMPANY_SUPER_ADMIN" ||
+    user?.role === "PLATFORM_ADMIN";
+
   // ── Overview (subscription + phishing limits) ────────────────────────
-  const [tab, setTab] = useState<"overview" | "security">("overview");
+  const [tab, setTab] = useState<"overview" | "security">(canViewBilling ? "overview" : "security");
   const [overview, setOverview] = useState<CompanySubscriptionOverview | null>(null);
-  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewLoading, setOverviewLoading] = useState(canViewBilling);
 
   useEffect(() => {
     let cancelled = false;
     const companyId = user?.company_id;
-    if (!companyId) { setOverviewLoading(false); return; }
+    if (!canViewBilling || !companyId) { setOverviewLoading(false); return; }
     setOverviewLoading(true);
     getCompanySubscriptionOverview(companyId)
       .then(res => { if (!cancelled) setOverview(res); })
       .catch(err => { console.warn("[AccountSettings] overview load failed", err); })
       .finally(() => { if (!cancelled) setOverviewLoading(false); });
     return () => { cancelled = true; };
-  }, [user?.company_id]);
+  }, [user?.company_id, canViewBilling]);
+
+  /*
+   * A role change mid-session (or a profile that loads after first render) must
+   * not leave a non-admin parked on a tab they can no longer see.
+   */
+  useEffect(() => {
+    if (!canViewBilling && tab === "overview") setTab("security");
+  }, [canViewBilling, tab]);
 
   // ── MFA state ────────────────────────────────────────────────────────
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
@@ -380,16 +404,18 @@ const AccountSettings = () => {
           </h1>
         </div>
         <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>
-          Review your company subscription and manage your account security.
+          {canViewBilling
+            ? 'Review your company subscription and manage your account security.'
+            : 'Manage your account security.'}
         </p>
       </div>
 
       {/* ── Tabs ── */}
       <div className="aw-fade-up aw-acc-tabs" style={{ animationDelay: '0.03s' }}>
         {([
-          { key: 'overview', label: 'Overview',  Icon: LayoutDashboard },
-          { key: 'security', label: 'Security',  Icon: ShieldCheck     },
-        ] as const).map(({ key, label, Icon }) => (
+          ...(canViewBilling ? [{ key: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
+          { key: 'security' as const, label: 'Security',  Icon: ShieldCheck     },
+        ]).map(({ key, label, Icon }) => (
           <button
             key={key}
             type="button"
@@ -401,8 +427,8 @@ const AccountSettings = () => {
         ))}
       </div>
 
-      {/* ══════════════ OVERVIEW TAB ══════════════ */}
-      {tab === 'overview' && (
+      {/* ══════════════ OVERVIEW TAB (company admins only) ══════════════ */}
+      {canViewBilling && tab === 'overview' && (
         overviewLoading ? (
           <div className="aw-fade-up" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '28px 22px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, color: T.textMuted, fontSize: 13 }}>
             <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} />
