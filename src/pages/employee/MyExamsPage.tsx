@@ -90,6 +90,20 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
   const [loading, setLoading]       = useState(true);
   const [viewingExam, setViewingExam] = useState<ExamWithStatus | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
+  const isArabic = currentLanguage?.startsWith('ar') ?? false;
+
+  /*
+   * `employee_available_exams` is a view whose live definition predates the
+   * Arabic columns, so the translations are fetched from `exams` and merged
+   * here rather than by recreating the view. Recreating a view whose deployed
+   * shape has drifted from the migration file is how you silently change
+   * behaviour you never looked at.
+   */
+  const [examNames, setExamNames] = useState<Record<string, { title_ar: string | null; description_ar: string | null }>>({});
+  const examTitle = (e: ExamWithStatus) =>
+    (isArabic && examNames[e.exam_id]?.title_ar) || e.title;
+  const examDescription = (e: ExamWithStatus) =>
+    (isArabic && examNames[e.exam_id]?.description_ar) || e.description;
 
   useEffect(() => { loadExams(); }, [user]);
 
@@ -102,7 +116,22 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
         .eq('employee_id', user.id)
         .order('due_date', { ascending: true, nullsFirst: false });
       if (error) { console.error('Error loading exams:', error); return; }
-      setExams(data || []);
+      const rows = data || [];
+      setExams(rows);
+
+      const ids = rows.map((r: ExamWithStatus) => r.exam_id);
+      if (ids.length > 0) {
+        const { data: names, error: nameErr } = await supabase
+          .from('exams').select('id, title_ar, description_ar').in('id', ids);
+        if (nameErr) {
+          // Falling back to English is acceptable; failing the whole screen is not.
+          console.warn('[MyExams] could not load Arabic titles:', nameErr.message);
+        } else {
+          setExamNames(Object.fromEntries(
+            (names || []).map(n => [n.id as string, { title_ar: n.title_ar, description_ar: n.description_ar }])
+          ));
+        }
+      }
     } catch (err) { console.error('Error loading exams:', err); }
     finally { setLoading(false); }
   };
@@ -237,10 +266,10 @@ export const MyExamsPage: React.FC<Props> = ({ onExamCompleted }) => {
                   </div>
 
                   {/* Title & description */}
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 6px', lineHeight: '22px' }}>{exam.title}</h3>
-                  {exam.description && (
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 6px', lineHeight: '22px' }}>{examTitle(exam)}</h3>
+                  {examDescription(exam) && (
                     <p style={{ fontSize: 13, color: T.textMuted, margin: '0 0 14px', lineHeight: '20px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {exam.description}
+                      {examDescription(exam)}
                     </p>
                   )}
 

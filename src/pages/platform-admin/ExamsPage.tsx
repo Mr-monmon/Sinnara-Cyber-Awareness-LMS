@@ -175,6 +175,7 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-exp-styles')
 ───────────────────────────────────────── */
 const defaultExamForm = {
   title: '', description: '',
+  title_ar: '', description_ar: '',
   exam_type: 'GENERAL' as 'PRE_ASSESSMENT' | 'POST_ASSESSMENT' | 'GENERAL',
   passing_score: 70, time_limit_minutes: 30,
 };
@@ -182,6 +183,8 @@ const defaultExamForm = {
 const defaultQForm = {
   question: '', option1: '', option2: '', option3: '', option4: '',
   correct_answer: '', explanation: '',
+  question_ar: '', option1_ar: '', option2_ar: '', option3_ar: '', option4_ar: '',
+  explanation_ar: '',
 };
 
 /* ─────────────────────────────────────────
@@ -219,11 +222,19 @@ export const ExamsPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
+      // Blank translations are stored as NULL, not ''. The viewer falls back
+      // with `title_ar || title`, and an empty string would pass that test and
+      // render a blank heading.
+      const payload = {
+        ...form,
+        title_ar: form.title_ar.trim() || null,
+        description_ar: form.description_ar.trim() || null,
+      };
       if (editingExam) {
-        const { error } = await supabase.from('exams').update(form).eq('id', editingExam.id);
+        const { error } = await supabase.from('exams').update(payload).eq('id', editingExam.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('exams').insert([form]);
+        const { error } = await supabase.from('exams').insert([payload]);
         if (error) throw error;
       }
       setShowModal(false); setEditingExam(null); setForm({ ...defaultExamForm });
@@ -236,6 +247,7 @@ export const ExamsPage: React.FC = () => {
     setEditingExam(exam);
     setForm({
       title: exam.title, description: exam.description,
+      title_ar: exam.title_ar || '', description_ar: exam.description_ar || '',
       exam_type: exam.exam_type, passing_score: exam.passing_score,
       time_limit_minutes: exam.time_limit_minutes || 30,
     });
@@ -264,17 +276,44 @@ export const ExamsPage: React.FC = () => {
   const handleAddQ = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedExam) return;
-    const options = [qForm.option1, qForm.option2, qForm.option3, qForm.option4].filter(o => o.trim());
+    /*
+     * English and Arabic options are paired up BEFORE the blank ones are
+     * dropped, so the two arrays always end up the same length and in the same
+     * order. Scoring maps an Arabic answer back to English by position, so a
+     * drift here would mark correct answers wrong.
+     */
+    const pairs = [
+      [qForm.option1, qForm.option1_ar],
+      [qForm.option2, qForm.option2_ar],
+      [qForm.option3, qForm.option3_ar],
+      [qForm.option4, qForm.option4_ar],
+    ].filter(([en]) => en.trim());
+
+    const options = pairs.map(([en]) => en);
     if (options.length < 2) { alert('At least 2 options are required'); return; }
     if (!options.includes(qForm.correct_answer)) { alert('Correct answer must match one of the options'); return; }
+
+    const arabicFilled = pairs.filter(([, ar]) => ar.trim()).length;
+    if (arabicFilled > 0 && arabicFilled < pairs.length) {
+      // A partly translated list cannot be shown in Arabic — the viewer would
+      // fall back to English anyway — and storing it would fail the database
+      // length check. Say so rather than silently dropping the work.
+      alert('Translate every option or none. A partly translated list is not shown in Arabic.');
+      return;
+    }
+    const optionsAr = arabicFilled === pairs.length ? pairs.map(([, ar]) => ar) : null;
+
     setAddingQ(true);
     try {
       const { error } = await supabase.from('exam_questions').insert([{
         exam_id: selectedExam.id,
         question: qForm.question,
+        question_ar: qForm.question_ar.trim() || null,
         options,
+        options_ar: optionsAr,
         correct_answer: qForm.correct_answer,
         explanation: qForm.explanation,
+        explanation_ar: qForm.explanation_ar.trim() || null,
         order_index: questions.length,
       }]);
       if (error) throw error;
@@ -431,12 +470,18 @@ export const ExamsPage: React.FC = () => {
                   <label className="aw-exp-label">Exam Title <span style={{ color: T.accent }}>*</span></label>
                   <input className="aw-exp-input" type="text" required placeholder="e.g. Cybersecurity Awareness Quiz"
                     value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+                  <input className="aw-exp-input" type="text" dir="rtl" style={{ marginTop: 8 }}
+                    placeholder="العنوان بالعربي (اختياري)"
+                    value={form.title_ar} onChange={e => setForm(p => ({ ...p, title_ar: e.target.value }))} />
                 </div>
 
                 <div>
                   <label className="aw-exp-label">Description <span style={{ color: T.accent }}>*</span></label>
                   <textarea className="aw-exp-textarea" required rows={3} placeholder="Brief exam description"
                     value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+                  <textarea className="aw-exp-textarea" rows={3} dir="rtl" style={{ marginTop: 8 }}
+                    placeholder="الوصف بالعربي (اختياري)"
+                    value={form.description_ar} onChange={e => setForm(p => ({ ...p, description_ar: e.target.value }))} />
                 </div>
 
                 {/* Exam type buttons */}
@@ -530,6 +575,9 @@ export const ExamsPage: React.FC = () => {
                       <label className="aw-exp-label">Question <span style={{ color: T.accent }}>*</span></label>
                       <textarea className="aw-exp-textarea" required rows={3} placeholder="Enter your question here…"
                         value={qForm.question} onChange={e => setQForm(p => ({ ...p, question: e.target.value }))} />
+                      <textarea className="aw-exp-textarea" rows={2} dir="rtl" style={{ marginTop: 8 }}
+                        placeholder="نص السؤال بالعربي (اختياري)"
+                        value={qForm.question_ar} onChange={e => setQForm(p => ({ ...p, question_ar: e.target.value }))} />
                     </div>
 
                     {/* Options grid */}
@@ -544,6 +592,17 @@ export const ExamsPage: React.FC = () => {
                             style={{ fontSize: 13 }}
                             value={qForm[key] as string}
                             onChange={e => setQForm(p => ({ ...p, [key]: e.target.value }))}
+                          />
+                          {/* Paired with the English box above it — same slot,
+                              which is what keeps the two arrays aligned. */}
+                          <input
+                            className="aw-exp-input"
+                            type="text"
+                            dir="rtl"
+                            placeholder="بالعربي"
+                            style={{ fontSize: 13, marginTop: 6 }}
+                            value={qForm[`${key}_ar` as keyof typeof qForm] as string}
+                            onChange={e => setQForm(p => ({ ...p, [`${key}_ar`]: e.target.value }))}
                           />
                         </div>
                       ))}
@@ -577,6 +636,9 @@ export const ExamsPage: React.FC = () => {
                       <label className="aw-exp-label">Explanation <span style={{ color: T.textMuted, fontWeight: 400 }}>(optional)</span></label>
                       <textarea className="aw-exp-textarea" rows={2} placeholder="Why is this the correct answer?"
                         value={qForm.explanation} onChange={e => setQForm(p => ({ ...p, explanation: e.target.value }))} />
+                      <textarea className="aw-exp-textarea" rows={2} dir="rtl" style={{ marginTop: 8 }}
+                        placeholder="الشرح بالعربي (اختياري)"
+                        value={qForm.explanation_ar} onChange={e => setQForm(p => ({ ...p, explanation_ar: e.target.value }))} />
                     </div>
                   </div>
 
