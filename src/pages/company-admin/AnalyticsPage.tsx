@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  TrendingUp, TrendingDown, Award, BookOpen,
+  TrendingUp, TrendingDown, BookOpen,
   ClipboardCheck, Users, BarChart3, CheckCircle,
   XCircle, AlertCircle, Target, Activity,
 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { downloadCSV } from '../../lib/csv';
 import { User as UserType } from '../../lib/types';
 import { ExamAttemptsAnalytics } from '../../components/ExamAttemptsAnalytics';
 
@@ -430,6 +432,22 @@ export const AnalyticsPage: React.FC = () => {
   const perfSafePage  = Math.min(perfPage, perfPageCount - 1);
   const perfPaged     = perfFiltered.slice(perfSafePage * PERF_PAGE_SIZE, perfSafePage * PERF_PAGE_SIZE + PERF_PAGE_SIZE);
 
+  // Export the currently filtered rows (all of them, not just the visible page) so
+  // an admin can hand the full breakdown to auditors or open it in Excel.
+  const exportPerformanceCSV = () => {
+    downloadCSV('employee_performance.csv', perfFiltered.map(p => ({
+      Employee: p.employee.full_name ?? '',
+      Email: p.employee.email ?? '',
+      'Courses Completed': p.coursesCompleted,
+      'Total Courses': p.totalCourses,
+      'Exams Taken': p.examsCompleted,
+      'Pre-Assessment %': p.preScore ?? '',
+      'Post-Assessment %': p.postScore ?? '',
+      'Improvement %': p.preScore !== undefined && p.postScore !== undefined ? p.improvement : '',
+      Status: p.status,
+    })));
+  };
+
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 22 }}>
 
@@ -446,10 +464,9 @@ export const AnalyticsPage: React.FC = () => {
 
       {/* ── Top Stat cards ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.04s', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <StatCard icon={Award}        color={T.green}  bg={T.greenBg}               label="Employees Passed"   value={passedCount}                         sub={`of ${performance.length} employees`} delay="0.04s" />
+        <StatCard icon={Target}       color={T.accent} bg="rgba(200,255,0,0.08)"    label="Pass Rate"           value={`${passRate}%`}                      sub={`${passedCount} of ${empWithPost.length} assessed`} delay="0.04s" />
         <StatCard icon={TrendingUp}   color={T.blue}   bg={T.blueBg}                label="Avg Improvement"    value={`${avgImprovement > 0 ? '+' : ''}${avgImprovement}%`} sub={`${empWithBothScores.length} w/ both scores`} delay="0.08s" />
-        <StatCard icon={Target}       color={T.accent} bg="rgba(200,255,0,0.08)"    label="Pass Rate"           value={`${passRate}%`}                      sub={`Of ${empWithPost.length} assessed`}  delay="0.12s" />
-        <StatCard icon={Users}        color={T.purple} bg={T.purpleBg}              label="Total Employees"    value={performance.length}                  sub="In this company"                      delay="0.16s" />
+        <StatCard icon={Users}        color={T.purple} bg={T.purpleBg}              label="Total Employees"    value={performance.length}                  sub="In this company"                      delay="0.12s" />
         {examStats && <>
           <StatCard icon={ClipboardCheck} color={T.orange} bg={T.orangeBg}           label="Exam Attempts"      value={examStats.totalAttempts}              sub={`${examStats.uniqueEmployees} employees`} delay="0.20s" />
           <StatCard icon={Activity}      color={T.gold}   bg={T.goldBg}             label="Exam Avg Score"     value={`${examStats.avgScore.toFixed(1)}%`} sub="Across all exams"                      delay="0.24s" />
@@ -484,13 +501,22 @@ export const AnalyticsPage: React.FC = () => {
       {/* ── Employee Performance Table ── */}
       <div className="aw-fade-up" style={{ animationDelay: '0.30s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
         <SectionHeader icon={Users} color={T.purple} title="Employee Performance" badge={`${perfFiltered.length} employees`} />
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}` }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <input
             value={perfSearch}
             onChange={e => { setPerfSearch(e.target.value); setPerfPage(0); }}
             placeholder="Search employee by name or email…"
-            style={{ width: '100%', maxWidth: 320, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.white, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+            style={{ flex: '1 1 220px', maxWidth: 320, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.white, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
           />
+          <button
+            type="button"
+            onClick={() => exportPerformanceCSV()}
+            disabled={perfFiltered.length === 0}
+            title={perfFiltered.length === 0 ? 'No rows to export' : 'Download the filtered rows as CSV'}
+            style={{ marginInlineStart: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 8, border: `1px solid ${T.border}`, background: perfFiltered.length === 0 ? 'transparent' : 'rgba(200,255,0,0.06)', color: perfFiltered.length === 0 ? T.textMuted : T.accent, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: perfFiltered.length === 0 ? 'not-allowed' : 'pointer' }}
+          >
+            <Download size={14} /> Export CSV
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="aw-ca-table">
@@ -619,7 +645,7 @@ export const AnalyticsPage: React.FC = () => {
                 </div>
               ))}
               {courseStats.employeesIncomplete.length === 0 && (
-                <p style={{ fontSize: 12, color: T.green, textAlign: 'center', padding: '20px', fontWeight: 600 }}>🎉 All employees completed!</p>
+                <p style={{ fontSize: 12, color: T.green, textAlign: 'center', padding: '20px', fontWeight: 600 }}>All employees completed.</p>
               )}
             </div>
           </div>

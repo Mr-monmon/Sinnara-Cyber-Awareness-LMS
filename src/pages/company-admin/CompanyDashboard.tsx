@@ -138,65 +138,9 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-cd-styles'))
 
 /* ─────────────────────────────────────────
    DONUT CHART (SVG)
-───────────────────────────────────────── */
-// notCompleted = totalEmployees - completedTraining (the true complement of the green arc).
-// The old version showed pendingAssessments (a different metric) whose count didn't match
-// the arc size, making the legend misleading.
-const DonutChart: React.FC<{ completed: number; notCompleted: number; pct: number }> = ({ completed, notCompleted, pct }) => {
-  const R = 52; const cx = 70; const cy = 70;
-  const circ = 2 * Math.PI * R;
-  const dash = (pct / 100) * circ;
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-      <div style={{ position: 'relative', width: 140, height: 140, flexShrink: 0 }}>
-        <svg width={140} height={140} viewBox="0 0 140 140">
-          <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={10} />
-          <circle cx={cx} cy={cy} r={R} fill="none" stroke={T.orange} strokeWidth={10} strokeLinecap="round"
-            strokeDasharray={`${circ} ${circ}`}
-            strokeDashoffset={-dash}
-            style={{ transform: 'rotate(-90deg)', transformOrigin: '70px 70px' }}
-          />
-          <circle cx={cx} cy={cy} r={R} fill="none" stroke={T.green} strokeWidth={10} strokeLinecap="round"
-            strokeDasharray={`${dash} ${circ - dash}`}
-            style={{ transform: 'rotate(-90deg)', transformOrigin: '70px 70px' }}
-          />
-          <circle cx={cx} cy={cy} r={32} fill={T.bgCard} />
-          <text x={cx} y={cy - 6}  textAnchor="middle" fill={T.white}    fontSize="16" fontWeight="900" fontFamily="Inter">{pct}%</text>
-          <text x={cx} y={cy + 11} textAnchor="middle" fill={T.textMuted} fontSize="9"  fontFamily="Inter">complete</text>
-        </svg>
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {[
-          { label: 'Completed Training',  value: completed,    color: T.green,  bg: T.greenBg  },
-          { label: 'Not Yet Completed',   value: notCompleted, color: T.orange, bg: T.orangeBg },
-        ].map(s => (
-          <div key={s.label} style={{ padding: '10px 14px', background: s.bg, border: `1px solid ${s.color}30`, borderRadius: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: s.color }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</span>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: T.white }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 /* ─────────────────────────────────────────
    MINI BAR CHART (SVG)
-───────────────────────────────────────── */
-const MiniBar: React.FC<{ value: number; max: number; color: string }> = ({ value, max, color }) => {
-  const pct = max > 0 ? (value / max) * 100 : 0;
-  return (
-    <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-      <div
-        className="aw-bar-fill"
-        style={{ '--bar-w': `${pct}%`, width: `${pct}%`, height: '100%', background: color, borderRadius: 9999, animation: 'aw-bar-grow 0.8s ease both' } as React.CSSProperties}
-      />
-    </div>
-  );
-};
 
 /* ─────────────────────────────────────────
    RANK MEDAL COLORS
@@ -214,7 +158,7 @@ export const CompanyDashboard = () => {
   const [subscription, setSubscription]         = useState<SubscriptionInfo | null>(null);
   const [isLoading, setIsLoading]               = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  const [stats, setStats] = useState({ totalEmployees: 0, completedTraining: 0, averageScore: 0, pendingAssessments: 0 });
+  const [stats, setStats] = useState({ totalEmployees: 0, completionRate: 0, averageScore: 0, pendingAssessments: 0 });
   const [topEmployees, setTopEmployees] = useState<{ id: string; name: string; email: string; averageScore: number; examsTaken: number }[]>([]);
 
   useEffect(() => { loadCompany(); loadStats(); }, [user]);
@@ -224,24 +168,29 @@ export const CompanyDashboard = () => {
     try {
       const { data: employees } = await supabase.from("users").select("id, full_name, email").eq("company_id", user.company_id).eq("role", "EMPLOYEE");
       const ids = employees?.map(e => e.id) || [];
-      if (ids.length === 0) { setStats({ totalEmployees: 0, completedTraining: 0, averageScore: 0, pendingAssessments: 0 }); return; }
+      if (ids.length === 0) { setStats({ totalEmployees: 0, completionRate: 0, averageScore: 0, pendingAssessments: 0 }); return; }
 
-      const [, courseRes, examsRes] = await Promise.all([
-        supabase.from("exam_results").select("employee_id, percentage, passed").in("employee_id", ids),
-        // status is the source of truth (maintained by the course-progress trigger);
-        // completed_at can lag behind for rows written before the trigger existed.
-        supabase.from("employee_courses").select("employee_id, status").in("employee_id", ids).eq("status", "COMPLETED"),
+      const [courseRes, examsRes] = await Promise.all([
+        // ALL assigned course rows (not only COMPLETED): completion is now
+        // enrollment-based — completed assignments / all assignments — which is
+        // the same rule Analytics and Advanced use. The old headline counted
+        // "employees who finished ≥1 course ÷ headcount", a flattering figure
+        // that read as high even when most assigned courses were untouched.
+        supabase.from("employee_courses").select("employee_id, status").in("employee_id", ids),
         supabase.from("employee_available_exams").select("employee_id").in("employee_id", ids),
       ]);
 
-      // Employees who completed at least one course
-      const completedCoursesSet = new Set(courseRes.data?.map(e => e.employee_id) || []);
+      const courseRows = courseRes.data || [];
+      const assignedCount  = courseRows.length;
+      const completedCount = courseRows.filter(r => r.status === "COMPLETED").length;
+      // Enrollment-based completion %, rounded; 0 when nothing is assigned yet.
+      const completionRate = assignedCount > 0 ? Math.round((completedCount / assignedCount) * 100) : 0;
 
       // Unique employees with pending assessments (not total exam rows)
       const pendingEmployeesSet = new Set(examsRes.data?.map(e => e.employee_id) || []);
 
       const { data: topData } = await supabase.functions.invoke("get_top_performance", { method: "POST", body: { company_id: user.company_id } });
-      setStats({ totalEmployees: employees?.length || 0, completedTraining: completedCoursesSet.size, averageScore: topData?.avgScore || 0, pendingAssessments: pendingEmployeesSet.size });
+      setStats({ totalEmployees: employees?.length || 0, completionRate, averageScore: topData?.avgScore || 0, pendingAssessments: pendingEmployeesSet.size });
       setTopEmployees(topData?.rankedEmployees || []);
       setIsLoading(false);
     } catch (err) { console.error(err); setIsLoading(false); }
@@ -304,13 +253,12 @@ export const CompanyDashboard = () => {
   };
 
   const renderDashboard = () => {
-    const completionRate = stats.totalEmployees > 0 ? Math.round((stats.completedTraining / stats.totalEmployees) * 100) : 0;
-    const pendingRate    = 100 - completionRate;
+    const completionRate = stats.completionRate;
 
     /* Stat card definitions */
     const STATS = [
       { icon: Users,          color: T.accent,  bg: 'rgba(200,255,0,0.08)',  border: 'rgba(200,255,0,0.20)',  label: 'Total Employees',     sub: 'Active accounts',         value: stats.totalEmployees,     pct: null },
-      { icon: Award,          color: T.green,   bg: T.greenBg,              border: T.greenBorder,            label: 'Completed Training',  sub: 'Completed ≥1 course',     value: stats.completedTraining,  pct: completionRate },
+      { icon: Award,          color: T.green,   bg: T.greenBg,              border: T.greenBorder,            label: 'Training Completion', sub: 'of all assigned courses', value: `${completionRate}%`,      pct: completionRate },
       { icon: TrendingUp,     color: T.blue,    bg: T.blueBg,               border: T.blueBorder,             label: 'Average Score',       sub: 'Across all assessments',  value: `${stats.averageScore}%`, pct: stats.averageScore },
       { icon: AlertCircle,    color: T.orange,  bg: T.orangeBg,             border: T.orangeBorder,           label: 'Pending Assessments', sub: 'Employees with pending',  value: stats.pendingAssessments, pct: null },
     ] as const;
@@ -386,96 +334,6 @@ export const CompanyDashboard = () => {
               )}
             </div>
           ))}
-        </div>
-
-        {/* ── Charts row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-
-          {/* Completion mix donut */}
-          <div className="aw-fade-up" style={{ animationDelay: '0.20s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Award size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Completion Mix</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>Live</span>
-            </div>
-            <div style={{ padding: '20px' }}>
-              <DonutChart completed={stats.completedTraining} notCompleted={stats.totalEmployees - stats.completedTraining} pct={completionRate} />
-            </div>
-          </div>
-
-          {/* Assessment breakdown */}
-          <div className="aw-fade-up" style={{ animationDelay: '0.24s', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${T.borderFaint}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <BarChart2 size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Assessment Breakdown</span>
-            </div>
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {[
-                { label: 'Completed',  value: stats.completedTraining,  max: stats.totalEmployees, color: T.green  },
-                { label: 'Pending',    value: stats.pendingAssessments, max: stats.totalEmployees, color: T.orange },
-              ].map(row => (
-                <div key={row.label}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: T.textBody, marginBottom: 7 }}>
-                    <span>{row.label}</span>
-                    <span style={{ fontWeight: 700, color: T.white }}>{row.value}</span>
-                  </div>
-                  <MiniBar value={row.value} max={row.max} color={row.color} />
-                </div>
-              ))}
-
-              {/* Avg score */}
-              <div style={{ padding: '14px 16px', background: 'rgba(200,255,0,0.04)', border: '1px solid rgba(200,255,0,0.14)', borderRadius: 10 }}>
-                <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 6 }}>Average Score</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 28, fontWeight: 900, color: T.accent }}>{stats.averageScore}%</span>
-                  <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${stats.averageScore}%`, background: `linear-gradient(90deg, ${T.accent}, rgba(200,255,0,0.55))`, borderRadius: 9999, boxShadow: '0 0 8px rgba(200,255,0,0.28)' }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Remaining */}
-              <div style={{ fontSize: 12, color: T.textMuted, textAlign: 'center' }}>
-                <span style={{ color: T.textBody, fontWeight: 700 }}>{pendingRate}%</span> training remaining across the organization
-              </div>
-            </div>
-          </div>
-
-          {/* Training overview live card */}
-          <div className="aw-fade-up" style={{ animationDelay: '0.28s', background: `linear-gradient(135deg, #0e100a 0%, #1a2210 60%, #0e1614 100%)`, border: `1px solid rgba(200,255,0,0.20)`, borderRadius: 14, overflow: 'hidden', position: 'relative' }}>
-            <div aria-hidden="true" style={{ position: 'absolute', top: -30, right: -30, width: 150, height: 150, borderRadius: '50%', background: 'radial-gradient(circle, rgba(200,255,0,0.08), transparent 70%)', pointerEvents: 'none' }} />
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid rgba(200,255,0,0.12)`, display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-              <TrendingUp size={14} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Training Overview</span>
-              <span style={{ marginLeft: 'auto', padding: '2px 10px', background: 'rgba(200,255,0,0.10)', border: '1px solid rgba(200,255,0,0.25)', borderRadius: 9999, fontSize: 10, fontWeight: 700, color: T.accent, letterSpacing: '0.5px', textTransform: 'uppercase' }}>LIVE</span>
-            </div>
-            <div style={{ padding: '20px', position: 'relative', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Completion bar */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: T.textBody, marginBottom: 8 }}>
-                  <span>Completion Rate</span>
-                  <span style={{ fontSize: 20, fontWeight: 900, color: T.accent }}>{completionRate}%</span>
-                </div>
-                <div style={{ height: 8, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${completionRate}%`, background: `linear-gradient(90deg, ${T.accent}, rgba(200,255,0,0.60))`, borderRadius: 9999, boxShadow: '0 0 12px rgba(200,255,0,0.35)', transition: 'width 0.5s ease' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingTop: 4, borderTop: 'rgba(255,255,255,0.06) 1px solid' }}>
-                {[
-                  { label: 'Employees',  value: stats.totalEmployees,    color: T.white },
-                  { label: 'Completed',  value: stats.completedTraining, color: T.green },
-                  { label: 'Pending',    value: stats.pendingAssessments, color: T.orange },
-                  { label: 'Avg Score',  value: `${stats.averageScore}%`, color: T.blue },
-                ].map(m => (
-                  <div key={m.label} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid rgba(255,255,255,0.06)`, borderRadius: 9 }}>
-                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{m.label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* ── Top performers ── */}
@@ -557,13 +415,7 @@ export const CompanyDashboard = () => {
         <div style={{ display: 'grid', gap: 16 }}>
           <DepartmentTrendChart
             companyId={user?.company_id ?? undefined}
-            metric="courseProgress"
-            months={12}
-            tokens={CHART_TOKENS}
-          />
-          <DepartmentTrendChart
-            companyId={user?.company_id ?? undefined}
-            metric="awareness"
+            metric="maturity"
             months={12}
             tokens={CHART_TOKENS}
           />
