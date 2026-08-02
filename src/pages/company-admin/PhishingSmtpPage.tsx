@@ -152,14 +152,34 @@ export const PhishingSmtpPage: React.FC = () => {
     if (!user?.company_id) return;
     setLoading(true);
     try {
-      // Load company profiles — password column intentionally excluded
-      const SAFE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
-      const { data: companyProfiles } = await supabase
-        .from('smtp_profiles')
-        .select(SAFE_COLS)
-        .eq('company_id', user.company_id)
-        .eq('is_platform_profile', false)
-        .order('created_at', { ascending: false });
+      // Password column intentionally excluded. `visibility` and
+      // `password_encrypted` are present on the current schema but absent on
+      // some deployed databases (schema drift), so every read below falls back
+      // to a core column set the original schema is guaranteed to have — the
+      // same pattern the platform SMTP page already uses. Without it a company
+      // admin saw an empty list and could not select their own sender.
+      const FULL_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, visibility, is_active, password_encrypted, created_at';
+      const CORE_COLS = 'id, company_id, name, host, port, username, from_address, from_name, use_tls, use_starttls, ignore_cert_errors, custom_headers, is_platform_profile, is_active, created_at';
+
+      // Own company profiles — the ship-critical read. Surface the error if even
+      // the core query fails, rather than silently showing "no profiles".
+      let companyProfiles: SmtpProfile[] | null = null;
+      {
+        const full = await supabase
+          .from('smtp_profiles').select(FULL_COLS)
+          .eq('company_id', user.company_id).eq('is_platform_profile', false)
+          .order('created_at', { ascending: false });
+        if (full.error) {
+          const core = await supabase
+            .from('smtp_profiles').select(CORE_COLS)
+            .eq('company_id', user.company_id).eq('is_platform_profile', false)
+            .order('created_at', { ascending: false });
+          if (core.error) throw core.error;
+          companyProfiles = core.data;
+        } else {
+          companyProfiles = full.data;
+        }
+      }
 
       // Load SHARED platform profiles (pushed to this company via access rows)
       const { data: accessRows } = await supabase
@@ -167,12 +187,16 @@ export const PhishingSmtpPage: React.FC = () => {
         .select('smtp_profile_id, pushed_at')
         .eq('company_id', user.company_id);
 
-      // Load GLOBAL platform profiles (open to every company — no access row needed)
+      // Load GLOBAL platform profiles (open to every company — no access row
+      // needed). Best-effort: if `visibility` is absent this read returns
+      // nothing and platform globals just don't appear, but the company's own
+      // profiles (above) are unaffected.
       const { data: globalPP } = await supabase
         .from('smtp_profiles')
-        .select(SAFE_COLS)
+        .select(FULL_COLS)
         .eq('is_platform_profile', true)
         .eq('visibility', 'GLOBAL');
+      const SAFE_COLS = FULL_COLS;
 
       const profileMap = new Map<string, SmtpProfile>();
 
