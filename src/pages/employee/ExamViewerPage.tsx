@@ -99,7 +99,10 @@ interface ExamQuestion {
   id: string;
   exam_id: string;
   question: string;
+  question_ar: string | null;
   options: string[];
+  /** Same order as `options`; position is what maps an answer back to the key. */
+  options_ar: string[] | null;
   order_index: number;
 }
 interface ExamViewerProps {
@@ -151,6 +154,17 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const [result, setResult] = useState<ExamResult | null>(null);
   const currentLanguage = i18n.resolvedLanguage;
   const isRtl = i18n.dir() === "rtl";
+  const isArabic = currentLanguage?.startsWith("ar") ?? false;
+
+  /*
+   * Same fallback rule the course viewer uses: an untranslated question shows
+   * in English rather than blank. Options fall back as a whole list, never
+   * item-by-item — a half-Arabic list would be worse than an English one, and
+   * mixing them would break the positional mapping that scoring depends on.
+   */
+  const questionText = (q: ExamQuestion) => (isArabic && q.question_ar ? q.question_ar : q.question);
+  const optionList = (q: ExamQuestion) =>
+    isArabic && q.options_ar && q.options_ar.length === q.options.length ? q.options_ar : q.options;
 
   useEffect(() => {
     checkAccessAndLoad();
@@ -970,12 +984,12 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
               letterSpacing: "-0.2px",
             }}
           >
-            {currentQuestion.question}
+            {questionText(currentQuestion)}
           </h2>
 
           {/* Options */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {currentQuestion.options.map((option, index) => {
+            {optionList(currentQuestion).map((option, index) => {
               const isSelected = answers[currentQuestion.id] === option;
               return (
                 <button

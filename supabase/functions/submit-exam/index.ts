@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     // ── Load the answer key (service role only) ──
     const { data: questions, error: qErr } = await admin
       .from("exam_questions")
-      .select("id, question, correct_answer")
+      .select("id, question, correct_answer, options, options_ar")
       .eq("exam_id", examId)
       .order("order_index");
 
@@ -123,14 +123,46 @@ Deno.serve(async (req) => {
     }
 
     // ── Score server-side ──
+    //
+    // Exams are bilingual, and the viewer submits the TEXT of the option that
+    // was clicked. An employee taking the Arabic version therefore submits
+    // Arabic text, which never equals the English answer key. Comparing them
+    // directly would mark every answer wrong — silently, and only for the
+    // population the translation exists to serve.
+    //
+    // English stays the single answer key. `options_ar` is a parallel array in
+    // the same order as `options` (enforced by a length CHECK in the database),
+    // so a submitted answer is mapped back to its English counterpart by
+    // position before it is compared.
+    const toCanonical = (
+      selected: string | null,
+      options: unknown,
+      optionsAr: unknown,
+    ): string | null => {
+      if (selected === null || selected === undefined) return null;
+      const en = Array.isArray(options) ? (options as string[]) : [];
+      if (en.includes(selected)) return selected;
+      const ar = Array.isArray(optionsAr) ? (optionsAr as string[]) : [];
+      const idx = ar.indexOf(selected);
+      // A mismatched length means the mapping is unreliable, so fall through
+      // to the raw value rather than guessing at a position that may not exist.
+      if (idx >= 0 && idx < en.length) return en[idx];
+      return selected;
+    };
+
     let correctCount = 0;
     const detail = questions.map((q) => {
       const selected = answers[q.id] ?? null;
-      const isCorrect = selected === q.correct_answer;
+      const canonical = toCanonical(selected, q.options, q.options_ar);
+      const isCorrect = canonical !== null && canonical === q.correct_answer;
       if (isCorrect) correctCount++;
       return {
         question: q.question,
-        selected_answer: selected ?? "Not answered",
+        // Recorded in English so results and reports stay comparable whichever
+        // language the exam was sat in; `selected_as_shown` keeps what the
+        // employee actually picked, for reviewing their own attempt.
+        selected_answer: canonical ?? "Not answered",
+        selected_as_shown: selected ?? "Not answered",
         correct_answer: q.correct_answer,
         is_correct: isCorrect,
       };

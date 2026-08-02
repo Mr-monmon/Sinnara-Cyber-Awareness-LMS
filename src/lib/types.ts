@@ -12,6 +12,9 @@ export interface Exam {
   id: string;
   title: string;
   description: string;
+  /** Arabic translations. NULL falls back to the English field in every viewer. */
+  title_ar?: string | null;
+  description_ar?: string | null;
   exam_type: 'PRE_ASSESSMENT' | 'POST_ASSESSMENT' | 'GENERAL';
   passing_score: number;
   time_limit_minutes: number | null;
