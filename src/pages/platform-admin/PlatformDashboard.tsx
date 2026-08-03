@@ -191,11 +191,9 @@ export const PlatformDashboard = () => {
     setLoading(true);
     try {
       const now = new Date();
-      const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const [
         coRes, empRes, crRes,
-        activeSubs, expiringSubs,
         invoicesRes,
         supportRes,
         demoRes,
@@ -204,11 +202,9 @@ export const PlatformDashboard = () => {
         campaignsRes,
         phishingTotalsRes,
       ] = await Promise.all([
-        supabase.from("companies").select("id, name, is_active", { count: "exact" }),
+        supabase.from("companies").select("id, name, is_active, subscription_end", { count: "exact" }),
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "EMPLOYEE"),
         supabase.from("courses").select("id", { count: "exact", head: true }),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "ACTIVE"),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "ACTIVE").lte("end_date", in30),
         supabase.from("invoices").select("total, status"),
         supabase.from("support_ticket").select("status"),
         supabase.from("demo_requests").select("status"),
@@ -232,9 +228,31 @@ export const PlatformDashboard = () => {
 
       // Demo
       const demos = demoRes.data ?? [];
-      const pendingDemo = demos.filter(d => d.status === "pending").length;
+      // demo_requests.status is upper-case ('PENDING' | 'CONTACTED' | 'COMPLETED');
+      // only support_ticket uses lower-case. Comparing against "pending" here made
+      // this counter — and the "needs attention" chip for new leads — permanently 0.
+      const pendingDemo = demos.filter(d => (d.status ?? "").toUpperCase() === "PENDING").length;
 
       const companies = coRes.data ?? [];
+
+      /* Subscription KPIs come from `companies`, not the `subscriptions` table.
+         src/lib/subscription.ts documents `subscriptions` as written once at company
+         creation and never updated, and its `status` column is only ever recomputed
+         inside syncSubscriptionRow — which runs solely when an admin saves a company.
+         Counting ACTIVE rows there therefore included subscriptions that ended years
+         ago. The old "expiring" query also had no lower bound, so every expired
+         subscription was reported as "expiring in 30 days" and the amber banner never
+         cleared. This matches how SubscriptionsPage computes the same two numbers, so
+         the two screens now agree. */
+      const daysRemaining = (end: string) =>
+        Math.ceil((new Date(end).getTime() - now.getTime()) / 86400000);
+      const liveCompanies = companies.filter(
+        c => c.subscription_end && c.is_active !== false && daysRemaining(c.subscription_end) > 0
+      );
+      const activeSubscriptions = liveCompanies.length;
+      const expiringIn30 = liveCompanies.filter(
+        c => daysRemaining(c.subscription_end!) <= 30
+      ).length;
 
       // Monthly revenue (last 6 months from paid invoices)
       const { data: paidInvoices } = await supabase
@@ -268,8 +286,8 @@ export const PlatformDashboard = () => {
         activeCompanies: companies.filter(c => c.is_active).length,
         totalEmployees: empRes.count ?? 0,
         courses: crRes.count ?? 0,
-        activeSubscriptions: activeSubs.count ?? 0,
-        expiringIn30: expiringSubs.count ?? 0,
+        activeSubscriptions,
+        expiringIn30,
         totalRevenue,
         pendingAmount,
         openSupport,

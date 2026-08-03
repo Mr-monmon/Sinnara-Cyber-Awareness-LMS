@@ -4,6 +4,7 @@ import {
   Target, Award, Activity, CheckCircle,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { rate, fmtPct, fmtCount, tabularNums } from '../../lib/analyticsFormat';
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -43,6 +44,10 @@ interface AnalyticsData {
   totalCompanies: number; activeCompanies: number;
   totalUsers: number;     totalEmployees: number;
   totalCourses: number;   completedCourses: number;
+  /** Course ASSIGNMENTS (employee_courses rows) — the denominator for completion. */
+  totalEnrollments: number;
+  /** Employees with at least one course assigned. */
+  enrolledEmployees: number;
   passedExams: number;
   averageScore: number;
   totalExamAttempts: number;
@@ -337,18 +342,23 @@ const StatCard: React.FC<{ icon: React.ElementType; color: string; bg: string; l
    MINI PROGRESS BAR
 ───────────────────────────────────────── */
 const MiniBar: React.FC<{ label: string; value: number; max: number; color: string }> = ({ label, value, max, color }) => {
-  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  // `rate` returns null when there is no denominator, so "nothing assigned yet"
+  // renders as "—" instead of a 0% that reads as "everybody failed".
+  const pct = rate(value, max);
+  // The bar is clamped so it cannot overflow its track, but the printed figure is
+  // not: if a ratio ever exceeds 100% again that should be visible, not hidden.
+  const barWidth = pct === null ? 0 : Math.min(100, pct);
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
         <span style={{ fontSize: 13, color: T.textBody }}>{label}</span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: T.textMuted }}>{value}/{max}</span>
-          <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+          <span style={{ fontSize: 11, color: T.textMuted, ...tabularNums }}>{fmtCount(value)}/{fmtCount(max)}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: pct === null ? T.textMuted : color, ...tabularNums }}>{fmtPct(pct)}</span>
         </div>
       </div>
       <div style={{ height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${color}, ${color}bb)`, borderRadius: 9999, boxShadow: `0 0 8px ${color}40`, transition: 'width 0.6s ease' }} />
+        <div style={{ height: '100%', width: `${barWidth}%`, background: `linear-gradient(90deg, ${color}, ${color}bb)`, borderRadius: 9999, boxShadow: `0 0 8px ${color}40`, transition: 'width 0.6s ease' }} />
       </div>
     </div>
   );
@@ -360,8 +370,8 @@ const MiniBar: React.FC<{ label: string; value: number; max: number; color: stri
 export const AnalyticsPage: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     totalCompanies: 0, activeCompanies: 0, totalUsers: 0, totalEmployees: 0,
-    totalCourses: 0, completedCourses: 0, passedExams: 0,
-    averageScore: 0, totalExamAttempts: 0,
+    totalCourses: 0, completedCourses: 0, totalEnrollments: 0, enrolledEmployees: 0,
+    passedExams: 0, averageScore: 0, totalExamAttempts: 0,
   });
   const [companyStats, setCompanyStats] = useState<CompanyStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -388,6 +398,11 @@ export const AnalyticsPage: React.FC = () => {
       const activeCompanies  = companies.filter(c => (c as { is_active?: boolean }).is_active !== false).length;
       const employees        = users.filter(u => u.role === 'EMPLOYEE');
       const completedCourses = employeeCourses.filter(ec => ec.status === 'COMPLETED').length;
+      // Completion is completed ASSIGNMENTS over total ASSIGNMENTS. It used to be
+      // divided by the size of the course catalogue, so thousands of completions over
+      // a dozen courses pinned the bar at 100% and the card read "4500 of 12 total".
+      const totalEnrollments = employeeCourses.length;
+      const enrolledEmployees = new Set(employeeCourses.map(ec => ec.employee_id)).size;
       const passedExams      = examResults.filter(er => er.passed).length;
       const avgScore         = examResults.length > 0
         ? examResults.reduce((sum, er) => sum + (er.percentage || 0), 0) / examResults.length : 0;
@@ -396,6 +411,7 @@ export const AnalyticsPage: React.FC = () => {
         totalCompanies: companies.length, activeCompanies,
         totalUsers: users.length, totalEmployees: employees.length,
         totalCourses: courses.length, completedCourses,
+        totalEnrollments, enrolledEmployees,
         passedExams,
         averageScore: Math.round(avgScore),
         totalExamAttempts: examResults.length,
@@ -454,7 +470,7 @@ export const AnalyticsPage: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(185px, 1fr))', gap: 12 }}>
         <StatCard icon={Building2}  color={T.accent}  bg="rgba(200,255,0,0.08)"  label="Total Companies"   value={analytics.totalCompanies}   sub={`${analytics.activeCompanies} active`}      delay="0.00s" />
         <StatCard icon={Users}      color={T.green}   bg={T.greenBg}             label="Total Employees"   value={analytics.totalEmployees}   sub={`${analytics.totalUsers} total users`}      delay="0.04s" />
-        <StatCard icon={BookOpen}   color={T.purple}  bg={T.purpleBg}            label="Completed Courses" value={analytics.completedCourses} sub={`of ${analytics.totalCourses} total`}       delay="0.08s" />
+        <StatCard icon={BookOpen}   color={T.purple}  bg={T.purpleBg}            label="Completed Courses" value={analytics.completedCourses} sub={`of ${analytics.totalEnrollments} assigned`} delay="0.08s" />
         <StatCard icon={Award}      color={T.orange}  bg={T.orangeBg}            label="Passed Exams"      value={analytics.passedExams}      sub={`of ${analytics.totalExamAttempts} attempts`} delay="0.12s" />
         <StatCard icon={TrendingUp} color={T.accent}  bg="rgba(200,255,0,0.08)" label="Avg Score"         value={`${analytics.averageScore}%`} sub={`Platform-wide · ${lvl.label}`}           delay="0.16s" />
       </div>
@@ -498,9 +514,12 @@ export const AnalyticsPage: React.FC = () => {
             <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Platform Usage</span>
           </div>
           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <MiniBar label="Course Completion" value={analytics.completedCourses} max={analytics.totalCourses}  color={T.purple} />
-            <MiniBar label="Exam Pass Rate"    value={analytics.passedExams}      max={analytics.totalExamAttempts || 1}    color={T.green}  />
-            <MiniBar label="Employee Coverage" value={analytics.totalEmployees}   max={analytics.totalUsers}    color={T.blue}   />
+            <MiniBar label="Course Completion" value={analytics.completedCourses} max={analytics.totalEnrollments}       color={T.purple} />
+            <MiniBar label="Exam Pass Rate"    value={analytics.passedExams}      max={analytics.totalExamAttempts}     color={T.green}  />
+            {/* Was totalEmployees/totalUsers — the share of accounts that are employees,
+                which answers no question. Enrolment coverage is the real gap: employees
+                on the platform who have not been assigned any training at all. */}
+            <MiniBar label="Employees Enrolled" value={analytics.enrolledEmployees} max={analytics.totalEmployees}      color={T.blue}   />
           </div>
         </div>
       </div>
