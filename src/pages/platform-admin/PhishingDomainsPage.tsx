@@ -86,8 +86,25 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-pd-styles'))
 const fmt = (d: string) =>
   new Date(d).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: 'numeric' });
 
+/** DNS findings returned by the verify-phishing-domain edge function. */
+interface DnsFindings {
+  ownership_ok: boolean;
+  txt_found: number;
+  spf: { present: boolean; record: string | null; note: string | null };
+  dmarc: { present: boolean; record: string | null; note: string | null };
+  dns_error: string | null;
+}
+
+interface VerifyResult {
+  domainId: string;
+  ok: boolean;
+  message: string | null;
+  findings?: DnsFindings;
+}
+
 export const PhishingDomainsPage: React.FC = () => {
   const [domains, setDomains]         = useState<PhishingDomain[]>([]);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
   const [deletingId, setDeletingId]   = useState<string | null>(null);
@@ -161,18 +178,41 @@ export const PhishingDomainsPage: React.FC = () => {
     }
   };
 
+  /**
+   * Verify by actually reading DNS.
+   *
+   * This used to write `is_verified: true` and nothing else — no lookup, no
+   * comparison against the token it had just told the operator to publish. A
+   * domain with no DNS records at all became "verified", and because
+   * RequestPreview only offers verified domains as senders, campaigns went out
+   * from unauthenticated domains and landed in spam. Browsers cannot query TXT
+   * records, so the check runs in an edge function; the row is now only updated
+   * server-side, after the published record matches.
+   */
   const handleVerify = async (domain: PhishingDomain) => {
     setVerifyingId(domain.id);
+    setVerifyResult(null);
     try {
-      const { error: err } = await supabase
-        .from('phishing_domains')
-        .update({ is_verified: true, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', domain.id);
+      const { data, error: err } = await supabase.functions.invoke('verify-phishing-domain', {
+        body: { domain_id: domain.id },
+      });
       if (err) throw err;
-      setDomains(prev => prev.map(d => d.id === domain.id ? { ...d, is_verified: true, verified_at: new Date().toISOString() } : d));
+
+      const findings = data?.findings as DnsFindings | undefined;
+      setVerifyResult({ domainId: domain.id, ok: Boolean(data?.verified), message: data?.error ?? null, findings });
+
+      if (data?.verified) {
+        setDomains(prev => prev.map(d =>
+          d.id === domain.id ? { ...d, is_verified: true, verified_at: data.verified_at } : d
+        ));
+      }
     } catch (err) {
-      console.error(err);
-      alert('Failed to verify domain.');
+      console.error('[PhishingDomainsPage] verify failed:', err);
+      setVerifyResult({
+        domainId: domain.id,
+        ok: false,
+        message: err instanceof Error ? err.message : 'Verification could not be completed.',
+      });
     } finally {
       setVerifyingId(null);
     }
@@ -259,8 +299,10 @@ export const PhishingDomainsPage: React.FC = () => {
           <p style={{ fontSize: 12, color: T.red, marginTop: 8, marginBottom: 0 }}>{error}</p>
         )}
         <p style={{ fontSize: 11, color: T.textMuted, marginTop: 10, marginBottom: 0, lineHeight: 1.6 }}>
-          After adding, a DNS TXT record will be generated. Add it to your domain's DNS settings to verify ownership.
-          Verified domains are available to all company admins when creating phishing campaign requests.
+          After adding, a DNS TXT record is generated. Publish it in your domain's DNS, then press Verify —
+          the record is looked up and compared server-side, and the domain is only marked verified if it matches.
+          SPF and DMARC are reported at the same time, since a domain can be genuinely owned and still have its
+          mail filtered. Verified domains are available to all company admins when creating phishing campaign requests.
         </p>
       </div>
 
@@ -332,6 +374,40 @@ export const PhishingDomainsPage: React.FC = () => {
                     <span style={{ color: T.textMuted, fontSize: 12 }}>—</span>
                   )}
                 </div>
+
+                {/* Result of the last DNS check for THIS domain. Deliverability is the
+                    product for a phishing-simulation vendor, so SPF/DMARC advice is
+                    shown even on success — ownership and deliverability are different
+                    questions and only the first one gates verification. */}
+                {verifyResult?.domainId === domain.id && (
+                  <div style={{
+                    borderRadius: 9, padding: '10px 12px', fontSize: 12, lineHeight: 1.6,
+                    background: verifyResult.ok ? T.greenBg : T.redBg,
+                    border: `1px solid ${verifyResult.ok ? T.greenBorder : T.redBorder}`,
+                    color: T.textBody,
+                  }}>
+                    <div style={{ fontWeight: 700, color: verifyResult.ok ? T.green : T.red, marginBottom: verifyResult.message || verifyResult.findings ? 6 : 0 }}>
+                      {verifyResult.ok ? 'Ownership confirmed via DNS' : 'Not verified'}
+                    </div>
+                    {verifyResult.message && <div style={{ marginBottom: 6 }}>{verifyResult.message}</div>}
+                    {verifyResult.findings && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {verifyResult.findings.spf.note && (
+                          <div><strong style={{ color: T.orange }}>SPF:</strong> {verifyResult.findings.spf.note}</div>
+                        )}
+                        {!verifyResult.findings.spf.note && verifyResult.findings.spf.present && (
+                          <div><strong style={{ color: T.green }}>SPF:</strong> published</div>
+                        )}
+                        {verifyResult.findings.dmarc.note && (
+                          <div><strong style={{ color: T.orange }}>DMARC:</strong> {verifyResult.findings.dmarc.note}</div>
+                        )}
+                        {!verifyResult.findings.dmarc.note && verifyResult.findings.dmarc.present && (
+                          <div><strong style={{ color: T.green }}>DMARC:</strong> published</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Meta + actions */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: `1px solid ${T.borderFaint}`, paddingTop: 12 }}>
