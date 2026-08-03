@@ -3,6 +3,7 @@ import {
   History, Search, Download, Eye, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { downloadCSV } from "../../lib/csv";
 import { User } from "../../lib/types";
 
 /* ─────────────────────────────────────────
@@ -253,12 +254,36 @@ export const AuditLogsPage: React.FC = () => {
   const clearFilters = () => { setSearchTerm(''); setSelectedAction(''); setSelectedEntity(''); setDateFrom(''); };
   const hasFilters   = searchTerm || selectedAction || selectedEntity || dateFrom;
 
+  /**
+   * Export the filtered audit trail.
+   *
+   * The hand-rolled version quoted only the description, and stamped the date with
+   * `toLocaleString('en-US')` — which produces "1/2/2026, 10:00:00 AM". That comma
+   * was unquoted, so every row split into eight fields against a seven-field header
+   * and EVERY COLUMN IN EVERY ROW was shifted: the time landed under "User", the
+   * name under "Email", and so on. The file opened cleanly and read as valid data,
+   * which is the worst failure mode for the one document handed to an auditor
+   * asking who deleted a record. Any name containing a comma shifted its row
+   * further.
+   *
+   * ISO-8601 for the timestamp: unambiguous, sortable, and comma-free by
+   * construction rather than by escaping.
+   */
   const exportCSV = () => {
-    const csv = ['Date,User,Email,Role,Action,Entity,Description',
-      ...filteredLogs.map(l => `${new Date(l.created_at).toLocaleString('en-US')},${l?.users?.full_name || 'System'},${l?.users?.email || 'System'},${l?.users?.role || '-'},${l.action_type},${l.entity_type || '-'},"${l.description || '-'}"`),
-    ].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a'); a.href = url; a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(url);
+    downloadCSV(
+      `audit-logs-${new Date().toISOString().split('T')[0]}.csv`,
+      filteredLogs.map(l => ({
+        Date: new Date(l.created_at).toISOString(),
+        User: l?.users?.full_name || 'System',
+        Email: l?.users?.email || 'System',
+        Role: l?.users?.role || '-',
+        Action: l.action_type,
+        Entity: l.entity_type || '-',
+        'Entity Name': l.entity_name || '-',
+        Description: l.description || '-',
+        'IP Address': l.ip_address || '-',
+      }))
+    );
   };
 
   const actionTypes = Array.from(new Set(logs.map(l => l.action_type))).sort();

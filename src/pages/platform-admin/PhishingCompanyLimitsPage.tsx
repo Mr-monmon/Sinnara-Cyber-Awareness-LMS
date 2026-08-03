@@ -137,14 +137,44 @@ export const PhishingCompanyLimitsPage: React.FC = () => {
     setForm(null);
   };
 
+  /**
+   * Zero the monthly send counter for EVERY company on the platform.
+   *
+   * `.neq(id, <zero uuid>)` is the "match all rows" idiom — no row carries a zero
+   * id — so this is a platform-wide write, not a per-company one. It used to fire
+   * on a single click with no confirmation and no error check, while the far less
+   * destructive "sync from license quota" button right above it did confirm.
+   *
+   * `emails_sent_this_month` is what enforces each customer's contracted monthly
+   * cap, so zeroing it lets every tenant exceed their limit until the month rolls
+   * over. The confirmation names the number of companies affected, because "reset
+   * monthly counts" does not convey that.
+   */
   const resetMonthlyEmails = async () => {
+    const affected = limits.length;
+    if (affected === 0) return;
+    if (!confirm(
+      `Reset the monthly email counter for ALL ${affected} compan${affected === 1 ? 'y' : 'ies'} on the platform?\n\n` +
+      `This zeroes emails_sent_this_month everywhere, so every tenant can send up to their full monthly cap again ` +
+      `regardless of what they have already used this month.\n\nThis cannot be undone.`
+    )) return;
+
     setResetting(true);
-    await supabase.from('company_phishing_limits').update({
+    const { error } = await supabase.from('company_phishing_limits').update({
       emails_sent_this_month: 0,
       month_reset_date: new Date().toISOString().split('T')[0],
     }).neq('id', '00000000-0000-0000-0000-000000000000');
-    await fetchLimits();
     setResetting(false);
+
+    if (error) {
+      // Without this the write failed silently, the counters stayed put, and the
+      // operator concluded the click had not registered — and clicked again.
+      console.error('[PhishingCompanyLimitsPage] resetMonthlyEmails failed:', error.message, error);
+      alert(`Monthly counters were NOT reset.\n\n${error.message}`);
+      return;
+    }
+    await fetchLimits();
+    alert(`Monthly email counters reset for ${affected} compan${affected === 1 ? 'y' : 'ies'}.`);
   };
 
   const filtered = limits.filter(l => (l.companies?.name || '').toLowerCase().includes(search.toLowerCase()));

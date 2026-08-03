@@ -291,14 +291,75 @@ export const SubscriptionsPage: React.FC = () => {
     await loadData();
   };
 
+  /**
+   * Queue a renewal reminder — and only claim it was sent once it is queued.
+   *
+   * This used to set `reminder_sent` and alert "Reminder sent to …" without
+   * sending anything: no email_queue row, no send-email invocation, and no
+   * database trigger on the flag. It also wrote "Sent renewal reminder" into the
+   * audit log, so the record of record attested to an event that never happened.
+   * And because the button is disabled on `reminder_sent`, the false success
+   * permanently blocked any retry — the subscription then lapsed with the
+   * customer never having been told.
+   *
+   * The email now goes into `email_queue`, which the process-email-queue cron job
+   * drains. The flag and the audit entry are written ONLY after the insert
+   * succeeds, so a failure leaves the button live and the log silent.
+   */
   const handleSendReminder = async (company: Company) => {
     if (!company.admin_email) { alert("No admin email configured"); return; }
-    if (!confirm(`Send renewal reminder to ${company.admin_email}?`)) return;
     const days = company.subscription_end ? getDaysRemaining(company.subscription_end) : 0;
-    await supabase.from("companies").update({ reminder_sent: true, reminder_sent_at: new Date().toISOString() }).eq("id", company.id);
-    await supabase.from("audit_logs").insert([{ user_id: user?.id, action_type: "SEND_REMINDER", entity_type: "SUBSCRIPTION", entity_id: company.id, description: `Sent renewal reminder to ${company.name}`, new_value: { days_remaining: days, recipient: company.admin_email } }]);
-    await loadData();
-    alert(`Reminder sent to ${company.admin_email}`);
+    if (!confirm(`Queue a renewal reminder to ${company.admin_email}?\n\n${company.name} — ${days} day${days === 1 ? '' : 's'} remaining.`)) return;
+
+    const endDate = company.subscription_end ? fmt(company.subscription_end) : "—";
+    const subject = `Your AwareOne subscription expires in ${days} day${days === 1 ? '' : 's'}`;
+    const html = `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:28px;color:#1f2937;">
+        <h2 style="margin:0 0 16px;font-size:20px;">Subscription renewal reminder</h2>
+        <p style="margin:0 0 12px;line-height:1.6;">Hello ${company.admin_name || "there"},</p>
+        <p style="margin:0 0 12px;line-height:1.6;">
+          The AwareOne subscription for <strong>${company.name}</strong> expires on
+          <strong>${endDate}</strong> — ${days} day${days === 1 ? '' : 's'} from now.
+        </p>
+        <p style="margin:0 0 12px;line-height:1.6;">
+          To avoid any interruption to your team's training and phishing simulations,
+          please contact your account manager to arrange renewal.
+        </p>
+        <p style="margin:24px 0 0;font-size:12px;color:#6b7280;">AwareOne — Cyber Awareness Platform</p>
+      </div>`;
+
+    try {
+      const { error: queueErr } = await supabase.from("email_queue").insert({
+        to_email: company.admin_email,
+        subject,
+        html,
+        company_id: company.id,
+        created_by: user?.id ?? null,
+        metadata: { kind: "renewal_reminder", days_remaining: days },
+      });
+      if (queueErr) throw new Error(queueErr.message);
+
+      // Only now is it true.
+      const { error: flagErr } = await supabase
+        .from("companies")
+        .update({ reminder_sent: true, reminder_sent_at: new Date().toISOString() })
+        .eq("id", company.id);
+      if (flagErr) throw new Error(`Reminder was queued but the record could not be updated: ${flagErr.message}`);
+
+      await supabase.from("audit_logs").insert([{
+        user_id: user?.id, action_type: "SEND_REMINDER", entity_type: "SUBSCRIPTION",
+        entity_id: company.id,
+        description: `Queued renewal reminder to ${company.name}`,
+        new_value: { days_remaining: days, recipient: company.admin_email },
+      }]);
+
+      await loadData();
+      alert(`Reminder queued for ${company.admin_email}. It will be delivered by the mail worker within a few minutes.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[SubscriptionsPage] handleSendReminder failed:", message, err);
+      alert(`The reminder was NOT sent.\n\n${message}\n\nNothing was recorded — you can try again.`);
+    }
   };
 
   const exportCSV = () => {
@@ -431,10 +492,15 @@ export const SubscriptionsPage: React.FC = () => {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
+                          {/* The bell is deliberately NOT disabled once sent. A renewal is
+                              chased more than once (30 days out, then 7), and the old
+                              permanent disable meant a reminder that silently failed could
+                              never be retried. */}
                           {expiring && (
                             <button className={`aw-sub-icon-btn bell ${co.reminder_sent ? 'sent' : ''}`}
-                              disabled={co.reminder_sent}
-                              title={co.reminder_sent ? `Reminder already sent` : 'Send renewal reminder'}
+                              title={co.reminder_sent
+                                ? `Last reminder queued ${co.reminder_sent_at ? fmt(co.reminder_sent_at) : ''} — send another`
+                                : 'Send renewal reminder'}
                               onClick={() => handleSendReminder(co)}>
                               <Bell size={13} />
                             </button>

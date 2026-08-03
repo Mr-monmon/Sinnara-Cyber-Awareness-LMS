@@ -25,10 +25,17 @@ export function toCSV(rows: Record<string, unknown>[]): string {
   ].join("\n");
 }
 
-/** Serialise rows to CSV and trigger a browser download. No-op on empty input. */
+/**
+ * Serialise rows to CSV and trigger a browser download. No-op on empty input.
+ *
+ * The leading U+FEFF byte-order mark is not decoration: without it Excel decodes
+ * the file in the system codepage rather than UTF-8, and every Arabic company or
+ * employee name opens as mojibake. Numbers survive; names do not — so the damage
+ * is easy to miss until a customer opens the export.
+ */
 export function downloadCSV(filename: string, rows: Record<string, unknown>[]): void {
   if (!rows.length) return;
-  const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["﻿", toCSV(rows)], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
