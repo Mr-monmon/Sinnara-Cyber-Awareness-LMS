@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   BarChart3, TrendingUp, Users, Building2, BookOpen,
-  Target, Award, Activity, CheckCircle, Download,
+  Target, Award, Activity, CheckCircle,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -43,8 +43,8 @@ interface AnalyticsData {
   totalCompanies: number; activeCompanies: number;
   totalUsers: number;     totalEmployees: number;
   totalCourses: number;   completedCourses: number;
-  totalExams: number;     passedExams: number;
-  averageScore: number;   platformUsage: number;
+  passedExams: number;
+  averageScore: number;
   totalExamAttempts: number;
 }
 interface CompanyStats {
@@ -360,8 +360,8 @@ const MiniBar: React.FC<{ label: string; value: number; max: number; color: stri
 export const AnalyticsPage: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     totalCompanies: 0, activeCompanies: 0, totalUsers: 0, totalEmployees: 0,
-    totalCourses: 0, completedCourses: 0, totalExams: 0, passedExams: 0,
-    averageScore: 0, platformUsage: 0, totalExamAttempts: 0,
+    totalCourses: 0, completedCourses: 0, passedExams: 0,
+    averageScore: 0, totalExamAttempts: 0,
   });
   const [companyStats, setCompanyStats] = useState<CompanyStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -371,12 +371,11 @@ export const AnalyticsPage: React.FC = () => {
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      const [coRes, usRes, crRes, ecRes, exRes, erRes] = await Promise.all([
+      const [coRes, usRes, crRes, ecRes, erRes] = await Promise.all([
         supabase.from('companies').select('*'),
         supabase.from('users').select('*'),
         supabase.from('courses').select('*'),
         supabase.from('employee_courses').select('*'),
-        supabase.from('exams').select('*'),
         supabase.from('exam_results').select('*'),
       ]);
 
@@ -384,7 +383,6 @@ export const AnalyticsPage: React.FC = () => {
       const users           = usRes.data || [];
       const courses         = crRes.data || [];
       const employeeCourses = ecRes.data || [];
-      const exams           = exRes.data || [];
       const examResults     = erRes.data || [];
 
       const activeCompanies  = companies.filter(c => (c as { is_active?: boolean }).is_active !== false).length;
@@ -398,9 +396,8 @@ export const AnalyticsPage: React.FC = () => {
         totalCompanies: companies.length, activeCompanies,
         totalUsers: users.length, totalEmployees: employees.length,
         totalCourses: courses.length, completedCourses,
-        totalExams: exams.length, passedExams,
+        passedExams,
         averageScore: Math.round(avgScore),
-        platformUsage: employeeCourses.length + examResults.length,
         totalExamAttempts: examResults.length,
       });
 
@@ -459,8 +456,7 @@ export const AnalyticsPage: React.FC = () => {
         <StatCard icon={Users}      color={T.green}   bg={T.greenBg}             label="Total Employees"   value={analytics.totalEmployees}   sub={`${analytics.totalUsers} total users`}      delay="0.04s" />
         <StatCard icon={BookOpen}   color={T.purple}  bg={T.purpleBg}            label="Completed Courses" value={analytics.completedCourses} sub={`of ${analytics.totalCourses} total`}       delay="0.08s" />
         <StatCard icon={Award}      color={T.orange}  bg={T.orangeBg}            label="Passed Exams"      value={analytics.passedExams}      sub={`of ${analytics.totalExamAttempts} attempts`} delay="0.12s" />
-        <StatCard icon={Activity}   color={T.blue}    bg={T.blueBg}              label="Total Activities"  value={analytics.platformUsage}    sub="courses + exams"                            delay="0.16s" />
-        <StatCard icon={TrendingUp} color={T.accent}  bg="rgba(200,255,0,0.08)" label="Avg Score"         value={`${analytics.averageScore}%`} sub={`Platform-wide · ${lvl.label}`}           delay="0.20s" />
+        <StatCard icon={TrendingUp} color={T.accent}  bg="rgba(200,255,0,0.08)" label="Avg Score"         value={`${analytics.averageScore}%`} sub={`Platform-wide · ${lvl.label}`}           delay="0.16s" />
       </div>
 
       {/* ── Charts row: Gauge + Pie + Usage Bars ── */}
@@ -505,10 +501,6 @@ export const AnalyticsPage: React.FC = () => {
             <MiniBar label="Course Completion" value={analytics.completedCourses} max={analytics.totalCourses}  color={T.purple} />
             <MiniBar label="Exam Pass Rate"    value={analytics.passedExams}      max={analytics.totalExamAttempts || 1}    color={T.green}  />
             <MiniBar label="Employee Coverage" value={analytics.totalEmployees}   max={analytics.totalUsers}    color={T.blue}   />
-            <div style={{ paddingTop: 12, borderTop: `1px solid ${T.borderFaint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: T.textBody }}>Total Activities</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: T.accent }}>{analytics.platformUsage.toLocaleString()}</span>
-            </div>
           </div>
         </div>
       </div>
@@ -545,7 +537,6 @@ export const AnalyticsPage: React.FC = () => {
                 <th>Avg Score</th>
                 <th>Level</th>
                 <th>Score Bar</th>
-                <th style={{ textAlign: 'center' }}>Cert</th>
               </tr>
             </thead>
             <tbody>
@@ -583,20 +574,11 @@ export const AnalyticsPage: React.FC = () => {
                         <div style={{ height: '100%', width: `${co.average_score}%`, background: lvl.color, borderRadius: 9999, transition: 'width 0.5s ease' }} />
                       </div>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        title={co.average_score >= 80 ? 'Issue certificate' : 'Score too low'}
-                        disabled={co.average_score < 80}
-                        style={{ width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', background: co.average_score >= 80 ? T.greenBg : 'rgba(255,255,255,0.03)', border: `1px solid ${co.average_score >= 80 ? T.greenBorder : T.borderFaint}`, color: co.average_score >= 80 ? T.green : T.textMuted, cursor: co.average_score >= 80 ? 'pointer' : 'not-allowed', opacity: co.average_score >= 80 ? 1 : 0.4 }}
-                      >
-                        <Download size={13} />
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
               {companyStats.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: T.textMuted }}>No data available</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: T.textMuted }}>No data available</td></tr>
               )}
             </tbody>
           </table>

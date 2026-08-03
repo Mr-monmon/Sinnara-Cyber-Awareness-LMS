@@ -161,7 +161,6 @@ interface DashStats {
   phishingClicked: number;
 }
 
-interface TopCompany { name: string; employees: number; }
 interface MonthRevenue { month: string; amount: number; }
 interface PhishingCampaignRow {
   id: string; name: string; status: string;
@@ -182,7 +181,6 @@ const EMPTY_STATS: DashStats = {
 export const PlatformDashboard = () => {
   const [activePage, setActivePage] = useState("dashboard");
   const [stats, setStats] = useState<DashStats>(EMPTY_STATS);
-  const [topCompanies, setTopCompanies] = useState<TopCompany[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthRevenue[]>([]);
   const [recentCampaigns, setRecentCampaigns] = useState<PhishingCampaignRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,7 +199,6 @@ export const PlatformDashboard = () => {
         invoicesRes,
         supportRes,
         demoRes,
-        companiesWithEmp,
         campaignCountRes,
         runningCountRes,
         campaignsRes,
@@ -215,7 +212,6 @@ export const PlatformDashboard = () => {
         supabase.from("invoices").select("total, status"),
         supabase.from("support_ticket").select("status"),
         supabase.from("demo_requests").select("status"),
-        supabase.from("users").select("company_id").eq("role", "EMPLOYEE"),
         supabase.from("phishing_campaigns").select("id", { count: "exact", head: true }),
         supabase.from("phishing_campaigns").select("id", { count: "exact", head: true }).eq("status", "RUNNING"),
         supabase.from("phishing_campaigns")
@@ -238,17 +234,7 @@ export const PlatformDashboard = () => {
       const demos = demoRes.data ?? [];
       const pendingDemo = demos.filter(d => d.status === "pending").length;
 
-      // Top companies by employee count
       const companies = coRes.data ?? [];
-      const empByCompany = new Map<string, number>();
-      (companiesWithEmp.data ?? []).forEach((u: { company_id: string }) => {
-        if (u.company_id) empByCompany.set(u.company_id, (empByCompany.get(u.company_id) ?? 0) + 1);
-      });
-      const top = companies
-        .map(c => ({ name: c.name, employees: empByCompany.get(c.id) ?? 0 }))
-        .sort((a, b) => b.employees - a.employees)
-        .slice(0, 6);
-      setTopCompanies(top);
 
       // Monthly revenue (last 6 months from paid invoices)
       const { data: paidInvoices } = await supabase
@@ -341,7 +327,6 @@ export const PlatformDashboard = () => {
 
   const renderDashboard = () => {
     const maxRevenue = Math.max(...monthlyRevenue.map(m => m.amount), 1);
-    const maxEmp     = Math.max(...topCompanies.map(c => c.employees), 1);
 
     return (
     <div style={{ fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -367,7 +352,7 @@ export const PlatformDashboard = () => {
         {[
           { icon: Building2,   color: T.accent,  bg: 'rgba(200,255,0,0.08)',  label: 'Total Companies',     value: fmt(stats.companies),       sub: `${stats.activeCompanies} active` },
           { icon: Users,       color: T.green,   bg: T.greenBg,              label: 'Total Employees',     value: fmt(stats.totalEmployees),  sub: 'across all companies' },
-          { icon: BookOpen,    color: T.cyan,    bg: T.cyanBg,               label: 'Training Courses',    value: fmt(stats.courses),         sub: 'published content' },
+          { icon: BookOpen,    color: T.cyan,    bg: T.cyanBg,               label: 'Training Courses',    value: fmt(stats.courses),         sub: 'in the catalogue' },
           { icon: CheckCircle, color: T.green,   bg: T.greenBg,              label: 'Active Subscriptions',value: fmt(stats.activeSubscriptions), sub: 'currently running' },
           { icon: Clock,       color: T.orange,  bg: T.orangeBg,             label: 'Expiring in 30 Days', value: fmt(stats.expiringIn30),    sub: 'need renewal', alert: stats.expiringIn30 > 0 },
           { icon: DollarSign,  color: T.green,   bg: T.greenBg,              label: 'Total Revenue',       value: fmtSAR(stats.totalRevenue), sub: 'paid invoices' },
@@ -526,8 +511,8 @@ export const PlatformDashboard = () => {
         )}
       </div>
 
-      {/* ── Charts row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* ── Monthly revenue ── */}
+      <div>
 
         {/* Monthly Revenue Chart */}
         <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
@@ -554,29 +539,6 @@ export const PlatformDashboard = () => {
                 })}
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Top Companies by Employees */}
-        <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '13px 18px', borderBottom: `1px solid rgba(255,255,255,0.05)`, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Building2 size={14} style={{ color: T.accent }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Top Companies by Employees</span>
-          </div>
-          <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {topCompanies.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px 0', color: T.textMuted, fontSize: 13 }}>No companies yet</div>
-            ) : topCompanies.map(c => (
-              <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 100, fontSize: 11, color: T.textBody, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{c.name}</div>
-                <div style={{ flex: 1, height: 18, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ width: `${(c.employees / maxEmp) * 100}%`, height: '100%', background: T.accent, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minWidth: c.employees > 0 ? 4 : 0 }}>
-                    {(c.employees / maxEmp) > 0.2 && <span style={{ fontSize: 9, fontWeight: 800, color: '#12140a', paddingRight: 5 }}>{c.employees}</span>}
-                  </div>
-                </div>
-                {(c.employees / maxEmp) <= 0.2 && <span style={{ fontSize: 11, color: T.textMuted, minWidth: 20 }}>{c.employees}</span>}
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -606,33 +568,8 @@ export const PlatformDashboard = () => {
           </div>
         </div>
 
-        {/* Platform Status sidebar */}
+        {/* Shortcuts sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ background: `linear-gradient(135deg, #0e100a, #1a2210 60%, #0e1614)`, border: `1px solid rgba(200,255,0,0.18)`, borderRadius: 14, padding: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <Shield size={13} style={{ color: T.accent }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>Platform Status</span>
-              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 9999, fontSize: 10, fontWeight: 700, color: T.green }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: T.green, animation: 'aw-pulse 2s ease infinite' }} />
-                LIVE
-              </span>
-            </div>
-            {[
-              { label: 'Companies',       value: stats.companies,          color: T.accent  },
-              { label: 'Employees',        value: stats.totalEmployees,    color: T.green   },
-              { label: 'Active Subs',      value: stats.activeSubscriptions, color: T.cyan  },
-              { label: 'Expiring Soon',    value: stats.expiringIn30,      color: stats.expiringIn30 > 0 ? T.orange : T.textMuted },
-              { label: 'Open Support',     value: stats.openSupport,       color: stats.openSupport > 0 ? T.red : T.textMuted },
-              { label: 'Demo Requests',    value: stats.pendingDemo,       color: stats.pendingDemo > 0 ? T.purple : T.textMuted },
-              { label: 'Active Phishing',  value: stats.activeCampaigns,   color: stats.activeCampaigns > 0 ? T.orange : T.textMuted },
-            ].map(({ label, value, color }) => (
-              <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: T.textBody }}>{label}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color }}>{value.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-
           <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '11px 14px', borderBottom: `1px solid rgba(255,255,255,0.05)` }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Shortcuts</span>

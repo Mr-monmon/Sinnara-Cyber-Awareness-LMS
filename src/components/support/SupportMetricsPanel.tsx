@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Clock, Loader2, RefreshCw } from "lucide-react";
+import { fmtHours as formatHours } from "../../lib/analyticsFormat";
 import { supabase } from "../../lib/supabase";
 import { captureException } from "../../lib/sentry";
 
@@ -45,15 +46,9 @@ const PRIORITY_COLOR: Record<string, string> = {
   low: "#94a3b8",
 };
 
-const WINDOWS = [7, 30, 90] as const;
+const WINDOWS = [30, 90, 365] as const;
+const WINDOW_LABEL: Record<number, string> = { 30: '30d', 90: '90d', 365: '1y' };
 
-function formatHours(h: number | null): string {
-  if (h === null || h === undefined || !Number.isFinite(Number(h))) return "—";
-  const hours = Number(h);
-  if (hours < 1) return `${Math.round(hours * 60)}m`;
-  if (hours < 48) return `${hours.toFixed(1)}h`;
-  return `${(hours / 24).toFixed(1)}d`;
-}
 
 export interface SupportMetricsPanelProps {
   tokens: {
@@ -71,7 +66,7 @@ export interface SupportMetricsPanelProps {
 
 export const SupportMetricsPanel = ({ tokens: T }: SupportMetricsPanelProps) => {
   const [rows, setRows] = useState<MetricRow[]>([]);
-  const [days, setDays] = useState<number>(30);
+  const [days, setDays] = useState<number>(90);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +113,7 @@ export const SupportMetricsPanel = ({ tokens: T }: SupportMetricsPanelProps) => 
                 color: days === w ? T.accent : T.textMuted,
               }}
             >
-              {w}d
+              {WINDOW_LABEL[w] ?? `${w}d`}
             </button>
           ))}
           <button
@@ -146,7 +141,18 @@ export const SupportMetricsPanel = ({ tokens: T }: SupportMetricsPanelProps) => 
         </div>
       )}
 
-      {!error && rows.length > 0 && (
+      {/* No tickets in the window is a real, common state (a young tenant, or
+          tickets older than the selected range). Say so plainly rather than
+          showing a grid of zeros that reads as a broken panel — and point at the
+          wider window that would surface them. */}
+      {!error && !loading && (total?.tickets ?? 0) === 0 && (
+        <div style={{ fontSize: 13, color: T.textMuted, padding: "6px 0", lineHeight: 1.6 }}>
+          No support tickets in the last {WINDOW_LABEL[days] ?? `${days} days`}.
+          {days < 365 && " Try a wider window (1y) if older tickets exist."}
+        </div>
+      )}
+
+      {!error && rows.length > 0 && (total?.tickets ?? 0) > 0 && (
         <>
           {/* The number that is a call to action, not a report. */}
           {overdue > 0 && (

@@ -1,23 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Download, RefreshCw, Users, BookOpen,
-  ClipboardCheck, Shield, TrendingUp, AlertTriangle,
+  Shield, TrendingUp, AlertTriangle,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { downloadCSV } from "../../lib/csv";
+import { rate, fmtPct } from "../../lib/analyticsFormat";
 import { DepartmentTrendChart } from "../../components/charts/DepartmentTrendChart";
 
+/* Slate categorical palette, shared with the other analytics pages so the same
+   metric is the same colour everywhere (this page used to run a divergent neon
+   set). Accent lime and the near-black surfaces stay the brand constants. */
 const T = {
   bg: "#12140a", bgCard: "#1a1e0e", bgHover: "#1e2410",
-  border: "rgba(200,255,0,0.12)", accent: "#c8ff00",
-  text: "#e8f5d0", textMuted: "#6b7a4a", textSub: "#9aaa6a",
-  red: "#ff4444", orange: "#ff8800", yellow: "#ffcc00",
-  green: "#44ff88", blue: "#4488ff", purple: "#aa88ff",
-  redBg: "rgba(255,68,68,0.08)", redBorder: "rgba(255,68,68,0.20)",
-  orangeBg: "rgba(255,136,0,0.08)", orangeBorder: "rgba(255,136,0,0.20)",
-  yellowBg: "rgba(255,204,0,0.08)", yellowBorder: "rgba(255,204,0,0.20)",
-  greenBg: "rgba(68,255,136,0.08)", greenBorder: "rgba(68,255,136,0.20)",
-  blueBg: "rgba(68,136,255,0.08)", purpleBg: "rgba(170,136,255,0.08)",
+  border: "rgba(255,255,255,0.09)", borderFaint: "rgba(255,255,255,0.05)", accent: "#c8ff00",
+  text: "#ffffff", textMuted: "#64748b", textSub: "#cbd5e1",
+  red: "#f87171", orange: "#fb923c", yellow: "#fbbf24",
+  green: "#34d399", blue: "#60a5fa", purple: "#a78bfa",
+  redBg: "rgba(248,113,113,0.08)", redBorder: "rgba(248,113,113,0.22)",
+  orangeBg: "rgba(251,146,60,0.08)", orangeBorder: "rgba(251,146,60,0.22)",
+  yellowBg: "rgba(251,191,36,0.08)", yellowBorder: "rgba(251,191,36,0.22)",
+  greenBg: "rgba(52,211,153,0.08)", greenBorder: "rgba(52,211,153,0.22)",
+  blueBg: "rgba(96,165,250,0.08)", purpleBg: "rgba(167,139,250,0.08)",
 };
 
 /* Surface colours handed to the shared trend chart, which is also rendered
@@ -60,15 +65,16 @@ interface RiskDist {
 
 interface PhishingTrend {
   campaign_name: string;
-  total_targets: number;
+  sent: number;
   opened: number;
   clicked: number;
   creds: number;
   reported: number;
-  click_rate: number;
-  open_rate: number;
-  cred_rate: number;
-  report_rate: number;
+  // Rates are share-of-sent; null when nothing was sent yet (rendered as "—").
+  click_rate: number | null;
+  open_rate: number | null;
+  cred_rate: number | null;
+  report_rate: number | null;
 }
 
 interface Overview {
@@ -80,75 +86,16 @@ interface Overview {
   critical_count: number;
 }
 
-/* ── Helpers ────────────────────────────────────── */
-function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.join(","),
-    ...rows.map(r =>
-      headers.map(h => {
-        const v = String(r[h] ?? "").replace(/"/g, '""');
-        return v.includes(",") || v.includes('"') || v.includes("\n") ? `"${v}"` : v;
-      }).join(",")
-    ),
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* ── SVG Bar Chart ──────────────────────────────── */
-function HBarChart({ items, valueKey, labelKey, color, maxVal }: {
-  items: Record<string, unknown>[];
-  valueKey: string;
-  labelKey: string;
-  color: string;
-  maxVal?: number;
-}) {
-  const max = maxVal ?? Math.max(...items.map(i => Number(i[valueKey]) || 0), 1);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {items.map((item, i) => {
-        const val = Number(item[valueKey]) || 0;
-        const pct = (val / max) * 100;
-        return (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 100, fontSize: 11, color: T.textSub, textAlign: "right", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {String(item[labelKey])}
-            </div>
-            <div style={{ flex: 1, height: 20, background: "rgba(255,255,255,0.04)", borderRadius: 4, overflow: "hidden" }}>
-              <div style={{
-                width: `${pct}%`, height: "100%",
-                background: color, borderRadius: 4,
-                transition: "width 0.5s ease",
-                display: "flex", alignItems: "center", justifyContent: "flex-end",
-              }}>
-                {pct > 15 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#000", paddingRight: 6 }}>
-                    {val}%
-                  </span>
-                )}
-              </div>
-            </div>
-            {pct <= 15 && (
-              <span style={{ fontSize: 11, color: T.textSub, minWidth: 32 }}>{val}%</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ── Donut ──────────────────────────────────────── */
 function Donut({ segments, size = 100 }: {
   segments: { value: number; color: string; label: string }[];
   size?: number;
 }) {
-  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+  // Real employee count for the centre label; a separate divisor of ≥1 keeps the
+  // arc maths from dividing by zero. Using `sum || 1` for both printed a
+  // phantom "1 employee" when a company had no risk data at all.
+  const sum = segments.reduce((s, seg) => s + seg.value, 0);
+  const total = sum || 1;
   const r = 36; const cx = size / 2; const cy = size / 2;
   const circ = 2 * Math.PI * r;
   let offset = 0;
@@ -172,7 +119,7 @@ function Donut({ segments, size = 100 }: {
       })}
       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
         style={{ fontSize: 14, fontWeight: 800, fill: T.text }}>
-        {total}
+        {sum}
       </text>
       <text x={cx} y={cy + 14} textAnchor="middle"
         style={{ fontSize: 8, fill: T.textMuted }}>
@@ -192,7 +139,7 @@ function Section({ title, icon: Icon, color, children, onExport }: {
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "14px 18px", borderBottom: `1px solid ${T.border}`,
-        background: "rgba(200,255,0,0.03)",
+        background: "rgba(255,255,255,0.02)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon size={16} color={color} />
@@ -202,7 +149,7 @@ function Section({ title, icon: Icon, color, children, onExport }: {
           <button onClick={onExport} style={{
             display: "flex", alignItems: "center", gap: 5,
             padding: "5px 10px", borderRadius: 6,
-            background: "rgba(68,136,255,0.1)", border: "1px solid rgba(68,136,255,0.25)",
+            background: T.blueBg, border: `1px solid ${T.blue}40`,
             color: T.blue, fontSize: 11, fontWeight: 600, cursor: "pointer",
           }}>
             <Download size={11} /> Export CSV
@@ -247,7 +194,7 @@ export function AdvancedAnalyticsPage() {
     // 3. Phishing campaigns for this company
     const { data: campaigns } = await supabase
       .from("phishing_campaigns")
-      .select("id, name, total_queue_size, total_targets, emails_opened, links_clicked, credentials_entered, emails_reported")
+      .select("id, name, emails_sent, emails_opened, links_clicked, credentials_entered, emails_reported")
       .eq("company_id", cid)
       .order("created_at", { ascending: false })
       .limit(8);
@@ -334,25 +281,26 @@ export function AdvancedAnalyticsPage() {
 
     // ── Process phishing campaigns ─────────────────
     if (campaigns) {
-      setPhishingTrends(campaigns.map((c: { name: string; total_queue_size?: number | null; total_targets?: number | null; emails_opened?: number | null; links_clicked?: number | null; credentials_entered?: number | null; emails_reported?: number | null }) => {
-        // TICKET campaigns have no queue, so fall back to total_targets; otherwise
-        // the denominator is 0 and the click rate is forced to 0% regardless of clicks.
-        const targets = c.total_queue_size || c.total_targets || 0;
+      setPhishingTrends(campaigns.map((c: { name: string; emails_sent?: number | null; emails_opened?: number | null; links_clicked?: number | null; credentials_entered?: number | null; emails_reported?: number | null }) => {
+        // Rates are a share of emails actually sent — the only denominator that
+        // makes "opened 40%" mean 40% of people who could have opened. A campaign
+        // that hasn't sent yet has no rate (null → "—"), never a misleading 0%.
+        const sent    = c.emails_sent ?? 0;
         const opened  = c.emails_opened ?? 0;
         const clicked = c.links_clicked ?? 0;
         const creds   = c.credentials_entered ?? 0;
         const reported = c.emails_reported ?? 0;
         return {
           campaign_name: c.name,
-          total_targets: targets,
+          sent,
           opened,
           clicked,
           creds,
           reported,
-          open_rate:   targets > 0 ? Math.round((opened   / targets) * 100) : 0,
-          click_rate:  targets > 0 ? Math.round((clicked  / targets) * 100) : 0,
-          cred_rate:   targets > 0 ? Math.round((creds    / targets) * 100) : 0,
-          report_rate: targets > 0 ? Math.round((reported / targets) * 100) : 0,
+          open_rate:   rate(opened, sent),
+          click_rate:  rate(clicked, sent),
+          cred_rate:   rate(creds, sent),
+          report_rate: rate(reported, sent),
         };
       }));
     }
@@ -389,15 +337,15 @@ export function AdvancedAnalyticsPage() {
   function exportPhishing() {
     downloadCSV("phishing_analytics.csv", phishingTrends.map(p => ({
       Campaign: p.campaign_name,
-      "Total Targets": p.total_targets,
+      "Emails Sent": p.sent,
       "Emails Opened": p.opened,
-      "Open Rate %": p.open_rate,
+      "Open Rate %": p.open_rate ?? "",
       "Clicked Link": p.clicked,
-      "Click Rate %": p.click_rate,
+      "Click Rate %": p.click_rate ?? "",
       "Credentials Submitted": p.creds,
-      "Credential Rate %": p.cred_rate,
+      "Credential Rate %": p.cred_rate ?? "",
       "Emails Reported": p.reported,
-      "Report Rate %": p.report_rate,
+      "Report Rate %": p.report_rate ?? "",
     })));
   }
 
@@ -443,7 +391,7 @@ export function AdvancedAnalyticsPage() {
           <button onClick={exportAll} style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "8px 14px", borderRadius: 8,
-            background: T.blueBg, border: "1px solid rgba(68,136,255,0.25)",
+            background: T.blueBg, border: `1px solid ${T.blue}40`,
             color: T.blue, fontSize: 12, fontWeight: 600, cursor: "pointer",
           }}>
             <Download size={13} /> Export All
@@ -463,8 +411,6 @@ export function AdvancedAnalyticsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         {[
           { label: "Total Employees",   value: ov.total_employees,          unit: "",   color: T.text,   icon: Users,          bg: "rgba(255,255,255,0.04)", border: T.border },
-          { label: "Course Completion", value: ov.completion_pct,           unit: "%",  color: T.green,  icon: BookOpen,       bg: T.greenBg,  border: T.greenBorder  },
-          { label: "Avg Exam Score",    value: ov.avg_exam_score,           unit: "%",  color: T.blue,   icon: ClipboardCheck, bg: T.blueBg,   border: "rgba(68,136,255,0.22)"  },
           { label: "Avg Risk Score",    value: ov.avg_risk_score,           unit: "/100", color: T.orange, icon: TrendingUp,     bg: T.orangeBg, border: T.orangeBorder },
           { label: "Phishing Click Rate", value: ov.phishing_click_rate,   unit: "%",  color: T.red,    icon: Shield,         bg: T.redBg,    border: T.redBorder    },
           { label: "Critical Risk",     value: ov.critical_count,           unit: " employees", color: T.red, icon: AlertTriangle, bg: T.redBg, border: T.redBorder },
@@ -592,7 +538,7 @@ export function AdvancedAnalyticsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {["Campaign", "Targets", "Opened", "Open % (targets)", "Clicked", "Click % (targets)", "Credentials", "Cred % (targets)", "Reported", "Report % (targets)"].map(h => (
+                  {["Campaign", "Sent", "Opened", "Open % (sent)", "Clicked", "Click % (sent)", "Credentials", "Cred % (sent)", "Reported", "Report % (sent)"].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: h === "Campaign" ? "left" : "right", color: T.textMuted, fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -601,22 +547,30 @@ export function AdvancedAnalyticsPage() {
                 {phishingTrends.map((p, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
                     <td style={{ padding: "10px 10px", color: T.text, fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.campaign_name}</td>
-                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.textSub }}>{p.total_targets}</td>
+                    <td style={{ padding: "10px 10px", textAlign: "right", color: T.textSub }}>{p.sent}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.blue }}>{p.opened}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueBg }}>{p.open_rate}%</span>
+                      {p.open_rate === null
+                        ? <span style={{ color: T.textMuted }}>—</span>
+                        : <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueBg }}>{fmtPct(p.open_rate)}</span>}
                     </td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.orange, fontWeight: 600 }}>{p.clicked}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.click_rate > 30 ? T.red : p.click_rate > 15 ? T.orange : T.green, background: p.click_rate > 30 ? T.redBg : p.click_rate > 15 ? T.orangeBg : T.greenBg }}>{p.click_rate}%</span>
+                      {p.click_rate === null
+                        ? <span style={{ color: T.textMuted }}>—</span>
+                        : <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.click_rate > 30 ? T.red : p.click_rate > 15 ? T.orange : T.green, background: p.click_rate > 30 ? T.redBg : p.click_rate > 15 ? T.orangeBg : T.greenBg }}>{fmtPct(p.click_rate)}</span>}
                     </td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.red, fontWeight: 600 }}>{p.creds}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.cred_rate > 20 ? T.red : p.cred_rate > 5 ? T.orange : T.green, background: p.cred_rate > 20 ? T.redBg : p.cred_rate > 5 ? T.orangeBg : T.greenBg }}>{p.cred_rate}%</span>
+                      {p.cred_rate === null
+                        ? <span style={{ color: T.textMuted }}>—</span>
+                        : <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: p.cred_rate > 20 ? T.red : p.cred_rate > 5 ? T.orange : T.green, background: p.cred_rate > 20 ? T.redBg : p.cred_rate > 5 ? T.orangeBg : T.greenBg }}>{fmtPct(p.cred_rate)}</span>}
                     </td>
                     <td style={{ padding: "10px 10px", textAlign: "right", color: T.green }}>{p.reported}</td>
                     <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                      <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.green, background: T.greenBg }}>{p.report_rate}%</span>
+                      {p.report_rate === null
+                        ? <span style={{ color: T.textMuted }}>—</span>
+                        : <span style={{ padding: "2px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: T.green, background: T.greenBg }}>{fmtPct(p.report_rate)}</span>}
                     </td>
                   </tr>
                 ))}
@@ -624,21 +578,19 @@ export function AdvancedAnalyticsPage() {
             </table>
           </div>
           <div style={{ marginTop: 8, fontSize: 11, color: T.textMuted }}>
-            * Percentages calculated as share of total targeted employees.
+            * Percentages are a share of emails actually sent. A campaign that has not sent yet shows "—".
           </div>
           </>
         )}
       </Section>
 
       {/*
-        Trends sit directly above the current-risk bar chart: the bar chart says
-        where each department stands today, these say whether that is an
-        improvement.
+        Where the Department Comparison table above says where each department
+        stands today, these trends say whether that is an improvement.
 
         Course progress and awareness are separated because they fail for
         different reasons and need different responses — unfinished training
-        versus training that finished but did not stick. Maturity combines them
-        and is the inverse of the bar chart below it, by design.
+        versus training that finished but did not stick. Maturity combines them.
       */}
       <div style={{ display: "grid", gap: 20, marginBottom: 20 }}>
         <DepartmentTrendChart
@@ -660,19 +612,6 @@ export function AdvancedAnalyticsPage() {
           tokens={ANALYTICS_CHART_TOKENS}
         />
       </div>
-
-      {/* Department Risk Bar Chart */}
-      {deptStats.length > 0 && (
-        <Section title="Risk Score by Department" icon={TrendingUp} color={T.purple}>
-          <HBarChart
-            items={deptStats.map(d => ({ name: d.department_name, value: d.avg_risk_score }))}
-            labelKey="name"
-            valueKey="value"
-            color={T.orange}
-            maxVal={100}
-          />
-        </Section>
-      )}
 
     </div>
   );
