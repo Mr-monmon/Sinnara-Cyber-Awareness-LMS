@@ -7,7 +7,7 @@ import DOMPurify from "dompurify";
 import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
 import { missingCampaignFields } from "../../lib/requestCompleteness";
-import { RequestWithCompany, User } from "../../lib/types";
+import { RequestWithCompany } from "../../lib/types";
 
 /* ─────────────────────────────────────────
    DARK ADMIN THEME TOKENS (match the rest of platform-admin)
@@ -86,7 +86,20 @@ type DepartmentOption = {
   name: string;
 };
 
-type TargetUser = Pick<User, "id" | "full_name" | "email" | "department_id">;
+/**
+ * One recipient as shown in the pre-launch review, from EITHER source. Phishing
+ * group members are free-form rows (not platform users), so the department is
+ * carried as a resolved label rather than a foreign key.
+ */
+type TargetUser = {
+  id: string;
+  full_name: string;
+  email: string;
+  department_label: string;
+};
+
+/** Which source the campaign will actually draw recipients from. */
+type TargetSource = "GROUPS" | "DEPARTMENTS" | "NONE";
 
 type Props = {
   selectedRequest: RequestWithCompany;
@@ -101,6 +114,44 @@ const SENDING_METHOD_LABEL: Record<string, string> = {
   REQUEST_ADMIN_CONFIG: "Platform admin to configure SMTP",
 };
 
+/**
+ * Convert a stored UTC timestamp into the value a `datetime-local` input expects.
+ *
+ * `datetime-local` has no timezone: it reads whatever string it is given as LOCAL
+ * wall-clock time. The previous code sliced the raw UTC ISO string, so a campaign
+ * stored as 14:00Z (17:00 in Riyadh) was displayed as "14:00" and read back as
+ * 14:00 local — and `new Date(value).toISOString()` on save then re-encoded that
+ * as 11:00Z. Every save walked the schedule backwards by the UTC offset, and
+ * because launching always calls saveSetup() first, merely launching a scheduled
+ * request moved it three hours earlier.
+ *
+ * Shifting by the offset here makes the round trip lossless: UTC → local for
+ * display, local → UTC on save.
+ */
+const toLocalInputValue = (value: string | Date | null | undefined): string => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+};
+
+/** The viewer's timezone, shown next to the schedule field so "17:00" is unambiguous. */
+const LOCAL_TZ_LABEL = (() => {
+  try {
+    const name = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offsetMin = -new Date().getTimezoneOffset();
+    const sign = offsetMin >= 0 ? "+" : "−";
+    const abs = Math.abs(offsetMin);
+    const hh = Math.floor(abs / 60);
+    const mm = abs % 60;
+    return `${name} (UTC${sign}${hh}${mm ? `:${String(mm).padStart(2, "0")}` : ""})`;
+  } catch {
+    return "your local time";
+  }
+})();
+
 const RequestPreview = ({
   selectedRequest,
   updateSelectedRequest,
@@ -108,6 +159,8 @@ const RequestPreview = ({
 }: Props) => {
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [users, setUsers] = useState<TargetUser[]>([]);
+  const [targetSource, setTargetSource] = useState<TargetSource>("NONE");
+  const [targetError, setTargetError] = useState<string | null>(null);
   const [domainName, setDomainName] = useState<string>("");
   const [smtpProfileName, setSmtpProfileName] = useState<string>("");
   const [converting, setConverting] = useState(false);
@@ -154,9 +207,7 @@ const RequestPreview = ({
       reply_to_address: selectedRequest.reply_to_address || "",
       emails_per_minute: selectedRequest.emails_per_minute ?? 10,
       launch_type: selectedRequest.launch_type || "IMMEDIATE",
-      scheduled_launch_at: selectedRequest.scheduled_launch_at
-        ? String(selectedRequest.scheduled_launch_at).slice(0, 16)
-        : "",
+      scheduled_launch_at: toLocalInputValue(selectedRequest.scheduled_launch_at),
     });
   }, [selectedRequest.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -171,22 +222,68 @@ const RequestPreview = ({
   const loadTargetData = useCallback(async () => {
     setDepartments([]);
     setUsers([]);
+    setTargetSource("NONE");
+    setTargetError(null);
     setDomainName("");
 
-    const { data } = await supabase
-      .from("departments")
-      .select("id, name")
-      .in("id", selectedRequest.target_departments);
+    /* Recipient resolution MUST mirror create-campaign-from-request/index.ts:189-203,
+       which resolves phishing groups FIRST and falls back to departments only when no
+       group is set. This screen previously read departments alone, so a group-targeted
+       request showed an empty recipient list and a disabled CSV export — and the admin
+       approved it anyway, sending mail to a group they had never seen. The review
+       screen has to look at exactly what the sender will look at. */
+    const groupIds = Array.isArray(selectedRequest.group_ids) ? selectedRequest.group_ids : [];
 
-    if (data) setDepartments(data);
+    if (groupIds.length > 0) {
+      const { data: members, error } = await supabase
+        .from("phishing_group_members")
+        .select("id, first_name, last_name, email, department")
+        .in("group_id", groupIds);
+      if (error) {
+        setTargetError(`Could not load group members: ${error.message}`);
+        return;
+      }
+      setTargetSource("GROUPS");
+      setUsers(
+        (members ?? []).map((m) => ({
+          id: m.id,
+          full_name: [m.first_name, m.last_name].filter(Boolean).join(" ").trim(),
+          email: m.email,
+          department_label: m.department || "",
+        }))
+      );
+    } else {
+      const { data, error: deptErr } = await supabase
+        .from("departments")
+        .select("id, name")
+        .in("id", selectedRequest.target_departments ?? []);
+      if (deptErr) {
+        setTargetError(`Could not load target departments: ${deptErr.message}`);
+        return;
+      }
+      if (data) setDepartments(data);
 
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, full_name, email, department_id")
-      .eq("company_id", selectedRequest.company_id)
-      .in("department_id", data?.map((d) => d.id) || []);
-
-    if (users) setUsers(users as TargetUser[]);
+      const { data: deptUsers, error: userErr } = await supabase
+        .from("users")
+        .select("id, full_name, email, department_id")
+        .eq("company_id", selectedRequest.company_id)
+        .eq("role", "EMPLOYEE")
+        .in("department_id", data?.map((d) => d.id) || []);
+      if (userErr) {
+        setTargetError(`Could not load department employees: ${userErr.message}`);
+        return;
+      }
+      const nameById = new Map((data ?? []).map((d) => [d.id, d.name]));
+      setTargetSource("DEPARTMENTS");
+      setUsers(
+        (deptUsers ?? []).map((u) => ({
+          id: u.id,
+          full_name: u.full_name ?? "",
+          email: u.email ?? "",
+          department_label: (u.department_id && nameById.get(u.department_id)) || "",
+        }))
+      );
+    }
 
     if (selectedRequest.domain_id) {
       const { data: domain } = await supabase
@@ -361,18 +458,13 @@ const RequestPreview = ({
   const exportUsersCsv = () => {
     if (users.length === 0) return;
 
-    const departmentNameById = new Map(
-      departments.map((department) => [department.id, department.name])
-    );
     const headers = ["Full Name", "Email", "Company", "Department"];
     const rows = users.map((user) =>
       [
         escapeCsvValue(user.full_name),
         escapeCsvValue(user.email),
         escapeCsvValue(selectedRequest.companies?.name),
-        escapeCsvValue(
-          user.department_id ? departmentNameById.get(user.department_id) : ""
-        ),
+        escapeCsvValue(user.department_label),
       ].join(",")
     );
     const csvContent = [
@@ -458,6 +550,31 @@ const RequestPreview = ({
 
         {/* Body */}
         <div className="aw-rp-scroll" style={{ padding: "18px 22px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Who this will actually reach. Stated explicitly because the recipient
+              source is not obvious from the request, and approving the wrong set
+              means real mail to real people. */}
+          {targetError ? (
+            <div style={{ padding: "11px 14px", borderRadius: 10, background: T.redBg, border: `1px solid ${T.redBorder}`, fontSize: 12, color: T.textBody, lineHeight: 1.6 }}>
+              <strong style={{ color: T.red }}>Recipients could not be loaded.</strong> {targetError}
+              <br />
+              Do not launch until this resolves — the list below is not what will be sent to.
+            </div>
+          ) : (
+            <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${T.borderFaint}`, fontSize: 12, color: T.textBody }}>
+              <strong style={{ color: T.white }}>{users.length}</strong>{" "}
+              {users.length === 1 ? "recipient" : "recipients"}
+              {targetSource === "GROUPS" && (
+                <> from {(selectedRequest.group_ids ?? []).length} phishing group
+                  {(selectedRequest.group_ids ?? []).length === 1 ? "" : "s"}</>
+              )}
+              {targetSource === "DEPARTMENTS" && (
+                <> from {departments.length} department{departments.length === 1 ? "" : "s"}
+                  {departments.length > 0 && ` (${departments.map((d) => d.name).join(", ")})`}</>
+              )}
+              {targetSource === "NONE" && <> — no target group or department is set on this request</>}
+            </div>
+          )}
 
           {/* Conversion readiness — warn when required fields are absent */}
           {(() => {
@@ -584,6 +701,11 @@ const RequestPreview = ({
                       value={setup.scheduled_launch_at}
                       onChange={(e) => setSetup((s) => ({ ...s, scheduled_launch_at: e.target.value }))}
                     />
+                    {/* A time field with no timezone, on a screen that sends real mail
+                        to real people, must never leave the admin guessing. */}
+                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 5 }}>
+                      {LOCAL_TZ_LABEL}
+                    </div>
                   </div>
                 )}
               </div>
@@ -616,7 +738,11 @@ const RequestPreview = ({
             <SummaryField label="Campaign Name">{selectedRequest.campaign_name || "—"}</SummaryField>
             <SummaryField label="Scenario">{selectedRequest.phishing_scenarios?.name || "N/A"}</SummaryField>
             <SummaryField label="Target Count">{selectedRequest.target_employee_count} employees</SummaryField>
-            <SummaryField label="Target Departments">{departments.map((d) => d.name).join(", ") || "—"}</SummaryField>
+            <SummaryField label="Targets">
+              {targetSource === "GROUPS"
+                ? `${(selectedRequest.group_ids ?? []).length} phishing group(s) · ${users.length} recipients`
+                : departments.map((d) => d.name).join(", ") || "—"}
+            </SummaryField>
             <SummaryField label="Priority">{selectedRequest.priority}</SummaryField>
             <SummaryField label="Scheduled Date">
               {selectedRequest.scheduled_date ? new Date(selectedRequest.scheduled_date).toLocaleDateString() : "Not scheduled"}

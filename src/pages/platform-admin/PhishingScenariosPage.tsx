@@ -64,6 +64,29 @@ const emptyForm = (): FormState => ({
   tags: [], tags_str: '', is_active: true, sort_order: 0,
 });
 
+/**
+ * A stable id for a starter scenario, derived from its name.
+ *
+ * `phishing_scenarios` has no unique constraint on `name`, so an upsert needs a
+ * deterministic primary key to conflict on. FNV-1a is run four times with a
+ * different offset basis to fill 128 bits, then formatted as a UUID. It is not
+ * cryptographic — it only has to be stable and collision-free across the handful
+ * of names in SEEDS.
+ */
+const seedScenarioId = (name: string): string => {
+  let hex = '';
+  for (let i = 0; i < 4; i++) {
+    let h = (0x811c9dc5 ^ i) >>> 0;
+    for (let j = 0; j < name.length; j++) {
+      h ^= name.charCodeAt(j);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    hex += h.toString(16).padStart(8, '0');
+  }
+  // Shaped as a v5 UUID so Postgres accepts it as a uuid value.
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
+
 const SEEDS: Partial<Scenario>[] = [
   {
     name: 'Microsoft Login Reset', category: 'CREDENTIAL_HARVEST', difficulty: 'HARD',
@@ -243,8 +266,24 @@ export const PhishingScenariosPage: React.FC = () => {
 
   const fetchScenarios = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('phishing_scenarios').select('*').order('sort_order');
-    const list = data || [];
+    setError('');
+    const { data, error: readErr } = await supabase
+      .from('phishing_scenarios').select('*').order('sort_order');
+
+    /* A discarded read error used to be indistinguishable from an empty library:
+       `data` came back null on any RLS denial or dropped connection, the list read
+       as length 0, and the seeding branch fired. Because SEEDS carried no id, every
+       occurrence minted a fresh set of rows — so one transient failure permanently
+       duplicated the scenario library and company admins picked from copies.
+       Seeding may only ever follow a read that genuinely succeeded. */
+    if (readErr) {
+      console.error('[PhishingScenariosPage] fetchScenarios failed:', readErr.message, readErr);
+      setError(`Could not load scenarios: ${readErr.message}`);
+      setLoading(false);
+      return;
+    }
+
+    const list = data ?? [];
     setScenarios(list);
     if (list.length === 0) await seedScenarios();
     setLoading(false);
@@ -253,9 +292,24 @@ export const PhishingScenariosPage: React.FC = () => {
   useEffect(() => { fetchScenarios(); }, [fetchScenarios]);
 
   const seedScenarios = async () => {
-    await supabase.from('phishing_scenarios').insert(SEEDS as Scenario[]);
-    const { data } = await supabase.from('phishing_scenarios').select('*').order('sort_order');
-    setScenarios(data || []);
+    // Upsert on a name-derived id rather than insert, so seeding is idempotent even
+    // if it somehow runs twice (two tabs opening the page at the same moment).
+    const rows = SEEDS.map(s => ({ ...s, id: seedScenarioId(s.name ?? '') }));
+    const { error: seedErr } = await supabase
+      .from('phishing_scenarios')
+      .upsert(rows as Scenario[], { onConflict: 'id' });
+    if (seedErr) {
+      console.error('[PhishingScenariosPage] seedScenarios failed:', seedErr.message, seedErr);
+      setError(`Could not install the starter scenarios: ${seedErr.message}`);
+      return;
+    }
+    const { data, error: reReadErr } = await supabase
+      .from('phishing_scenarios').select('*').order('sort_order');
+    if (reReadErr) {
+      setError(`Scenarios were installed but could not be reloaded: ${reReadErr.message}`);
+      return;
+    }
+    setScenarios(data ?? []);
   };
 
   const openAdd = () => { setForm(emptyForm()); setError(''); setActiveTab('email'); setModal('add'); };
