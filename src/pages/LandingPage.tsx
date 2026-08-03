@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { RequestDemoModal } from "../components/landing/RequestDemoModal";
 import { PartnersCarousel } from "../components/landing/PartnersCarousel";
+import { ProductVideo } from "../components/landing/ProductVideo";
 import { supabase } from "../lib/supabase";
 import {
   ArrowRight,
@@ -211,11 +212,53 @@ const MAP_CITIES: { name: string; x: number; y: number; primary?: boolean }[] = 
   { name: "Muscat", x: 1174, y: 636               },
 ];
 
-const MAP_ATTACKS = [
-  "M 30,90  Q 200,310 601,520",
-  "M 1430,75 Q 1310,290 1078,498",
-  "M 700,1060 Q 640,790 601,520",
+/* Attacks arrive from every direction and land on every city — not just Riyadh
+   and Dubai. Origins sit outside the viewBox so each arc flies in from off-map. */
+const ATTACK_ORIGINS: [number, number][] = [
+  [-70, 130], [430, -80], [980, -90], [1510, 210],
+  [1520, 770], [1060, 1160], [510, 1150], [-80, 710],
+  [-90, 390], [1515, 490], [190, -70], [1370, 1090],
 ];
+
+/**
+ * A curved attack path from an off-map origin to a target city.
+ *
+ * The control point is pushed off the straight line by `bend` along the
+ * perpendicular, so two arcs sharing an origin or a destination still separate
+ * instead of overlapping into one thick streak.
+ */
+const attackArc = (ox: number, oy: number, tx: number, ty: number, bend: number) => {
+  const dx = tx - ox;
+  const dy = ty - oy;
+  const len = Math.hypot(dx, dy) || 1;
+  const cx = (ox + tx) / 2 + (-dy / len) * bend;
+  const cy = (oy + ty) / 2 + (dx / len) * bend;
+  return `M ${ox},${oy} Q ${Math.round(cx)},${Math.round(cy)} ${tx},${ty}`;
+};
+
+/* city = index into MAP_CITIES, origin = index into ATTACK_ORIGINS.
+   Durations and delays are deliberately uneven — evenly spaced arcs read as a
+   loop, staggered ones read as live traffic. */
+const ATTACK_SPEC = [
+  { city: 0, origin: 0,  bend:  130, delay: 0.0, dur: 3.6, w: 2.6, o: 0.95 },
+  { city: 0, origin: 6,  bend:  -95, delay: 2.4, dur: 4.3, w: 2.0, o: 0.70 },
+  { city: 1, origin: 8,  bend:   75, delay: 1.1, dur: 3.9, w: 2.4, o: 0.85 },
+  { city: 1, origin: 2,  bend:  155, delay: 3.3, dur: 4.1, w: 1.8, o: 0.60 },
+  { city: 2, origin: 10, bend:  -60, delay: 0.6, dur: 3.2, w: 2.3, o: 0.85 },
+  { city: 3, origin: 1,  bend:  100, delay: 1.8, dur: 3.4, w: 2.5, o: 0.90 },
+  { city: 3, origin: 7,  bend: -145, delay: 2.7, dur: 4.6, w: 1.9, o: 0.62 },
+  { city: 4, origin: 5,  bend: -120, delay: 0.3, dur: 4.4, w: 2.2, o: 0.80 },
+  { city: 4, origin: 9,  bend:   55, delay: 0.9, dur: 3.3, w: 1.8, o: 0.58 },
+  { city: 5, origin: 3,  bend:   85, delay: 2.0, dur: 3.1, w: 2.6, o: 0.92 },
+  { city: 6, origin: 4,  bend: -105, delay: 1.4, dur: 4.0, w: 2.3, o: 0.82 },
+  { city: 6, origin: 11, bend:   60, delay: 3.0, dur: 3.7, w: 1.9, o: 0.64 },
+] as const;
+
+const MAP_ATTACKS = ATTACK_SPEC.map((a) => {
+  const [ox, oy] = ATTACK_ORIGINS[a.origin];
+  const c = MAP_CITIES[a.city];
+  return { d: attackArc(ox, oy, c.x, c.y, a.bend), delay: a.delay, dur: a.dur, w: a.w, o: a.o };
+});
 
 const SA_PATH = "M 151.16 275.65 L 202.60 282.14 L 222.58 269.59 L 233.64 254.91 L 268.91 249.26 L 276.51 235.60 L 291.80 228.68 L 245.73 187.91 L 338.30 167.45 L 347.11 161.30 L 402.78 172.35 L 471.64 200.89 L 601.96 282.90 L 687.89 286.15 L 729.08 290.09 L 740.59 309.51 L 773.27 308.46 L 791.37 343.62 L 814.11 352.93 L 822.03 367.26 L 853.53 384.40 L 856.32 401.22 L 851.72 414.80 L 857.57 428.50 L 870.86 439.93 L 877.01 453.30 L 883.92 463.29 L 897.90 471.38 L 910.71 468.49 L 919.48 484.06 L 921.25 493.49 L 938.95 534.80 L 1077.89 555.36 L 1087.21 546.74 L 1108.39 575.62 L 1077.58 657.17 L 938.92 697.95 L 805.65 713.58 L 762.52 731.93 L 729.39 774.74 L 707.82 781.54 L 696.27 767.95 L 678.55 769.99 L 633.87 765.91 L 625.40 761.83 L 572.06 762.77 L 559.53 766.45 L 540.55 755.85 L 528.30 775.89 L 533.04 793.08 L 512.75 806.09 L 506.75 788.69 L 492.81 776.41 L 489.25 760.14 L 465.38 745.53 L 440.74 711.34 L 427.71 678.11 L 395.74 650.05 L 375.12 643.36 L 344.51 604.49 L 339.17 576.16 L 341.14 551.98 L 314.63 506.77 L 292.95 490.86 L 267.99 482.43 L 252.79 459.06 L 255.32 449.85 L 242.47 428.71 L 228.98 419.60 L 210.93 389.27 L 159.21 328.38 L 136.20 328.58 L 151.16 275.65 Z";
 
@@ -300,10 +343,12 @@ const MENAMap: React.FC = () => {
           </g>
 
           {/* Attack arcs */}
-          {MAP_ATTACKS.map((d, i) => (
-            <path key={i} className="aw-attack" d={d}
-              fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"
-              style={{ animationDelay: `${i * 1.3}s` }} />
+          {MAP_ATTACKS.map((a, i) => (
+            /* pathLength normalises every arc to 100 units, so one dash rule
+               animates arcs of wildly different real lengths identically. */
+            <path key={i} className="aw-attack" d={a.d} pathLength={100}
+              fill="none" stroke="#ef4444" strokeWidth={a.w} strokeLinecap="round"
+              style={{ animationDelay: `${a.delay}s`, animationDuration: `${a.dur}s`, opacity: a.o }} />
           ))}
 
           {/* Shield near Riyadh */}
@@ -335,9 +380,9 @@ const MENAMap: React.FC = () => {
           ))}
 
           {/* Country abbreviations */}
-          <text x="580" y="600" fill="rgba(200,255,0,0.22)" fontSize="90" fontWeight="900"
+          <text x="580" y="600" fill="rgba(200,255,0,0.22)" fontSize="54" fontWeight="900"
             textAnchor="middle" dominantBaseline="middle"
-            style={{ fontFamily: "'Inter', sans-serif", letterSpacing: "8px" }}>SA</text>
+            style={{ fontFamily: "'Inter', sans-serif", letterSpacing: "5px" }}>Saudi Arabia</text>
           <text x="199" y="228" fill="rgba(200,255,0,0.28)" fontSize="42" fontWeight="800"
             textAnchor="middle" dominantBaseline="middle"
             style={{ fontFamily: "'Inter', sans-serif" }}>JO</text>
@@ -455,7 +500,9 @@ export const LandingPage = () => {
     tagline: "Empowering organizations to build a resilient security culture through localized, data-driven training and simulation.",
     email: "support@awareone.net",
     phone: "+966 11 234 5678",
-    copyright: "© 2025 AwareOne. All rights reserved.",
+    // Derived, not hardcoded — a stale year in the footer is the classic sign of
+    // an unmaintained site, and this is the fallback shown before settings load.
+    copyright: `© ${new Date().getFullYear()} AwareOne. All rights reserved.`,
   });
 
   useEffect(() => {
@@ -506,14 +553,14 @@ export const LandingPage = () => {
 
         /* ── Regional threat map + scroll infographics ── */
         @keyframes aw-map-draw    { from { stroke-dashoffset: 8000; } to { stroke-dashoffset: 0; } }
-        @keyframes aw-attack-flow { 0% { stroke-dashoffset: 800; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+        @keyframes aw-attack-flow { 0% { stroke-dashoffset: 100; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
         @keyframes aw-ring-pulse  { 0% { transform: scale(0.6); opacity: 0.75; } 100% { transform: scale(2.6); opacity: 0; } }
         @keyframes aw-float-y     { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 
         .aw-map-wrap   { position: relative; width: 100%; max-width: 520px; margin: 0 auto; }
         .aw-map-tilt   { transition: transform 0.2s ease-out; will-change: transform; transform-style: preserve-3d; }
         .aw-map-border { stroke-dasharray: 8000; animation: aw-map-draw 2.6s ease forwards; }
-        .aw-attack     { stroke-dasharray: 800; animation: aw-attack-flow 3.4s linear infinite; }
+        .aw-attack     { stroke-dasharray: 100; animation: aw-attack-flow 3.4s linear infinite; }
         .aw-city-ring  { transform-box: fill-box; transform-origin: center; animation: aw-ring-pulse 2.8s ease-out infinite; }
 
         .aw-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
@@ -572,9 +619,37 @@ export const LandingPage = () => {
         @media (max-width: 1024px) { .aw-blog-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 600px)  { .aw-blog-grid { grid-template-columns: 1fr; } }
 
-        .aw-footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
-        @media (max-width: 1024px) { .aw-footer-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 600px)  { .aw-footer-grid { grid-template-columns: 1fr; } }
+        /* The brand column carries a logo, a paragraph and social icons, so it
+           earns more width than the three link columns beside it. Equal quarters
+           left it cramped while the link columns sat half empty. */
+        .aw-footer-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr; gap: 48px 40px; }
+        @media (max-width: 1024px) { .aw-footer-grid { grid-template-columns: repeat(2, 1fr); gap: 44px 32px; } }
+        @media (max-width: 600px)  { .aw-footer-grid { grid-template-columns: 1fr; gap: 36px; } }
+
+        /* One rhythm for every footer column: the old headings sat 48px above
+           their own list, which read as four unrelated blocks rather than a row. */
+        .aw-foot-head {
+          font-size: 12px; font-weight: 700; color: #ffffff;
+          letter-spacing: 1.4px; text-transform: uppercase;
+          margin: 0 0 18px; padding-bottom: 10px;
+          border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .aw-foot-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 13px; }
+        .aw-foot-link {
+          font-size: 14px; color: #cbd5e1; background: none; border: none;
+          padding: 0; cursor: pointer; font-family: inherit; text-align: left;
+          transition: color 0.18s, transform 0.18s;
+        }
+        .aw-foot-link:hover { color: #c8ff00; transform: translateX(3px); }
+        .aw-foot-link:focus-visible { outline: 2px solid #c8ff00; outline-offset: 3px; border-radius: 3px; }
+        .aw-foot-legal {
+          font-size: 13px; color: #64748b; background: none; border: none;
+          padding: 0; cursor: pointer; font-family: inherit;
+          transition: color 0.18s;
+        }
+        .aw-foot-legal:hover { color: #c8ff00; }
+        .aw-foot-legal:focus-visible { outline: 2px solid #c8ff00; outline-offset: 3px; border-radius: 3px; }
+        @media (prefers-reduced-motion: reduce) { .aw-foot-link:hover { transform: none; } }
 
         .aw-footer-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
         @media (max-width: 600px) { .aw-footer-bottom { flex-direction: column; align-items: flex-start; } }
@@ -764,6 +839,9 @@ export const LandingPage = () => {
                 </article>
               ))}
             </div>
+
+            {/* The four steps above describe the method; the film shows it. */}
+            <ProductVideo />
           </div>
         </section>
 
@@ -835,12 +913,12 @@ export const LandingPage = () => {
           <div className="aw-footer-grid" style={{ paddingBottom: 56 }}>
             {/* Brand */}
             <div>
-              <div style={{ marginBottom: 40 }}>
-                <img src={LOGO} alt="AwareOne" style={{ height: 130, width: "auto", display: "block" }}/>
-              </div>
-              <p style={{ fontSize: 14, color: T.textBody, lineHeight: "22.75px", margin: "0 0 40px" }}>{footerSettings.tagline}</p>
+              {/* 130px was taller than the entire link column beside it and pushed
+                  the brand block out of rhythm with the rest of the footer. */}
+              <img src={LOGO} alt="AwareOne" style={{ height: 56, width: "auto", display: "block", marginBottom: 20 }}/>
+              <p style={{ fontSize: 14, color: T.textBody, lineHeight: "23px", margin: "0 0 24px", maxWidth: 320 }}>{footerSettings.tagline}</p>
               {/* ★ Social links */}
-              <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ display: "flex", gap: 10 }}>
                 {([
                   ["LinkedIn", Linkedin, "https://www.linkedin.com/company/awareone/"],
                   ["X (Twitter)", Twitter, "https://x.com/AwareOne_net"],
@@ -856,55 +934,64 @@ export const LandingPage = () => {
               </div>
             </div>
 
-            {/* Company */}
-            <nav aria-label="Company links">
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Company</h3>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-                {[{label:"Free Assessment",path:"/assessment"},{label:"Fraud Alerts",path:"/fraud-alerts"},{label:"Resources",path:"/resources"},{label:"Login",path:"/login"}].map(({label,path}) => (
+            {/* Explore — the pages a visitor is most likely to want next.
+                Previously "Company" held four unrelated links while "Resources"
+                held exactly one, so the grid read as three columns and a stub. */}
+            <nav aria-label="Explore AwareOne">
+              <h3 className="aw-foot-head">Explore</h3>
+              <ul className="aw-foot-list">
+                {[
+                  { label: "Free Assessment", path: "/assessment" },
+                  { label: "Fraud Alerts",    path: "/fraud-alerts" },
+                  { label: "Resources",       path: "/resources" },
+                ].map(({ label, path }) => (
                   <li key={path}>
-                    <button onClick={() => navigate(path)} style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>{label}</button>
+                    <button className="aw-foot-link" onClick={() => navigate(path)}>{label}</button>
                   </li>
                 ))}
               </ul>
             </nav>
 
-            {/* Resources */}
-            <nav aria-label="Resources links">
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Resources</h3>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-                {["Legal"].map((label) => (
-                  <li key={label}>
-                    <button onClick={() => navigate(label==="Legal" ? "/legal" : "/resources")} style={{ fontSize: 14, color: T.textBody, background: "none", border: "none", cursor: "pointer", padding: 0, transition: "color 0.2s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>{label}</button>
-                  </li>
-                ))}
+            {/* Company */}
+            <nav aria-label="Company links">
+              <h3 className="aw-foot-head">Company</h3>
+              <ul className="aw-foot-list">
+                <li><button className="aw-foot-link" onClick={() => setShowDemoModal(true)}>Request a Demo</button></li>
+                <li><button className="aw-foot-link" onClick={() => navigate("/login")}>Login</button></li>
+                <li><button className="aw-foot-link" onClick={() => navigate("/legal")}>Legal</button></li>
               </ul>
             </nav>
 
             {/* Contact */}
             <div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: T.white, margin: "0 0 48px" }}>Contact</h3>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+              <h3 className="aw-foot-head">Contact</h3>
+              <ul className="aw-foot-list">
                 <li>
-                  <a href={`mailto:${footerSettings.email}`} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: T.textBody, textDecoration: "none", transition: "color 0.2s" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = T.white)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textBody)}>
-                    <Mail size={14} style={{ color: T.textMuted, flexShrink: 0 }}/>{footerSettings.email}
+                  <a className="aw-foot-link" href={`mailto:${footerSettings.email}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
+                    <Mail size={14} style={{ color: T.accent, flexShrink: 0 }}/>{footerSettings.email}
                   </a>
                 </li>
-                <li style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: T.textBody }}>
-                  <MapPin size={14} style={{ color: T.textMuted, flexShrink: 0 }}/>Riyadh, Saudi Arabia
+                <li style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: T.textBody }}>
+                  <MapPin size={14} style={{ color: T.accent, flexShrink: 0 }}/>Riyadh, Saudi Arabia
                 </li>
               </ul>
             </div>
           </div>
 
-          <div className="aw-footer-bottom" style={{ padding: "32px 0", borderTop: `1px solid ${T.borderFaint}` }}>
+          <div className="aw-footer-bottom" style={{ padding: "28px 0", borderTop: `1px solid ${T.borderFaint}` }}>
             <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>{footerSettings.copyright}</p>
-            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-              {["Privacy Policy","Terms of Service","Cookies"].map(label => (
-                <a key={label} href="#" onClick={() => navigate("/legal")} style={{ fontSize: 13, color: T.textMuted, textDecoration: "none", transition: "color 0.2s" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = T.textNav)} onMouseLeave={(e) => (e.currentTarget.style.color = T.textMuted)}>{label}</a>
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              {/* Buttons, not `href="#"`. The anchors jumped the page to the top
+                  before the router navigated, and all three landed on the same
+                  collapsed page — now each opens its own policy. */}
+              {([
+                ["Privacy Policy",   "privacy"],
+                ["Terms of Service", "terms"],
+                ["Cookies",          "cookies"],
+              ] as const).map(([label, section]) => (
+                <button key={section} className="aw-foot-legal"
+                  onClick={() => navigate(`/legal?section=${section}`)}>{label}</button>
               ))}
             </div>
           </div>
