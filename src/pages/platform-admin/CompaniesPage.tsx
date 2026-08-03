@@ -18,6 +18,7 @@ import { Company, Course, Exam } from "../../lib/types";
 import { CompanyFormModal } from "../../components/platform-admin/CompanyFormModal";
 import { useAuth } from "../../contexts/AuthContext";
 import { buildTenantRedirectUrl } from "../../lib/browserTenant";
+import { DEFAULT_ANNUAL_QUOTA } from "../../lib/phishingQuota";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
 import { syncSubscriptionRow } from "../../lib/subscription";
@@ -217,6 +218,8 @@ const PkgBadge: React.FC<{ type: string }> = ({ type }) => {
 export const CompaniesPage: React.FC = () => {
   const { user } = useAuth();
   const [companies, setCompanies] = useState<CompanyWithQuota[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -238,28 +241,52 @@ export const CompaniesPage: React.FC = () => {
   }, []);
 
   const loadCompanies = async () => {
-    const { data } = await supabase
+    setLoadingCompanies(true);
+    setLoadError(null);
+    const { data, error } = await supabase
       .from("companies")
       .select("*")
       .order("created_at", { ascending: false });
-    if (!data) return;
+    // Previously `if (!data) return;` — a denied or failed read left the previous
+    // (or empty) list on screen and the page rendered its "No companies yet" empty
+    // state, which reads as "this platform has no customers".
+    if (error) {
+      console.error("[CompaniesPage] loadCompanies failed:", error.message, error);
+      setLoadError(error.message);
+      setLoadingCompanies(false);
+      return;
+    }
+    const rows = data ?? [];
     const year = new Date().getFullYear();
-    const withQuota = await Promise.all(
-      data.map(async (co) => {
-        const { data: q } = await supabase
-          .from("phishing_campaign_quotas")
-          .select("annual_quota, used_campaigns")
-          .eq("company_id", co.id)
-          .eq("quota_year", year)
-          .maybeSingle();
+
+    // One query for every company's quota instead of one query per company. The
+    // previous version issued N+1 round-trips on mount and after every save.
+    const { data: quotaRows, error: quotaErr } = await supabase
+      .from("phishing_campaign_quotas")
+      .select("company_id, annual_quota, used_campaigns")
+      .eq("quota_year", year)
+      .in("company_id", rows.map((c) => c.id));
+    if (quotaErr) {
+      console.error("[CompaniesPage] quota load failed:", quotaErr.message, quotaErr);
+      setLoadError(quotaErr.message);
+      setLoadingCompanies(false);
+      return;
+    }
+    const quotaByCompany = new Map(
+      (quotaRows ?? []).map((q) => [q.company_id, q])
+    );
+
+    setCompanies(
+      rows.map((co) => {
+        const q = quotaByCompany.get(co.id);
         return {
           ...co,
-          annual_quota: q?.annual_quota || 4,
-          used_campaigns: q?.used_campaigns || 0,
+          annual_quota: q?.annual_quota ?? DEFAULT_ANNUAL_QUOTA,
+          used_campaigns: q?.used_campaigns ?? 0,
         };
       })
     );
-    setCompanies(withQuota);
+    setLoadingCompanies(false);
   };
 
   const loadAllContent = async () => {
@@ -275,19 +302,24 @@ export const CompaniesPage: React.FC = () => {
     setSavingQuota(true);
     try {
       const year = new Date().getFullYear();
-      const { data: existing } = await supabase
+      const { data: existing, error: readErr } = await supabase
         .from("phishing_campaign_quotas")
         .select("id")
         .eq("company_id", companyId)
         .eq("quota_year", year)
         .maybeSingle();
+      // A discarded read error meant `existing` was null, so the update branch was
+      // skipped and an insert was attempted against a row that already exists —
+      // failing on the unique constraint, also silently.
+      if (readErr) throw new Error(readErr.message);
       if (existing) {
-        await supabase
+        const { error } = await supabase
           .from("phishing_campaign_quotas")
           .update({ annual_quota: quotaValue })
           .eq("id", existing.id);
+        if (error) throw new Error(error.message);
       } else {
-        await supabase
+        const { error } = await supabase
           .from("phishing_campaign_quotas")
           .insert({
             company_id: companyId,
@@ -295,11 +327,14 @@ export const CompaniesPage: React.FC = () => {
             quota_year: year,
             used_campaigns: 0,
           });
+        if (error) throw new Error(error.message);
       }
       setEditingQuota(null);
       await loadCompanies();
-    } catch {
-      alert("Failed to update quota");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CompaniesPage] handleUpdateQuota failed:", message, err);
+      alert(`Failed to update quota.\n\n${message}`);
     } finally {
       setSavingQuota(false);
     }
@@ -482,7 +517,6 @@ export const CompaniesPage: React.FC = () => {
   };
 
   const handleAssignContent = async (company: Company) => {
-    setAssigningCompany(company);
     const [cRes, eRes] = await Promise.all([
       supabase
         .from("company_courses")
@@ -493,47 +527,102 @@ export const CompaniesPage: React.FC = () => {
         .select("exam_id")
         .eq("company_id", company.id),
     ]);
+    // A failed read must not open the dialog. supabase-js resolves with `{ error }`
+    // rather than throwing, so an ignored error here left both lists empty, the
+    // admin saw "nothing assigned", and saving that view then deleted every real
+    // assignment. The read feeds the write, so it has to be checked.
+    if (cRes.error || eRes.error) {
+      alert(
+        `Could not load this company's current assignments, so the dialog was not opened ` +
+          `(saving from an unloaded list would erase them).\n\n` +
+          (cRes.error?.message ?? eRes.error?.message ?? "Unknown error")
+      );
+      return;
+    }
+    setAssigningCompany(company);
     setSelectedCourses(cRes.data?.map((c) => c.course_id) || []);
     setSelectedExams(eRes.data?.map((e) => e.exam_id) || []);
     setShowAssignModal(true);
   };
 
+  /**
+   * Save course/exam assignments as a DIFF, not as delete-everything-then-reinsert.
+   *
+   * The previous version deleted every `company_courses` and `company_exams` row for
+   * the company and then inserted the new set — without checking a single error.
+   * supabase-js resolves with `{ error }` instead of throwing, so the `catch` was
+   * unreachable: if the deletes succeeded and the inserts were refused (RLS, a foreign
+   * key, a dropped connection), every assignment for that company was destroyed and
+   * the dialog closed reporting success.
+   *
+   * Computing the difference means untouched rows are never deleted, so the
+   * catastrophic case cannot occur. Additions are applied before removals: if the
+   * insert fails nothing has been taken away, and if the delete fails the company is
+   * left with extra assignments — recoverable, unlike deletion.
+   */
   const handleSaveAssignments = async () => {
     if (!assigningCompany) return;
+    const companyId = assigningCompany.id;
     setSavingAssign(true);
     try {
-      await Promise.all([
-        supabase
-          .from("company_courses")
-          .delete()
-          .eq("company_id", assigningCompany.id),
-        supabase
-          .from("company_exams")
-          .delete()
-          .eq("company_id", assigningCompany.id),
+      // Re-read rather than trusting what the dialog loaded: another admin may have
+      // changed this company while the dialog was open.
+      const [curCourses, curExams] = await Promise.all([
+        supabase.from("company_courses").select("course_id").eq("company_id", companyId),
+        supabase.from("company_exams").select("exam_id").eq("company_id", companyId),
       ]);
-      if (selectedCourses.length > 0)
-        await supabase
+      if (curCourses.error) throw new Error(curCourses.error.message);
+      if (curExams.error) throw new Error(curExams.error.message);
+
+      const haveCourses = new Set((curCourses.data ?? []).map((c) => c.course_id));
+      const haveExams = new Set((curExams.data ?? []).map((e) => e.exam_id));
+      const wantCourses = new Set(selectedCourses);
+      const wantExams = new Set(selectedExams);
+
+      const coursesToAdd = [...wantCourses].filter((id) => !haveCourses.has(id));
+      const examsToAdd = [...wantExams].filter((id) => !haveExams.has(id));
+      const coursesToRemove = [...haveCourses].filter((id) => !wantCourses.has(id));
+      const examsToRemove = [...haveExams].filter((id) => !wantExams.has(id));
+
+      // ── Additions first ──
+      if (coursesToAdd.length > 0) {
+        const { error } = await supabase
           .from("company_courses")
-          .insert(
-            selectedCourses.map((id) => ({
-              company_id: assigningCompany.id,
-              course_id: id,
-            }))
-          );
-      if (selectedExams.length > 0)
-        await supabase
+          .insert(coursesToAdd.map((id) => ({ company_id: companyId, course_id: id })));
+        if (error) throw new Error(`Adding courses failed: ${error.message}`);
+      }
+      if (examsToAdd.length > 0) {
+        const { error } = await supabase
           .from("company_exams")
-          .insert(
-            selectedExams.map((id) => ({
-              company_id: assigningCompany.id,
-              exam_id: id,
-            }))
-          );
+          .insert(examsToAdd.map((id) => ({ company_id: companyId, exam_id: id })));
+        if (error) throw new Error(`Adding exams failed: ${error.message}`);
+      }
+
+      // ── Removals second, scoped to exactly the ids being unassigned ──
+      if (coursesToRemove.length > 0) {
+        const { error } = await supabase
+          .from("company_courses")
+          .delete()
+          .eq("company_id", companyId)
+          .in("course_id", coursesToRemove);
+        if (error) throw new Error(`Removing courses failed: ${error.message}`);
+      }
+      if (examsToRemove.length > 0) {
+        const { error } = await supabase
+          .from("company_exams")
+          .delete()
+          .eq("company_id", companyId)
+          .in("exam_id", examsToRemove);
+        if (error) throw new Error(`Removing exams failed: ${error.message}`);
+      }
+
       setShowAssignModal(false);
       setAssigningCompany(null);
-    } catch {
-      alert("Failed to save assignments");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CompaniesPage] handleSaveAssignments failed:", message, err);
+      // Leave the dialog open so the admin can retry without re-picking everything.
+      alert(`Failed to save assignments. No assignments were removed.\n\n${message}`);
     } finally {
       setSavingAssign(false);
     }
@@ -688,8 +777,49 @@ export const CompaniesPage: React.FC = () => {
         ))}
       </div>
 
+      {/* A failed load must never fall through to the "No companies yet" empty state —
+          on this page that sentence reads as "the platform has no customers". */}
+      {loadError && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            padding: "12px 16px",
+            marginBottom: 16,
+            borderRadius: 10,
+            background: "rgba(248,113,113,0.08)",
+            border: "1px solid rgba(248,113,113,0.25)",
+          }}
+        >
+          <div style={{ fontSize: 13, color: T.textBody, lineHeight: 1.6 }}>
+            <strong style={{ color: "#f87171" }}>Could not load companies.</strong>{" "}
+            {loadError}{" "}
+            <button
+              type="button"
+              onClick={() => void loadCompanies()}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: T.accent,
+                cursor: "pointer",
+                font: "inherit",
+                textDecoration: "underline",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Companies grid ── */}
-      {companies.length === 0 ? (
+      {loadingCompanies ? (
+        <div style={{ textAlign: "center", padding: "64px 24px", color: T.textMuted, fontSize: 13 }}>
+          Loading companies…
+        </div>
+      ) : loadError ? null : companies.length === 0 ? (
         <div
           style={{
             textAlign: "center",

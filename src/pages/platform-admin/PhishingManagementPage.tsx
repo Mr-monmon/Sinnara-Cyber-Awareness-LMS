@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../contexts/AuthContext";
 import { RequestWithCompany } from "../../lib/types";
+import { DEFAULT_ANNUAL_QUOTA } from "../../lib/phishingQuota";
 import RequestPreview from "./RequestPreview";
 
 /* ─────────────────────────────────────────
@@ -345,7 +346,7 @@ const QuotaTab: React.FC = () => {
       const result: CompanyQuota[] = (companies || []).map(c => ({
         id: c.id,
         name: c.name,
-        annual_quota: quotaMap.get(c.id)?.annual_quota ?? 0,
+        annual_quota: quotaMap.get(c.id)?.annual_quota ?? DEFAULT_ANNUAL_QUOTA,
         used_campaigns: quotaMap.get(c.id)?.used_campaigns ?? 0,
       }));
       setQuotas(result);
