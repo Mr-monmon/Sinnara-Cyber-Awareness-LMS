@@ -375,19 +375,49 @@ export const AnalyticsPage: React.FC = () => {
   });
   const [companyStats, setCompanyStats] = useState<CompanyStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [truncated, setTruncated] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => { loadAnalytics(); }, []);
 
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      const [coRes, usRes, crRes, ecRes, erRes] = await Promise.all([
-        supabase.from('companies').select('*'),
-        supabase.from('users').select('*'),
-        supabase.from('courses').select('*'),
-        supabase.from('employee_courses').select('*'),
-        supabase.from('exam_results').select('*'),
+      /* Explicit columns, never `select('*')`.
+         `users` carries a legacy `password` column (authentication moved to
+         Supabase Auth, but the column and its historical hashes remain), and
+         `select('*')` shipped it to the admin's browser on every page load.
+         Naming columns also cuts the payload from five whole tables to the five
+         fields this page actually reads.
+
+         Headline totals come from `count: 'exact'` so they stay correct even when
+         PostgREST caps the returned rows; the rows are only needed for the
+         per-company breakdown, and if that set IS capped the page says so rather
+         than quietly reporting a partial picture as the whole one. */
+      const ROW_LIMIT = 50000;
+      const [coRes, usRes, crRes, ecRes, erRes, empRes, doneRes, passRes] = await Promise.all([
+        supabase.from('companies').select('id, name, is_active', { count: 'exact' }),
+        supabase.from('users').select('id, role, company_id', { count: 'exact' }).range(0, ROW_LIMIT - 1),
+        supabase.from('courses').select('id', { count: 'exact', head: true }),
+        supabase.from('employee_courses').select('employee_id, status', { count: 'exact' }).range(0, ROW_LIMIT - 1),
+        supabase.from('exam_results').select('employee_id, passed, percentage', { count: 'exact' }).range(0, ROW_LIMIT - 1),
+        // Head-only counts: both sides of every headline ratio are exact, so a
+        // capped row set can never pair a partial numerator with a full denominator.
+        supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'EMPLOYEE'),
+        supabase.from('employee_courses').select('employee_id', { count: 'exact', head: true }).eq('status', 'COMPLETED'),
+        supabase.from('exam_results').select('employee_id', { count: 'exact', head: true }).eq('passed', true),
       ]);
+
+      const firstError = coRes.error || usRes.error || crRes.error || ecRes.error || erRes.error
+        || empRes.error || doneRes.error || passRes.error;
+      if (firstError) throw new Error(firstError.message);
+
+      // A capped result set makes the per-company table incomplete. Say so.
+      setTruncated(
+        (usRes.count ?? 0) > (usRes.data?.length ?? 0) ||
+        (ecRes.count ?? 0) > (ecRes.data?.length ?? 0) ||
+        (erRes.count ?? 0) > (erRes.data?.length ?? 0)
+      );
 
       const companies       = coRes.data || [];
       const users           = usRes.data || [];
@@ -407,14 +437,23 @@ export const AnalyticsPage: React.FC = () => {
       const avgScore         = examResults.length > 0
         ? examResults.reduce((sum, er) => sum + (er.percentage || 0), 0) / examResults.length : 0;
 
+      /* Every headline figure — and BOTH sides of every ratio — comes from an exact
+         server-side count, so a capped row set can never under-report the platform
+         or pair a partial numerator with a full denominator. Only `enrolledEmployees`
+         (a distinct count) and `averageScore` are derived from rows; the truncation
+         notice covers them. */
       setAnalytics({
-        totalCompanies: companies.length, activeCompanies,
-        totalUsers: users.length, totalEmployees: employees.length,
-        totalCourses: courses.length, completedCourses,
-        totalEnrollments, enrolledEmployees,
-        passedExams,
+        totalCompanies: coRes.count ?? companies.length,
+        activeCompanies,
+        totalUsers: usRes.count ?? users.length,
+        totalEmployees: empRes.count ?? employees.length,
+        totalCourses: crRes.count ?? 0,
+        completedCourses: doneRes.count ?? completedCourses,
+        totalEnrollments: ecRes.count ?? totalEnrollments,
+        enrolledEmployees,
+        passedExams: passRes.count ?? passedExams,
         averageScore: Math.round(avgScore),
-        totalExamAttempts: examResults.length,
+        totalExamAttempts: erRes.count ?? examResults.length,
       });
 
       const statsMap = new Map<string, CompanyStats>();
@@ -439,7 +478,12 @@ export const AnalyticsPage: React.FC = () => {
           statsMap.get(id)!.average_score = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
       });
       setCompanyStats(Array.from(statsMap.values()).sort((a, b) => b.employees - a.employees));
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      // A swallowed error here rendered a full page of zeros that reads as real data.
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[AnalyticsPage] loadAnalytics failed:', message, err);
+      setLoadError(message);
+    }
     finally { setLoading(false); }
   };
 
@@ -465,6 +509,21 @@ export const AnalyticsPage: React.FC = () => {
           <p style={{ fontSize: 14, color: T.textBody, margin: 0 }}>Comprehensive platform performance and awareness overview.</p>
         </div>
       </div>
+
+      {loadError && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: T.redBg, border: `1px solid ${T.redBorder}`, fontSize: 13, color: T.textBody, lineHeight: 1.6 }}>
+          <strong style={{ color: T.red }}>Analytics could not be loaded.</strong> {loadError}
+          <br />The figures below are not current — do not read them as real.
+        </div>
+      )}
+
+      {truncated && !loadError && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, fontSize: 13, color: T.textBody, lineHeight: 1.6 }}>
+          <strong style={{ color: T.orange }}>Partial breakdown.</strong> The platform has grown past the row limit this
+          page fetches. The totals above are exact server-side counts, but the per-company table and the average score
+          are computed from a capped sample. Move these to a database aggregate before relying on the breakdown.
+        </div>
+      )}
 
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(185px, 1fr))', gap: 12 }}>
