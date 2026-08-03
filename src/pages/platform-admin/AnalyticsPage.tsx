@@ -421,7 +421,8 @@ export const AnalyticsPage: React.FC = () => {
 
       const companies       = coRes.data || [];
       const users           = usRes.data || [];
-      const courses         = crRes.data || [];
+      // No `courses` array: that query is `head: true` (count only), so it returns
+      // no rows — the catalogue size is read from crRes.count where it is used.
       const employeeCourses = ecRes.data || [];
       const examResults     = erRes.data || [];
 
