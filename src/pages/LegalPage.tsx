@@ -15,7 +15,7 @@ import {
   Youtube,
   AlertTriangle,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { RequestDemoModal } from "../components/landing/RequestDemoModal";
 import { supabase } from "../lib/supabase";
 
@@ -285,7 +285,14 @@ const POLICIES: Policy[] = [
    COMPONENT
 ═══════════════════════════════════════════ */
 export const LegalPage: React.FC = () => {
-  const [openId, setOpenId]           = useState<string | null>(null);
+  /* `/legal?section=privacy` opens that policy directly. The footer links for
+     Privacy, Terms and Cookies all pointed at this page with every accordion
+     collapsed, so all three appeared to do the same nothing. */
+  const [searchParams] = useSearchParams();
+  const requestedSection = searchParams.get("section");
+  const [openId, setOpenId] = useState<string | null>(
+    POLICIES.some((p) => p.id === requestedSection) ? requestedSection : null
+  );
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [menuOpen, setMenuOpen]       = useState(false);
   const [scrolled, setScrolled]       = useState(false);
