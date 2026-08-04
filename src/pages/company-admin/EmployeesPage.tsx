@@ -714,6 +714,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
       // Auto-create any departments referenced in the CSV that don't exist yet
       const departmentsCreated: string[] = [];
+      const departmentsFailed: string[] = [];
       const newDeptNames = [
         ...new Set(
           validRows
@@ -726,15 +727,22 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           (r) => r.department_name?.trim().toLowerCase() === deptName
         )?.department_name?.trim();
         if (!originalName) continue;
-        const { data: newDept } = await supabase
+        const { data: newDept, error: deptError } = await supabase
           .from("departments")
           .insert({ name: originalName, company_id: currentUser.company_id })
           .select("id, name")
           .single();
-        if (newDept) {
-          deptLookup.set(deptName, newDept.id);
-          departmentsCreated.push(newDept.name);
+        // The error used to be discarded, so a refused insert (RLS, a unique
+        // clash) failed silently here and surfaced much later as an unrelated
+        // uuid error on the employee rows that referenced it.
+        if (deptError || !newDept) {
+          departmentsFailed.push(
+            `${originalName}${deptError ? ` — ${deptError.message}` : ""}`
+          );
+          continue;
         }
+        deptLookup.set(deptName, newDept.id);
+        departmentsCreated.push(newDept.name);
       }
       if (departmentsCreated.length > 0) loadDepartments();
 
@@ -743,7 +751,20 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         const deptId = row.department_name
           ? deptLookup.get(row.department_name.trim().toLowerCase()) || null
           : null;
-        row.department_id = deptId ?? "";
+        /*
+         * Omit the field entirely rather than sending "".
+         *
+         * `department_id` is a uuid column, and the empty string is not a valid
+         * uuid — Postgres rejects the whole row with
+         * `invalid input syntax for type uuid: ""`. The old `deptId ?? ""` sent
+         * exactly that for every employee whose department cell was blank, or
+         * whose department could not be created, so those rows failed to import
+         * with an error message that pointed nowhere near the real cause.
+         * Leaving the key out lets the server's `department_id ?? null` apply,
+         * which is what an employee with no department should store.
+         */
+        if (deptId) row.department_id = deptId;
+        else delete row.department_id;
         delete row.department_name;
       }
       if (validRows.length === 0) {
@@ -753,6 +774,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           duplicates,
           failed: validationFailed,
           departmentsCreated,
+          departmentsFailed,
           emailsSent: 0,
           emailsFailed: 0,
         });
@@ -815,6 +837,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         duplicates,
         failed: [...validationFailed, ...serverFailures],
         departmentsCreated,
+        departmentsFailed,
         emailsSent: emailSent,
         emailsFailed: emailFailed,
       });

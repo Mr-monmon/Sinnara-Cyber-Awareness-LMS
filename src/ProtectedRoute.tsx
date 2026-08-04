@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 
+import { AccountSetupGate } from "./components/auth/AccountSetupGate";
 import { ExternalRedirect } from "./components/ExternalRedirect";
 import LoadingScreen from "./components/LoadingScreen";
 import { useAuth } from "./contexts/AuthContext";
@@ -36,7 +37,7 @@ const ProtectedRoute = () => {
       return <ExternalRedirect to={apexHomeUrl} />;
     }
 
-    return <Outlet />;
+    return <AccountSetupGate><Outlet /></AccountSetupGate>;
   }
 
   if (hostMode === "admin") {
@@ -48,7 +49,7 @@ const ProtectedRoute = () => {
       return <ExternalRedirect to={apexHomeUrl} />;
     }
 
-    return <Outlet />;
+    return <AccountSetupGate><Outlet /></AccountSetupGate>;
   }
 
   return <ExternalRedirect to={apexHomeUrl} />;
