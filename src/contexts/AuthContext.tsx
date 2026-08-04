@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { User } from "../lib/types";
 import { supabase } from "../lib/supabase";
@@ -97,6 +97,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaSetupRequired, setMfaSetupRequired] = useState(false);
 
+  /*
+   * True while a password change is being written.
+   *
+   * `supabase.auth.updateUser({ password })` fires a USER_UPDATED event, which
+   * runs the session-restore handler below. At that moment the profile's
+   * `requires_password_change` is still true — clearing it is the *next*
+   * statement — so the handler reads a stale value and raises the gate again,
+   * often after the local flag has already been lowered. The user changed their
+   * password, reached the dashboard, and was immediately asked to change it
+   * again; refreshing repeated it indefinitely.
+   *
+   * A ref rather than state: this must be readable by the event handler
+   * synchronously, without waiting for a re-render.
+   */
+  const passwordChangeInFlight = useRef(false);
+
   useEffect(() => {
     const syncUserFromSession = async (session: Session | null) => {
       if (!session?.user) {
@@ -134,7 +150,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
        * Deriving them from the profile means the gate is a property of the
        * account, not of the page the user happens to be on.
        */
-      setForcePasswordChange(profile?.requires_password_change === true);
+      if (!passwordChangeInFlight.current) {
+        setForcePasswordChange(profile?.requires_password_change === true);
+      }
       setMfaSetupRequired(await resolveMfaEnrolmentGap(profile));
     };
 
@@ -281,15 +299,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const changePassword = async (newPassword: string): Promise<{ ok: boolean; error?: string }> => {
+    passwordChangeInFlight.current = true;
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
       if (updateError) return { ok: false, error: updateError.message };
 
       if (user?.id) {
-        const { error: profileError } = await supabase
+        /*
+         * `.select()` is not decoration. An UPDATE that matches no rows — which
+         * is what RLS produces when the policy does not admit the row — returns
+         * success with no error. Without asking for the changed row back there
+         * is no way to tell "cleared" from "silently did nothing", and the
+         * latter puts the user in a permanent loop: the gate re-derives from the
+         * profile on every session restore and the flag never goes down.
+         */
+        const { data: updatedRows, error: profileError } = await supabase
           .from("users")
           .update({ requires_password_change: false })
-          .eq("id", user.id);
+          .eq("id", user.id)
+          .select("id");
+
+        if (!profileError && (updatedRows?.length ?? 0) === 0) {
+          const msg =
+            "Your password was changed, but the account could not be marked as updated, " +
+            "so you may be asked again. Please contact your administrator.";
+          console.error("[auth] clearing requires_password_change matched no rows for", user.id);
+          captureException(new Error("requires_password_change update matched no rows"), {
+            scope: "AuthContext.changePassword.noRows",
+            userId: user.id,
+          });
+          return { ok: false, error: msg };
+        }
+
         if (profileError) {
           // The auth password did change, so this is not a failed change — but
           // leaving the flag set means the user is asked to change it again on
@@ -299,9 +340,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
         setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
       }
-      // Lower the gate itself, not just the profile field it is derived from —
-      // the route guard reads this flag on every render.
-      setForcePasswordChange(false);
 
       /*
        * A new password invalidates every remembered browser.
@@ -314,11 +352,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
        */
       await revokeTrustedDevices();
 
+      // Lower the gate itself, not just the profile field it derives from — the
+      // route guard reads this flag on every render.
       setForcePasswordChange(false);
       return { ok: true };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       return { ok: false, error: msg };
+    } finally {
+      // Released only now: a USER_UPDATED event arriving mid-write must not be
+      // able to re-raise the gate from the value we are in the middle of clearing.
+      passwordChangeInFlight.current = false;
     }
   };
 
