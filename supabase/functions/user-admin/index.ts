@@ -422,6 +422,36 @@ Deno.serve(async (req) => {
       }
 
       // Force a specific user to change password on next login
+      /*
+       * The counterpart to forcePasswordChange, for the user themselves.
+       *
+       * Clearing this flag used to be a browser-side UPDATE under RLS. An UPDATE
+       * that matches no row returns success with no error, so a policy that did
+       * not admit the row was indistinguishable from a successful write — and
+       * the result was a permanent loop: the account's onboarding gate is
+       * re-derived from this column on every session restore, so the user
+       * changed their password, was let in, and was asked to change it again on
+       * the next page load, forever.
+       *
+       * Written here with the service role so no policy can quietly turn it into
+       * a no-op. It is not an authorisation hole: the id comes from the caller's
+       * own verified JWT, never from the request body, so a user can only ever
+       * clear their own flag.
+       */
+      case "completePasswordChange": {
+        if (!caller.id) return json({ success: false, error: "Unauthorized" }, 401);
+        const { data: cleared, error: clearErr } = await supabaseAdmin
+          .from("users")
+          .update({ requires_password_change: false })
+          .eq("id", caller.id)
+          .select("id");
+        if (clearErr) return json({ success: false, error: clearErr.message });
+        if ((cleared?.length ?? 0) === 0) {
+          return json({ success: false, error: "Account not found" }, 404);
+        }
+        return json({ success: true });
+      }
+
       case "forcePasswordChange": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         if (!(await assertSameTenant(caller, body.userId, "forcePasswordChange"))) {
