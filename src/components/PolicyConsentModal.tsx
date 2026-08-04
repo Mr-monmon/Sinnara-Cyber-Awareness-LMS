@@ -45,8 +45,8 @@ const STYLES = `
     background:#1a1e0e;
     border:1px solid rgba(255,255,255,0.10);
     border-radius:18px;
-    width:100%; max-width:520px;
-    max-height:90vh;
+    width:100%; max-width:720px;
+    max-height:92vh;
     display:flex; flex-direction:column;
     box-shadow:0 32px 80px rgba(0,0,0,0.60), 0 0 0 1px rgba(200,255,0,0.06);
     animation:aw-modal-slide 0.30s ease both;
@@ -100,11 +100,11 @@ const STYLES = `
     max-height:0;
     transition:max-height 0.4s ease;
   }
-  .aw-policy-drawer.open { max-height:340px; }
+  .aw-policy-drawer.open { max-height:min(52vh, 480px); }
 
   .aw-policy-drawer-inner {
-    padding:16px 18px;
-    max-height:340px;
+    padding:20px 22px;
+    max-height:min(52vh, 480px);
     overflow-y:auto;
     animation:aw-drawer-in 0.25s ease both;
   }
@@ -113,23 +113,23 @@ const STYLES = `
   .aw-policy-drawer-inner::-webkit-scrollbar-thumb { background:rgba(200,255,0,0.20); border-radius:9999px; }
 
   /* prose inside drawer */
-  .aw-dprose h3     { font-size:12px; font-weight:700; color:#c8ff00; margin:14px 0 5px; font-family:'Inter',sans-serif; }
+  .aw-dprose h3     { font-size:13px; font-weight:700; color:#c8ff00; margin:14px 0 5px; font-family:'Inter',sans-serif; }
   .aw-dprose h3:first-child { margin-top:0; }
-  .aw-dprose p      { font-size:13px; color:#94a3b8; line-height:22px; margin-bottom:8px; font-family:'Inter',sans-serif; }
+  .aw-dprose p      { font-size:14px; color:#a9b6c4; line-height:24px; margin-bottom:10px; font-family:'Inter',sans-serif; }
   .aw-dprose ul     { list-style:none; padding:0; margin-bottom:10px; display:flex; flex-direction:column; gap:5px; }
-  .aw-dprose li     { font-size:13px; color:#94a3b8; line-height:20px; display:flex; gap:9px; align-items:flex-start; font-family:'Inter',sans-serif; }
+  .aw-dprose li     { font-size:14px; color:#a9b6c4; line-height:23px; display:flex; gap:9px; align-items:flex-start; font-family:'Inter',sans-serif; }
   .aw-dprose li::before { content:''; display:block; width:4px; height:4px; border-radius:50%; background:rgba(200,255,0,0.40); flex-shrink:0; margin-top:8px; }
   .aw-dprose strong { color:#ffffff; font-weight:700; }
 
   .aw-dsec { margin-bottom:12px; }
-  .aw-dsec-title { font-size:12px; font-weight:800; color:#ffffff; margin-bottom:7px; font-family:'Inter',sans-serif; display:flex; align-items:center; gap:6px; }
-  .aw-dsec-num   { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; background:rgba(200,255,0,0.09); border:1px solid rgba(200,255,0,0.18); font-size:9px; font-weight:800; color:#c8ff00; flex-shrink:0; }
+  .aw-dsec-title { font-size:13.5px; font-weight:800; color:#ffffff; margin-bottom:7px; font-family:'Inter',sans-serif; display:flex; align-items:center; gap:6px; }
+  .aw-dsec-num   { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:4px; background:rgba(200,255,0,0.09); border:1px solid rgba(200,255,0,0.18); font-size:9px; font-weight:800; color:#c8ff00; flex-shrink:0; }
 
   /* ── Accept button ── */
   .aw-accept-btn {
-    width:100%; padding:14px;
+    width:100%; padding:16px;
     background:#c8ff00; color:#12140a;
-    font-size:15px; font-weight:700;
+    font-size:16px; font-weight:800; letter-spacing:0.2px;
     border:none; border-radius:10px; cursor:pointer;
     font-family:'Inter',sans-serif;
     box-shadow:0 0 24px rgba(200,255,0,0.25);
@@ -145,7 +145,7 @@ const STYLES = `
   /* scrollable body area */
   .aw-consent-body {
     overflow-y:auto; flex:1;
-    padding:0 28px;
+    padding:0 32px;
   }
   .aw-consent-body::-webkit-scrollbar { width:3px; }
   .aw-consent-body::-webkit-scrollbar-track { background:transparent; }
@@ -279,25 +279,25 @@ export const PolicyConsentModal: React.FC<PolicyConsentModalProps> = ({ onAccept
         <div style={{ height: 3, background: 'linear-gradient(90deg, rgba(200,255,0,0.80), rgba(200,255,0,0.20))', flexShrink: 0 }} />
 
         {/* ── Header ── */}
-        <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'flex-start', gap: 14, flexShrink: 0 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 11, flexShrink: 0, background: 'rgba(200,255,0,0.08)', border: '1px solid rgba(200,255,0,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Shield size={22} style={{ color: T.accent }} />
+        <div style={{ padding: '30px 32px 0', display: 'flex', alignItems: 'flex-start', gap: 18, flexShrink: 0 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, flexShrink: 0, background: 'rgba(200,255,0,0.09)', border: '1px solid rgba(200,255,0,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 22px rgba(200,255,0,0.10)' }}>
+            <Shield size={26} style={{ color: T.accent }} />
           </div>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 900, color: T.white, letterSpacing: '-0.2px', marginBottom: 4, fontFamily: 'Inter, sans-serif' }}>
+            <h2 style={{ fontSize: 24, fontWeight: 900, color: T.white, letterSpacing: '-0.5px', marginBottom: 7, fontFamily: 'Inter, sans-serif' }}>
               Before You Get Started
             </h2>
-            <p style={{ fontSize: 13, color: T.textBody, lineHeight: '20px', fontFamily: 'Inter, sans-serif' }}>
+            <p style={{ fontSize: 14.5, color: T.textBody, lineHeight: '23px', maxWidth: 480, fontFamily: 'Inter, sans-serif' }}>
               Please review and accept our policies to continue using the platform.
             </p>
           </div>
         </div>
 
         {/* ── Divider ── */}
-        <div style={{ margin: '18px 28px 0', height: 1, background: T.borderFaint, flexShrink: 0 }} />
+        <div style={{ margin: '24px 32px 0', height: 1, background: T.borderFaint, flexShrink: 0 }} />
 
         {/* ── Scrollable body ── */}
-        <div className="aw-consent-body" style={{ padding: '16px 28px' }}>
+        <div className="aw-consent-body" style={{ padding: '20px 32px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
             {/* ── Privacy Policy row ── */}
@@ -314,7 +314,7 @@ export const PolicyConsentModal: React.FC<PolicyConsentModalProps> = ({ onAccept
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <FileText size={14} style={{ color: T.indigo, flexShrink: 0 }} />
-                      <span style={{ fontSize: 14, fontWeight: 700, color: T.white, fontFamily: 'Inter, sans-serif' }}>
+                      <span style={{ fontSize: 15.5, fontWeight: 700, color: T.white, fontFamily: 'Inter, sans-serif' }}>
                         Privacy Policy
                       </span>
                     </div>
@@ -328,7 +328,7 @@ export const PolicyConsentModal: React.FC<PolicyConsentModalProps> = ({ onAccept
                       <ChevronDown size={11} className="aw-read-chevron" />
                     </button>
                   </div>
-                  <p style={{ fontSize: 12, color: T.textBody, lineHeight: '18px', margin: 0, fontFamily: 'Inter, sans-serif' }}>
+                  <p style={{ fontSize: 13.5, color: T.textBody, lineHeight: '21px', margin: 0, fontFamily: 'Inter, sans-serif' }}>
                     I have read and agree to the collection and processing of my personal data as described in the Privacy Policy.
                   </p>
                 </div>
@@ -380,7 +380,7 @@ export const PolicyConsentModal: React.FC<PolicyConsentModalProps> = ({ onAccept
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Shield size={14} style={{ color: T.gold, flexShrink: 0 }} />
-                      <span style={{ fontSize: 14, fontWeight: 700, color: T.white, fontFamily: 'Inter, sans-serif' }}>
+                      <span style={{ fontSize: 15.5, fontWeight: 700, color: T.white, fontFamily: 'Inter, sans-serif' }}>
                         Acceptable Use Policy
                       </span>
                     </div>
@@ -393,7 +393,7 @@ export const PolicyConsentModal: React.FC<PolicyConsentModalProps> = ({ onAccept
                       <ChevronDown size={11} className="aw-read-chevron" />
                     </button>
                   </div>
-                  <p style={{ fontSize: 12, color: T.textBody, lineHeight: '18px', margin: 0, fontFamily: 'Inter, sans-serif' }}>
+                  <p style={{ fontSize: 13.5, color: T.textBody, lineHeight: '21px', margin: 0, fontFamily: 'Inter, sans-serif' }}>
                     I agree to use the platform responsibly and in accordance with the Acceptable Use Policy.
                   </p>
                 </div>
