@@ -437,8 +437,32 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         console.warn("Account deletion email could not be sent:", emailErr);
       }
       loadEmployees();
-    } catch {
-      alert("Failed to delete employee");
+    } catch (err) {
+      /*
+       * Before claiming failure, check whether the employee is actually gone.
+       *
+       * The deletion happens server-side and then several things follow — an
+       * audit write, a notification email, a list refresh — any of which can
+       * throw after the account has already been removed. Reporting "Failed to
+       * delete employee" for a deletion that succeeded is the worse error of the
+       * two: the admin retries, finds the row gone, and stops trusting what the
+       * screen tells them.
+       */
+      const { data: stillThere } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!stillThere) {
+        console.warn("[EmployeesPage] delete reported an error but the account is gone:", err);
+        loadEmployees();
+        return;
+      }
+
+      const message = err instanceof Error ? err.message : "Failed to delete employee";
+      console.error("[EmployeesPage] handleDelete failed:", message, err);
+      alert(`Failed to delete employee.\n\n${message}`);
     }
   };
 

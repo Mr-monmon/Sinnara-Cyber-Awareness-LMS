@@ -306,38 +306,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (user?.id) {
         /*
-         * `.select()` is not decoration. An UPDATE that matches no rows — which
-         * is what RLS produces when the policy does not admit the row — returns
-         * success with no error. Without asking for the changed row back there
-         * is no way to tell "cleared" from "silently did nothing", and the
-         * latter puts the user in a permanent loop: the gate re-derives from the
-         * profile on every session restore and the flag never goes down.
+         * Cleared server-side, not with a browser UPDATE.
+         *
+         * The direct write went through RLS, and an UPDATE that matches no row
+         * returns success with no error — so a policy that did not admit the row
+         * was indistinguishable from a successful write. Observed in production:
+         * the password changed (Supabase rejected reusing it), yet
+         * `requires_password_change` stayed true, and because the gate re-derives
+         * from that column on every session restore the user was asked to change
+         * it again on the next page load, indefinitely.
+         *
+         * The edge function writes with the service role and takes the id from
+         * the caller's verified JWT, so no policy can turn it into a no-op and a
+         * user can still only clear their own flag.
          */
-        const { data: updatedRows, error: profileError } = await supabase
-          .from("users")
-          .update({ requires_password_change: false })
-          .eq("id", user.id)
-          .select("id");
+        const { data: clearData, error: clearError } = await supabase.functions.invoke(
+          "user-admin",
+          { body: { action: "completePasswordChange" } },
+        );
 
-        if (!profileError && (updatedRows?.length ?? 0) === 0) {
-          const msg =
-            "Your password was changed, but the account could not be marked as updated, " +
-            "so you may be asked again. Please contact your administrator.";
-          console.error("[auth] clearing requires_password_change matched no rows for", user.id);
-          captureException(new Error("requires_password_change update matched no rows"), {
-            scope: "AuthContext.changePassword.noRows",
+        if (clearError || !clearData?.success) {
+          const detail = clearData?.error || clearError?.message || "unknown error";
+          console.error("[auth] clearing requires_password_change failed:", detail);
+          captureException(new Error(`completePasswordChange failed: ${detail}`), {
+            scope: "AuthContext.changePassword.clearFlag",
             userId: user.id,
           });
-          return { ok: false, error: msg };
+          // The password itself did change, so do not report a failed change —
+          // but say plainly that the prompt may return rather than letting the
+          // user discover a loop on the next page load.
+          return {
+            ok: false,
+            error:
+              "Your password was changed, but the account could not be marked as updated — " +
+              "you may be asked again. Please contact your administrator.",
+          };
         }
 
-        if (profileError) {
-          // The auth password did change, so this is not a failed change — but
-          // leaving the flag set means the user is asked to change it again on
-          // the next login, which looks like the save silently failed.
-          console.error("[auth] password changed but clearing requires_password_change failed:", profileError.message, profileError);
-          captureException(profileError, { scope: "AuthContext.changePassword.clearFlag", userId: user.id });
-        }
         setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
       }
 
