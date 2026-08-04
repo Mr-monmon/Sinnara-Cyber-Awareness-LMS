@@ -20,6 +20,30 @@ export function isMfaMandatory(profile: { role?: string | null; mfa_enforced?: b
   return profile.role === "EMPLOYEE" || profile.mfa_enforced === true;
 }
 
+/**
+ * Does this account still owe us a TOTP enrolment?
+ *
+ * Shared by `login()` and by session restore so both answer the question the
+ * same way. A failed lookup deliberately reports "no gap": "couldn't check"
+ * must not become "not enrolled", which would push an already-enrolled user
+ * into a setup flow they cannot dismiss. The failure is logged and re-checked
+ * on the next sign-in.
+ */
+async function resolveMfaEnrolmentGap(
+  profile: { role?: string | null; mfa_enforced?: boolean | null; id?: string } | null,
+): Promise<boolean> {
+  if (!isMfaMandatory(profile)) return false;
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) {
+    console.error("[auth] listFactors failed; skipping 2FA enrolment gate:", error.message, error);
+    captureException(error, { scope: "AuthContext.resolveMfaEnrolmentGap", userId: profile?.id });
+    return false;
+  }
+  // Only a verified factor satisfies the mandate; an abandoned enrolment leaves
+  // an unverified one behind.
+  return (data?.totp ?? []).every((f) => f.status !== "verified");
+}
+
 export type LoginResult =
   | "success"
   | "invalid_credentials"
@@ -78,6 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!session?.user) {
         setUser(null);
         setSentryUser(null);
+        setForcePasswordChange(false);
+        setMfaSetupRequired(false);
         return;
       }
 
@@ -87,11 +113,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         await supabase.auth.signOut();
         setUser(null);
         setSentryUser(null);
+        setForcePasswordChange(false);
+        setMfaSetupRequired(false);
         return;
       }
 
       setUser(profile);
       if (profile) setSentryUser({ id: profile.id, email: profile.email, role: profile.role });
+
+      /*
+       * Re-derive the onboarding gates on every session restore.
+       *
+       * These used to be set only by `login()`, which made them survive exactly
+       * as long as the login page did. A first-time employee who pressed refresh
+       * on the "change your password" screen — or opened /dashboard in a new tab
+       * — came back with a valid session, both flags cleared, and full access to
+       * the platform still holding the password that was emailed to them and
+       * with no second factor enrolled.
+       *
+       * Deriving them from the profile means the gate is a property of the
+       * account, not of the page the user happens to be on.
+       */
+      setForcePasswordChange(profile?.requires_password_change === true);
+      setMfaSetupRequired(await resolveMfaEnrolmentGap(profile));
     };
 
     const init = async () => {
@@ -170,21 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     // password change below has to know whether to chain into 2FA setup once
     // the new password is saved. The mandated order for a first login is:
     // change password → enrol 2FA → (dashboard, where the exam gate takes over).
-    let needsMfaEnrolment = false;
-    if (isMfaMandatory(profile)) {
-      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
-      if (factorsError) {
-        // "Couldn't check" must not become "not enrolled": that would push an
-        // already-enrolled user into a setup flow they cannot dismiss. Let them
-        // in and re-check on the next sign-in, but make the failure visible.
-        console.error("[auth] listFactors failed during login; skipping 2FA enrolment gate:", factorsError.message, factorsError);
-        captureException(factorsError, { scope: "AuthContext.login.listFactors", userId: profile?.id });
-      } else {
-        // Only a verified factor satisfies the mandate; an abandoned enrolment
-        // leaves an unverified one behind.
-        needsMfaEnrolment = (factorsData?.totp ?? []).every((f) => f.status !== "verified");
-      }
-    }
+    const needsMfaEnrolment = await resolveMfaEnrolmentGap(profile);
     setMfaSetupRequired(needsMfaEnrolment);
 
     if (profile?.requires_password_change) {
@@ -269,6 +299,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
         setUser((prev) => prev ? { ...prev, requires_password_change: false } : prev);
       }
+      // Lower the gate itself, not just the profile field it is derived from —
+      // the route guard reads this flag on every render.
+      setForcePasswordChange(false);
 
       /*
        * A new password invalidates every remembered browser.

@@ -210,7 +210,27 @@ async function handleResetPassword(userId: string, password: string) {
 async function handleDeleteUser(userId: string) {
   const { error: authError } =
     await supabaseAdmin.auth.admin.deleteUser(userId);
-  if (authError) return { success: false, error: authError.message };
+
+  /*
+   * A missing auth account is not a failed deletion.
+   *
+   * The goal of this action is that the user ceases to exist. If the auth row
+   * has already gone — deleted out-of-band from the Supabase dashboard, or a
+   * profile created before the move to Supabase Auth — then that half is
+   * already done and the profile is the only thing left to remove.
+   *
+   * Returning early on it made such profiles permanently undeletable: they kept
+   * appearing in the employee list, every action on them failed with "User not
+   * found", and there was no way to clear them from the interface at all.
+   */
+  const authMissing =
+    !!authError &&
+    ((authError as { status?: number }).status === 404 ||
+      /not\s*found/i.test(authError.message));
+
+  if (authError && !authMissing) {
+    return { success: false, error: authError.message };
+  }
 
   const { error: profileError } = await supabaseAdmin
     .from("users")
@@ -219,7 +239,7 @@ async function handleDeleteUser(userId: string) {
 
   if (profileError) return { success: false, error: profileError.message };
 
-  return { success: true };
+  return { success: true, auth_account_was_missing: authMissing };
 }
 
 // ---------------------------------------------------------------------------

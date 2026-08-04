@@ -15,6 +15,12 @@ export type UploadResult = {
   duplicates: UploadRowOutcome[];
   failed: UploadRowOutcome[];
   departmentsCreated: string[];
+  /**
+   * Departments referenced in the file whose creation was refused. Optional
+   * because the platform-admin user importer shares this modal and has no
+   * department concept at all.
+   */
+  departmentsFailed?: string[];
   emailsSent: number;
   emailsFailed: number;
 };
@@ -164,6 +170,27 @@ export const BulkUploadResultModal: React.FC<{
               >
                 <Building2 size={13} style={{ color: T.green }} />
                 New departments: {result.departmentsCreated.join(", ")}
+              </span>
+            )}
+            {/* A department that could not be created is why its employees are
+                in the failed list — say so here rather than leaving the admin to
+                infer it from a row-level error. */}
+            {(result.departmentsFailed?.length ?? 0) > 0 && (
+              <span
+                style={{
+                  fontSize: 12,
+                  color: T.textBody,
+                  background: "rgba(248,113,113,0.08)",
+                  border: `1px solid ${T.red}3a`,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Building2 size={13} style={{ color: T.red }} />
+                Departments that could not be created: {result.departmentsFailed?.join(" · ")}
               </span>
             )}
           </div>
