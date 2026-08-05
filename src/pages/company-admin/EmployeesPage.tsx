@@ -68,23 +68,24 @@ const STYLES = `
   /* ── Table ── */
   .aw-emp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
   .aw-emp-table th {
-    padding: 11px 16px; text-align: left;
+    padding: 11px 14px; text-align: left; white-space: nowrap;
     font-size: 10px; font-weight: 700; color: #64748b;
     letter-spacing: 0.9px; text-transform: uppercase;
     border-bottom: 1px solid rgba(255,255,255,0.07);
     background: rgba(255,255,255,0.02);
   }
   .aw-emp-table td {
-    padding: 13px 16px; font-size: 13px; color: #cbd5e1;
+    padding: 12px 14px; font-size: 13px; color: #cbd5e1;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     transition: background 0.15s;
+    vertical-align: middle;
   }
   .aw-emp-table tr:hover td { background: rgba(255,255,255,0.025); }
   .aw-emp-table tr:last-child td { border-bottom: none; }
 
   /* ── Icon action button ── */
   .aw-emp-icon-btn {
-    width: 30px; height: 30px; border-radius: 7px;
+    width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     border: 1px solid transparent; cursor: pointer;
     transition: all 0.18s; background: none;
@@ -164,6 +165,13 @@ const STYLES = `
   }
   .aw-emp-btn-green:hover:not(:disabled) { background: rgba(52,211,153,0.18); }
   .aw-emp-btn-green:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Keep the table itself from collapsing columns into unreadable slivers;
+     the wrapper scrolls when the viewport is narrower than this. */
+  .aw-emp-table { min-width: 880px; }
+  .aw-emp-scroll::-webkit-scrollbar { height: 8px; }
+  .aw-emp-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+  .aw-emp-scroll::-webkit-scrollbar-thumb { background: rgba(200,255,0,0.22); border-radius: 9999px; }
 
   @keyframes aw-spin     { to { transform: rotate(360deg); } }
   @keyframes aw-modal-in { from { opacity:0; transform:scale(0.97) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
@@ -1301,14 +1309,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           overflow: "hidden",
         }}
       >
+        {/* Eight action buttons plus eight data columns did not fit, so the
+            buttons were being clipped off the right edge and long names wrapped
+            onto four lines. Related fields are now paired into one cell each —
+            five columns instead of eight — and the table scrolls horizontally
+            rather than ever hiding a control. */}
+        <div className="aw-emp-scroll" style={{ overflowX: "auto" }}>
         <table className="aw-emp-table">
           <thead>
             <tr>
               <th>Employee</th>
-              <th>Email</th>
-              <th>Department</th>
-              <th>Position</th>
-              <th>Employee ID</th>
+              <th>Department &amp; role</th>
               <th>Phone</th>
               <th>Last sign-in</th>
               <th style={{ textAlign: "right" }}>Actions</th>
@@ -1317,17 +1328,43 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
           <tbody>
             {filtered.map((emp) => (
               <tr key={emp.id}>
+                {/* Name, email and staff number in one cell. Names here run to
+                    five words, so they are kept on one line with an ellipsis and
+                    the full value in the tooltip rather than pushing every row
+                    four lines tall. */}
                 <td>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                     <Avatar name={emp.full_name} />
-                    <span style={{ fontWeight: 600, color: T.white }}>
-                      {emp.full_name}
-                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        title={emp.full_name}
+                        style={{
+                          fontWeight: 600, color: T.white, maxWidth: 230,
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}
+                      >
+                        {emp.full_name}
+                      </div>
+                      <div
+                        title={emp.email}
+                        style={{
+                          fontSize: 12, color: T.textMuted, maxWidth: 230,
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}
+                      >
+                        {emp.email}
+                      </div>
+                      {emp.employee_id && (
+                        <div style={{ fontSize: 10.5, color: T.textMuted, fontFamily: "monospace", marginTop: 2 }}>
+                          ID {emp.employee_id}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
-                <td style={{ color: T.textMuted }}>{emp.email}</td>
+
+                {/* Department and job title belong together — one is meaningless
+                    without the other when scanning a roster. */}
                 <td>
                   {(emp.department as unknown as { name?: string } | null | undefined)?.name ? (
                     <span
@@ -1340,39 +1377,44 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                         fontSize: 11,
                         fontWeight: 600,
                         color: T.accent,
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {(emp.department as unknown as { name: string }).name}
                     </span>
                   ) : (
-                    <span style={{ color: T.textMuted }}>—</span>
+                    <span style={{ color: T.textMuted }}>No department</span>
                   )}
+                  <div
+                    title={emp.job_title || undefined}
+                    style={{
+                      fontSize: 12, color: T.textMuted, marginTop: 5, maxWidth: 190,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}
+                  >
+                    {emp.job_title || "—"}
+                  </div>
                 </td>
-                <td style={{ color: T.textMuted }}>{emp.job_title || "—"}</td>
-                <td
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    color: T.textMuted,
-                  }}
-                >
-                  {emp.employee_id || "—"}
+
+                <td style={{ color: T.textMuted, whiteSpace: "nowrap", fontSize: 12.5 }}>
+                  {emp.phone || "—"}
                 </td>
-                <td style={{ color: T.textMuted }}>{emp.phone || "—"}</td>
-                <td>
+                <td style={{ whiteSpace: "nowrap" }}>
                   <SignInCell
                     known={signInStatus.has(emp.id)}
                     lastSignIn={signInStatus.get(emp.id) ?? null}
                     setupPending={emp.requires_password_change === true}
                   />
                 </td>
-                <td>
+                {/* nowrap so the row of controls can never wrap or be clipped —
+                    the container scrolls instead. */}
+                <td style={{ whiteSpace: "nowrap" }}>
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "flex-end",
-                      gap: 6,
+                      gap: 5,
                     }}
                   >
                     {onViewEmployee && (
@@ -1450,6 +1492,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
             ))}
           </tbody>
         </table>
+        </div>
 
         {filtered.length === 0 && (
           <div style={{ textAlign: "center", padding: "52px 24px" }}>
