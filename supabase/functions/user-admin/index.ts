@@ -452,6 +452,56 @@ Deno.serve(async (req) => {
         return json({ success: true });
       }
 
+      /*
+       * Who has actually signed in, and who is still sitting on an unopened
+       * invitation.
+       *
+       * `auth.users.last_sign_in_at` is the only trustworthy answer:
+       * `public.users.last_login` exists but is never written — the trigger
+       * intended to maintain it was defined and never attached — and delivery
+       * receipts from the mail provider only prove the receiving server
+       * accepted the message, not that a person read it.
+       *
+       * The auth schema is not reachable from the browser, so the lookup runs
+       * here. Results are restricted to the caller's own company; a platform
+       * admin may ask about any one.
+       */
+      case "listSignInStatus": {
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+
+        const companyId = caller.role === "PLATFORM_ADMIN"
+          ? (body.companyId ?? caller.company_id)
+          : caller.company_id;
+        if (!companyId) return json({ success: false, error: "No company in scope" }, 400);
+
+        const { data: members, error: memberErr } = await supabaseAdmin
+          .from("users")
+          .select("id")
+          .eq("company_id", companyId);
+        if (memberErr) return json({ success: false, error: memberErr.message });
+
+        const wanted = new Set((members ?? []).map((m) => m.id));
+        if (wanted.size === 0) return json({ success: true, statuses: [] });
+
+        // listUsers is paginated. Walk it until a short page arrives, with a
+        // hard stop so a surprising response can never spin here forever.
+        const statuses: { id: string; last_sign_in_at: string | null }[] = [];
+        const perPage = 1000;
+        for (let page = 1; page <= 20; page++) {
+          const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+          if (error) return json({ success: false, error: error.message });
+          const batch = data?.users ?? [];
+          for (const u of batch) {
+            if (wanted.has(u.id)) {
+              statuses.push({ id: u.id, last_sign_in_at: u.last_sign_in_at ?? null });
+            }
+          }
+          if (batch.length < perPage) break;
+        }
+
+        return json({ success: true, statuses });
+      }
+
       case "forcePasswordChange": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         if (!(await assertSameTenant(caller, body.userId, "forcePasswordChange"))) {
