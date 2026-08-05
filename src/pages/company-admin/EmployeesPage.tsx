@@ -26,6 +26,7 @@ import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
 import { sendNotificationEmail } from "../../lib/email";
 import { generateStrongPassword } from "../../lib/passwordPolicy";
 import { getActiveSubscription } from "../../lib/subscription";
+import { getErrorMessage } from "../../lib/errors";
 import {
   BulkUploadResultModal,
   type UploadResult,
@@ -193,6 +194,13 @@ if (
 /* ─────────────────────────────────────────
    TYPES
 ───────────────────────────────────────── */
+/** Per-employee account state, resolved from auth.users by the edge function. */
+type SignInStatus = {
+  last_sign_in_at: string | null;
+  /** A VERIFIED TOTP factor exists — not merely a flag saying one should. */
+  mfa_verified: boolean;
+};
+
 interface Department {
   id: string;
   name: string;
@@ -230,7 +238,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
    * exists but is never written, and a mail provider's "delivered" only proves
    * the receiving server accepted the message — not that anyone opened it.
    */
-  const [signInStatus, setSignInStatus] = useState<Map<string, string | null>>(new Map());
+  const [signInStatus, setSignInStatus] = useState<Map<string, SignInStatus>>(new Map());
   const [resending, setResending] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [lockedEmails, setLockedEmails] = useState<Set<string>>(new Set());
@@ -290,9 +298,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         body: { action: "listSignInStatus" },
       });
       if (error || !data?.success) throw new Error(data?.error || error?.message || "failed");
-      const next = new Map<string, string | null>();
-      for (const s of (data.statuses ?? []) as { id: string; last_sign_in_at: string | null }[]) {
-        next.set(s.id, s.last_sign_in_at);
+      const next = new Map<string, SignInStatus>();
+      for (const s of (data.statuses ?? []) as (SignInStatus & { id: string })[]) {
+        next.set(s.id, { last_sign_in_at: s.last_sign_in_at, mfa_verified: s.mfa_verified === true });
       }
       setSignInStatus(next);
     } catch (err) {
@@ -456,9 +464,23 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       resetForm();
       loadEmployees();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[EmployeesPage] save failed:", message, err);
-      alert(`Failed to save employee.\n\n${message}`);
+      /*
+       * PostgREST rejections are plain objects, not Error instances, so
+       * `err instanceof Error ? … : String(err)` rendered them as the famously
+       * unhelpful "[object Object]" — an error surfaced but unreadable is barely
+       * better than one swallowed. getErrorMessage digs out the real text, and
+       * the code/details/hint are appended because for a constraint or trigger
+       * failure those are the parts that actually identify the cause.
+       */
+      const pg = err as { code?: string; details?: string; hint?: string };
+      const parts = [
+        getErrorMessage(err),
+        pg?.code ? `code: ${pg.code}` : "",
+        pg?.details ? `details: ${pg.details}` : "",
+        pg?.hint ? `hint: ${pg.hint}` : "",
+      ].filter(Boolean);
+      console.error("[EmployeesPage] save failed:", err);
+      alert(`Failed to save employee.\n\n${parts.join("\n")}`);
     } finally {
       setSubmitting(false);
     }
@@ -559,33 +581,44 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     }
   };
 
-  const handleToggleMfaEnforced = async (emp: UserType) => {
-    const newVal = !emp.mfa_enforced;
+  /*
+   * Two-factor is mandatory for every employee by role, so the old
+   * `mfa_enforced` toggle here did nothing for them — it required 2FA of a role
+   * that already required it. The control that actually has an effect is the
+   * exemption, which is what an administrator reaches for in the real cases: a
+   * shared operational account, or someone with no device who would otherwise be
+   * locked out by a setup screen they cannot dismiss.
+   */
+  const handleToggleMfaExempt = async (emp: UserType) => {
+    const newVal = !emp.mfa_exempt;
     if (!confirm(newVal
-      ? `Require ${emp.full_name} to set up MFA on next login?`
-      : `Remove MFA enforcement for ${emp.full_name}?`)) return;
+      ? `Exempt ${emp.full_name} from two-factor authentication?\n\n` +
+        `They will be able to sign in with only a password. Use this sparingly — ` +
+        `every other employee is required to enrol.`
+      : `Require two-factor authentication for ${emp.full_name} again?\n\n` +
+        `They will be asked to set up an authenticator app on their next sign-in.`)) return;
     try {
       const { data, error } = await supabase.functions.invoke("user-admin", {
-        body: { action: "setMfaEnforced", userId: emp.id, enforced: newVal },
+        body: { action: "setMfaExempt", userId: emp.id, exempt: newVal },
       });
       if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
       try {
         await sendNotificationEmail(
           emp.email,
           emp.full_name,
-          newVal ? "Two-factor authentication is now required" : "Two-factor authentication is no longer required",
-          newVal ? "MFA Required" : "MFA Disabled",
+          newVal ? "Two-factor authentication is no longer required" : "Two-factor authentication is now required",
+          newVal ? "Two-factor exemption applied" : "Two-factor required",
           newVal
-            ? "Your administrator has enabled two-factor authentication on your account. On your next sign-in you will be guided through setting up an authenticator app."
-            : "Your administrator has disabled the two-factor authentication requirement on your account.",
+            ? "Your administrator has exempted your account from two-factor authentication. You will sign in with your password only."
+            : "Your administrator has restored the two-factor requirement on your account. On your next sign-in you will be guided through setting up an authenticator app.",
           { loginUrl }
         );
       } catch (emailErr) {
-        console.warn("MFA enforcement email could not be sent:", emailErr);
+        console.warn("MFA exemption email could not be sent:", emailErr);
       }
       void loadEmployees();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Failed to update MFA setting");
+      alert(getErrorMessage(e));
     }
   };
 
@@ -634,7 +667,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
 
   /** Employees whose account exists but has never been used. */
   const neverSignedIn = employees.filter(
-    (e) => signInStatus.has(e.id) && signInStatus.get(e.id) === null
+    (e) => signInStatus.has(e.id) && signInStatus.get(e.id)?.last_sign_in_at == null
   );
 
   /**
@@ -1452,7 +1485,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                 <td style={{ whiteSpace: "nowrap" }}>
                   <SignInCell
                     known={signInStatus.has(emp.id)}
-                    lastSignIn={signInStatus.get(emp.id) ?? null}
+                    lastSignIn={signInStatus.get(emp.id)?.last_sign_in_at ?? null}
                     setupPending={emp.requires_password_change === true}
                   />
                 </td>
@@ -1493,16 +1526,38 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                     >
                       <Key size={13} />
                     </button>
-                    <button
-                      className="aw-emp-icon-btn reset"
-                      title={emp.mfa_enforced ? "Disable required MFA" : "Require MFA"}
-                      onClick={() => handleToggleMfaEnforced(emp)}
-                      style={emp.mfa_enforced
-                        ? { background: "rgba(52,211,153,0.10)", borderColor: "rgba(52,211,153,0.35)", color: "#34d399" }
-                        : undefined}
-                    >
-                      {emp.mfa_enforced ? <ShieldCheck size={13} /> : <ShieldOff size={13} />}
-                    </button>
+                    {/* Colour reflects what is actually true of the account, not
+                        what a column says should be true:
+                          exempt    → grey shield-off, 2FA deliberately not required
+                          enrolled  → green, a verified factor exists
+                          otherwise → orange, required but not yet set up
+                        The old badge was green whenever `mfa_enforced` was set,
+                        which for an employee meant nothing at all. */}
+                    {(() => {
+                      const exempt = emp.mfa_exempt === true;
+                      const enrolled = signInStatus.get(emp.id)?.mfa_verified === true;
+                      const tone = exempt
+                        ? { background: "rgba(255,255,255,0.04)", borderColor: T.border, color: T.textMuted }
+                        : enrolled
+                          ? { background: "rgba(52,211,153,0.10)", borderColor: "rgba(52,211,153,0.35)", color: T.green }
+                          : { background: "rgba(251,146,60,0.10)", borderColor: "rgba(251,146,60,0.35)", color: T.orange };
+                      return (
+                        <button
+                          className="aw-emp-icon-btn reset"
+                          title={
+                            exempt
+                              ? "Exempt from two-factor — click to require it again"
+                              : enrolled
+                                ? "Two-factor is set up — click to exempt this employee"
+                                : "Two-factor required, not yet set up — click to exempt this employee"
+                          }
+                          onClick={() => handleToggleMfaExempt(emp)}
+                          style={tone}
+                        >
+                          {exempt ? <ShieldOff size={13} /> : <ShieldCheck size={13} />}
+                        </button>
+                      );
+                    })()}
                     <button
                       className="aw-emp-icon-btn reset"
                       title="Reset MFA"
