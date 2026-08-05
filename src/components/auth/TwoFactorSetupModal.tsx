@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ShieldCheck, CheckCircle2, Copy } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -85,7 +85,26 @@ export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => 
   const [copied, setCopied] = useState(false);
   const [enrollAttempt, setEnrollAttempt] = useState(0);
 
+  /*
+   * Enrol once per deliberate attempt — never because the provider re-rendered.
+   *
+   * `enrollTotp` is a plain arrow in the AuthProvider body and the context value
+   * is a fresh object literal on every render, so it is a new function identity
+   * each time. With it in the dependency array, any `setUser` from a session
+   * restore re-ran this effect and minted a NEW factor with a NEW QR code while
+   * the user was still scanning the old one — after which the six digits from
+   * their authenticator app were rejected forever, with no way to recover but to
+   * start again and hit the same race.
+   *
+   * The ref keys off `enrollAttempt`, which only changes when the user asks to
+   * retry, so a re-render is inert while a genuine retry still works.
+   */
+  const startedForAttempt = useRef(-1);
+
   useEffect(() => {
+    if (startedForAttempt.current === enrollAttempt) return;
+    startedForAttempt.current = enrollAttempt;
+
     const start = async () => {
       setStep("loading");
       const result = await enrollTotp();
@@ -99,7 +118,10 @@ export const TwoFactorSetupModal: React.FC<Props> = ({ onComplete, onSkip }) => 
       setStep("scan");
     };
     void start();
-  }, [enrollTotp, enrollAttempt]);
+    // enrollTotp is deliberately omitted: its identity changes on every provider
+    // render, which is exactly what this guard exists to ignore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollAttempt]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();

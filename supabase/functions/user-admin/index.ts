@@ -204,6 +204,18 @@ async function handleResetPassword(userId: string, password: string) {
     .eq("id", userId);
   if (profileError) return { success: false, error: profileError.message };
 
+  /*
+   * An admin-issued password invalidates every remembered browser, for the same
+   * reason a self-service change does: whoever prompted the reset may be sitting
+   * on a machine that already passed a challenge, and that pass would otherwise
+   * outlive the credential it was granted alongside.
+   */
+  const { error: trustErr } = await supabaseAdmin
+    .from("mfa_trusted_devices").delete().eq("user_id", userId);
+  if (trustErr) {
+    console.error("[user-admin] resetPassword: could not revoke trusted devices:", trustErr.message);
+  }
+
   return { success: true };
 }
 
@@ -402,9 +414,24 @@ Deno.serve(async (req) => {
           if (!delErr) deleted++;
         }
 
+        /*
+         * Remembered browsers must go with the factors.
+         *
+         * A trusted device skips the TOTP challenge for the rest of its window.
+         * Leaving those rows behind means the machine an attacker already has —
+         * the reason an admin is resetting MFA in the first place — keeps a
+         * 2FA-free path in until the window lapses, even though the factor it
+         * was granted against no longer exists.
+         */
+        const { error: trustErr } = await supabaseAdmin
+          .from("mfa_trusted_devices").delete().eq("user_id", targetId);
+        if (trustErr) {
+          console.error("[user-admin] resetMfa: could not revoke trusted devices:", trustErr.message);
+        }
+
         // Do NOT change mfa_enforced — if it was true, the user will be
         // prompted to re-enroll on next login.
-        return json({ success: true, factors_removed: deleted });
+        return json({ success: true, factors_removed: deleted, trusted_devices_revoked: !trustErr });
       }
 
       // Set/unset forced MFA for a user

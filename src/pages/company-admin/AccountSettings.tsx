@@ -259,7 +259,7 @@ const TILE_GRID: React.CSSProperties = {
    COMPONENT
 ═══════════════════════════════════════════ */
 const AccountSettings = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, changePassword } = useAuth();
   const { tokens: T } = useTheme();
   const [formData, setFormData]     = useState(initialForm);
   const [showPassword, setShowPassword] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
@@ -367,8 +367,18 @@ const AccountSettings = () => {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: formData.currentPassword });
       if (signInError) { setError("Current password is incorrect."); return; }
 
-      const { error: updateError } = await supabase.auth.updateUser({ password: formData.newPassword });
-      if (updateError) throw updateError;
+      /*
+       * Through the context, not `supabase.auth.updateUser` directly.
+       *
+       * The direct call skipped `revokeTrustedDevices()`, so a browser that had
+       * previously passed a 2FA challenge kept its remembered-device pass for the
+       * rest of the trust window after the password changed. Anyone who had the
+       * old password and had once been challenged on that machine retained a
+       * 2FA-free way back in — which is exactly the risk changing the password is
+       * meant to close. The context also clears the forced-change flag.
+       */
+      const changeResult = await changePassword(formData.newPassword);
+      if (!changeResult.ok) throw new Error(changeResult.error ?? "Password update failed");
 
       try {
         await supabase.from("audit_logs").insert([{

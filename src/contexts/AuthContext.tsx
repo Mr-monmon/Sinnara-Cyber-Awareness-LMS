@@ -388,7 +388,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (listError) {
         console.warn("[auth] could not list factors before enrolling:", listError.message);
       } else {
-        const stale = (existing?.totp ?? []).filter((f) => f.status !== "verified");
+        /*
+         * `.all`, not `.totp`.
+         *
+         * auth-js filters `.totp` to `status === 'verified'` before returning it
+         * (GoTrueClient.js:2213), so filtering it for `!== 'verified'` could only
+         * ever yield an empty array — this cleanup has never run once. Unverified
+         * factors accumulated on every abandoned enrolment until the account hit
+         * the factor cap and could not enrol at all: precisely the failure the
+         * comment above claims to prevent. `.all` is the unfiltered list.
+         */
+        const stale = (existing?.all ?? []).filter(
+          (f) => f.factor_type === "totp" && f.status !== "verified"
+        );
         for (const factor of stale) {
           const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
           if (unenrollError) {
