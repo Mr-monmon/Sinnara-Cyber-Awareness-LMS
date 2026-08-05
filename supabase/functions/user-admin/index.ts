@@ -435,6 +435,41 @@ Deno.serve(async (req) => {
       }
 
       // Set/unset forced MFA for a user
+      /*
+       * Exempt one account from the two-factor mandate.
+       *
+       * Distinct from setMfaEnforced, which requires 2FA for a role that would
+       * not otherwise need it. Employees are already mandated by role, so for
+       * them that action does nothing at all — this is the one that has an
+       * effect. Exempting also drops any remembered devices, since the account
+       * is changing security posture and stale trust should not survive it.
+       */
+      case "setMfaExempt": {
+        if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
+        if (!(await assertSameTenant(caller, body.userId, "setMfaExempt"))) {
+          return json({ success: false, error: "Forbidden: cross-tenant operation" }, 403);
+        }
+        const exempt = !!body.exempt;
+        const { error: exErr } = await supabaseAdmin.from("users")
+          .update({ mfa_exempt: exempt })
+          .eq("id", body.userId);
+        if (exErr) return json({ success: false, error: exErr.message });
+
+        await supabaseAdmin.from("audit_logs").insert({
+          user_id: caller.id,
+          user_role: caller.role,
+          action_type: "UPDATE_USER",
+          entity_type: "USER",
+          entity_id: body.userId,
+          company_id: caller.company_id,
+          description: exempt
+            ? "Exempted account from the two-factor requirement"
+            : "Removed the two-factor exemption from an account",
+        });
+
+        return json({ success: true, mfa_exempt: exempt });
+      }
+
       case "setMfaEnforced": {
         if (!isAdmin(caller.role)) return json({ success: false, error: "Forbidden" });
         if (!(await assertSameTenant(caller, body.userId, "setMfaEnforced"))) {
@@ -512,16 +547,32 @@ Deno.serve(async (req) => {
 
         // listUsers is paginated. Walk it until a short page arrives, with a
         // hard stop so a surprising response can never spin here forever.
-        const statuses: { id: string; last_sign_in_at: string | null }[] = [];
+        const statuses: {
+          id: string;
+          last_sign_in_at: string | null;
+          mfa_verified: boolean;
+        }[] = [];
         const perPage = 1000;
         for (let page = 1; page <= 20; page++) {
           const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
           if (error) return json({ success: false, error: error.message });
           const batch = data?.users ?? [];
           for (const u of batch) {
-            if (wanted.has(u.id)) {
-              statuses.push({ id: u.id, last_sign_in_at: u.last_sign_in_at ?? null });
-            }
+            if (!wanted.has(u.id)) continue;
+            /*
+             * Whether a second factor is actually ENROLLED, not whether a flag
+             * says it should be. The employee list previously coloured its MFA
+             * badge from `users.mfa_enforced`, a column that has no effect on
+             * employees at all — they are mandated by role — so the badge
+             * described a setting rather than reality. Only a verified factor
+             * counts; an abandoned enrolment leaves an unverified one behind.
+             */
+            const factors = (u as { factors?: { factor_type?: string; status?: string }[] }).factors ?? [];
+            statuses.push({
+              id: u.id,
+              last_sign_in_at: u.last_sign_in_at ?? null,
+              mfa_verified: factors.some((f) => f.factor_type === "totp" && f.status === "verified"),
+            });
           }
           if (batch.length < perPage) break;
         }

@@ -46,6 +46,8 @@ export interface User {
   department_id?: string;
   requires_password_change?: boolean;
   mfa_enforced?: boolean;
+  /** Exempts this account from the two-factor mandate. Rare and audited. */
+  mfa_exempt?: boolean;
   platform_role?: "COMPANY_SUPER_ADMIN" | "COMPANY_ADMIN" | "PHISHING_OPERATOR" | "REVIEWER" | null;
 }
 

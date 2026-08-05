@@ -15,8 +15,18 @@ import { isDeviceTrusted, revokeTrustedDevices, trustThisDevice } from "../lib/d
  * most for. Other roles opt in through the `mfa_enforced` profile flag, which
  * company admins control.
  */
-export function isMfaMandatory(profile: { role?: string | null; mfa_enforced?: boolean | null } | null): boolean {
+export function isMfaMandatory(
+  profile: { role?: string | null; mfa_enforced?: boolean | null; mfa_exempt?: boolean | null } | null,
+): boolean {
   if (!profile) return false;
+  /*
+   * An exemption is checked first and wins outright. The 2FA setup screen cannot
+   * be dismissed, so without this an employee who genuinely cannot enrol — a
+   * shared operational account, someone without a phone — is not merely
+   * unprotected but locked out of the platform entirely. It only ever removes a
+   * requirement, never grants one.
+   */
+  if (profile.mfa_exempt === true) return false;
   return profile.role === "EMPLOYEE" || profile.mfa_enforced === true;
 }
 
