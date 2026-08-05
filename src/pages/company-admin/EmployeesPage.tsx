@@ -360,16 +360,47 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     try {
       if (editingEmployee) {
         const profileData = {
-          full_name: formData.full_name,
-          phone: formData.phone,
-          employee_id: formData.employee_id,
-          job_title: formData.job_title,
-          department_id: formData.department_id,
+          full_name: formData.full_name.trim(),
+          phone: formData.phone.trim() || null,
+          employee_id: formData.employee_id.trim() || null,
+          job_title: formData.job_title.trim() || null,
+          // "" is not a uuid. The "No Department" option submits an empty string,
+          // and Postgres rejects the ENTIRE statement with
+          // `invalid input syntax for type uuid: ""` — so changing a phone number
+          // on a department-less employee saved nothing. The create branch below
+          // already coalesces to null; the edit branch never did. The bulk import
+          // hit the identical bug and was fixed the same way.
+          department_id: formData.department_id || null,
         };
-        await supabase
+
+        // supabase-js resolves with `{ error }` rather than throwing, so without
+        // this the surrounding catch was unreachable: a rejected write closed the
+        // modal, reloaded the list, and repainted the old values — indistinguishable
+        // from "the save did nothing".
+        const { error: updateError } = await supabase
           .from("users")
           .update(profileData)
           .eq("id", editingEmployee.id);
+        if (updateError) throw updateError;
+
+        /*
+         * A write can also be accepted and match no rows: under RLS that returns
+         * success with no error. Re-read and compare rather than asking the UPDATE
+         * to return the row — production may have separate UPDATE and SELECT
+         * policies, in which case a `.select()` on the update would report a false
+         * failure for a write that actually landed.
+         */
+        const { data: after } = await supabase
+          .from("users")
+          .select("full_name")
+          .eq("id", editingEmployee.id)
+          .maybeSingle();
+        if (after && after.full_name !== profileData.full_name) {
+          throw new Error(
+            "The update was accepted but the record did not change — your role " +
+            "does not have permission to edit this employee. Nothing was saved."
+          );
+        }
       } else {
         const { data: createResult, error: createError } =
           await supabase.functions.invoke("user-admin", {
@@ -425,8 +456,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       resetForm();
       loadEmployees();
     } catch (err) {
-      console.error(err);
-      alert("Failed to save employee");
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[EmployeesPage] save failed:", message, err);
+      alert(`Failed to save employee.\n\n${message}`);
     } finally {
       setSubmitting(false);
     }
@@ -564,6 +596,23 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         body: { action: "resetMfa", userId: emp.id },
       });
       if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
+
+      /*
+       * The function already reports how many factors it removed; ignoring it
+       * meant "MFA reset" was shown even when nothing was enrolled to reset. The
+       * employee then received an email telling them to set up a new
+       * authenticator for a change that never happened.
+       */
+      const removed = Number(data.factors_removed ?? 0);
+      if (removed === 0) {
+        void loadEmployees();
+        alert(
+          `${emp.full_name} had no authenticator enrolled, so nothing was reset.\n\n` +
+          `They will be asked to set one up the next time they sign in. No email was sent.`
+        );
+        return;
+      }
+
       try {
         await sendNotificationEmail(
           emp.email,
@@ -577,6 +626,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
         console.warn("MFA reset email could not be sent:", emailErr);
       }
       void loadEmployees();
+      alert(`Removed ${removed} authenticator factor${removed === 1 ? "" : "s"} for ${emp.full_name}.`);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Failed to reset MFA");
     }

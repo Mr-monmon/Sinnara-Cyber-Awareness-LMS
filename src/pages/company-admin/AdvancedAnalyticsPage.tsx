@@ -182,14 +182,57 @@ export function AdvancedAnalyticsPage() {
       .select("*")
       .eq("company_id", cid);
 
-    // 2. Course stats per course
-    const { data: courseData } = await supabase
-      .from("employee_courses")
-      .select("course_id, status, courses(id, title)")
-      .in("employee_id",
-        (await supabase.from("users").select("id").eq("company_id", cid).eq("role", "EMPLOYEE"))
-          .data?.map((u: { id: string }) => u.id) ?? []
-      );
+    /* 2. Course stats — scoped to what this company is CURRENTLY assigned.
+     *
+     * This read used to come from `employee_courses` alone, filtered only by
+     * "belongs to one of our employees". Enrolment rows outlive assignment on
+     * purpose: unassigning a course keeps IN_PROGRESS and COMPLETED rows so real
+     * learning history is not erased. The side effect is that a course the
+     * company no longer has kept appearing here forever — a ghost row in the
+     * completion table with nobody able to remove it.
+     *
+     * Eligibility has to mirror the server's own rule: the course is in
+     * `company_courses`, AND either it has no department restriction or the
+     * employee's department is one of the allowed ones. A flat list of company
+     * course ids is not enough — a department-restricted course is still in
+     * `company_courses`, which is exactly the "I removed it and it is still
+     * there" case.
+     *
+     * The nested await inside `.in(...)` also went: it serialised two round
+     * trips and discarded its own error.
+     */
+    const [ccRes, ccdRes, empRes] = await Promise.all([
+      supabase.from("company_courses").select("course_id").eq("company_id", cid),
+      supabase.from("company_course_departments").select("course_id, department_id").eq("company_id", cid),
+      supabase.from("users").select("id, department_id").eq("company_id", cid).eq("role", "EMPLOYEE"),
+    ]);
+
+    const inScope = new Set((ccRes.data ?? []).map((r: { course_id: string }) => r.course_id));
+    const allowedDepts = new Map<string, Set<string>>();
+    for (const r of (ccdRes.data ?? []) as { course_id: string; department_id: string }[]) {
+      if (!allowedDepts.has(r.course_id)) allowedDepts.set(r.course_id, new Set());
+      allowedDepts.get(r.course_id)!.add(r.department_id);
+    }
+    const deptOf = new Map(
+      (empRes.data ?? []).map((u: { id: string; department_id: string | null }) => [u.id, u.department_id])
+    );
+    const empIds = [...deptOf.keys()];
+
+    const { data: rawCourseRows } = empIds.length > 0 && inScope.size > 0
+      ? await supabase
+          .from("employee_courses")
+          .select("employee_id, course_id, status, courses(id, title)")
+          .in("employee_id", empIds)
+          .in("course_id", [...inScope])
+      : { data: [] as unknown[] };
+
+    const courseData = (rawCourseRows ?? []).filter((r) => {
+      const row = r as { course_id: string; employee_id: string };
+      const allowed = allowedDepts.get(row.course_id);
+      if (!allowed || allowed.size === 0) return true;   // unrestricted → everyone
+      const dept = deptOf.get(row.employee_id);
+      return dept != null && allowed.has(dept);
+    });
 
     // 3. Phishing campaigns for this company
     const { data: campaigns } = await supabase
