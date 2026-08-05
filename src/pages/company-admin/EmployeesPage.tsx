@@ -17,6 +17,7 @@ import {
   ShieldOff,
   UserX,
   UserCheck,
+  Send,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
@@ -214,6 +215,15 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
   const loginUrl = buildSameHostRedirectUrl(window.location.href, "/login");
 
   const [employees, setEmployees] = useState<UserType[]>([]);
+  /**
+   * id → last sign-in, or null for an account that has never been used.
+   *
+   * Read from `auth.users` through the edge function: `public.users.last_login`
+   * exists but is never written, and a mail provider's "delivered" only proves
+   * the receiving server accepted the message — not that anyone opened it.
+   */
+  const [signInStatus, setSignInStatus] = useState<Map<string, string | null>>(new Map());
+  const [resending, setResending] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [lockedEmails, setLockedEmails] = useState<Set<string>>(new Set());
   const [licenseLimit, setLicenseLimit] = useState<number | null>(null);
@@ -258,6 +268,28 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       .eq("role", "EMPLOYEE")
       .order("created_at", { ascending: false });
     if (data) setEmployees(data);
+    void loadSignInStatus();
+  };
+
+  /**
+   * Fetch who has ever signed in. Failure is not fatal — the column simply
+   * shows "unknown" rather than blocking the page, because knowing the roster
+   * matters more than knowing its activity.
+   */
+  const loadSignInStatus = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("user-admin", {
+        body: { action: "listSignInStatus" },
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "failed");
+      const next = new Map<string, string | null>();
+      for (const s of (data.statuses ?? []) as { id: string; last_sign_in_at: string | null }[]) {
+        next.set(s.id, s.last_sign_in_at);
+      }
+      setSignInStatus(next);
+    } catch (err) {
+      console.warn("[EmployeesPage] sign-in status unavailable:", err);
+    }
   };
 
   const loadLockouts = async () => {
@@ -540,6 +572,67 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Failed to reset MFA");
     }
+  };
+
+  /** Employees whose account exists but has never been used. */
+  const neverSignedIn = employees.filter(
+    (e) => signInStatus.has(e.id) && signInStatus.get(e.id) === null
+  );
+
+  /**
+   * Re-invite everyone who has never signed in.
+   *
+   * A welcome message that a mail filter quarantined is indistinguishable, from
+   * here, from one nobody bothered to open — and the remedy is the same either
+   * way: issue fresh credentials and send them again. Doing that one row at a
+   * time is what makes an administrator give up on a forty-person rollout.
+   *
+   * Sequential rather than parallel: forty simultaneous sends look like a burst
+   * to a mail provider, which is exactly the behaviour that earns a sending
+   * domain a worse reputation — the opposite of what this is trying to fix.
+   */
+  const handleResendInvites = async () => {
+    if (neverSignedIn.length === 0) return;
+    if (!confirm(
+      `Re-send the invitation to ${neverSignedIn.length} employee${neverSignedIn.length === 1 ? "" : "s"} who ${neverSignedIn.length === 1 ? "has" : "have"} never signed in?\n\n` +
+      `Each will get a NEW password — any earlier one stops working — and will be asked to change it on first sign-in.`
+    )) return;
+
+    setResending(true);
+    const failures: string[] = [];
+    let sent = 0;
+
+    for (const emp of neverSignedIn) {
+      try {
+        const newPassword = generateStrongPassword();
+        const { data, error } = await supabase.functions.invoke("user-admin", {
+          body: { action: "resetPassword", userId: emp.id, password: newPassword },
+        });
+        if (error || !data?.success) {
+          throw new Error(data?.error || error?.message || "reset failed");
+        }
+        await sendNotificationEmail(
+          emp.email, emp.full_name,
+          "Your AwareOne access — new sign-in details",
+          "Welcome aboard",
+          "Here are fresh sign-in details for your cyber-awareness training. You will be asked to choose your own password when you first sign in.",
+          { loginUrl, credentials: { email: emp.email, password: newPassword }, showSecurityNote: true }
+        );
+        sent++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[EmployeesPage] resend failed for", emp.email, message);
+        failures.push(`${emp.email} — ${message}`);
+      }
+    }
+
+    setResending(false);
+    void loadEmployees();
+    alert(
+      failures.length === 0
+        ? `Invitations re-sent to ${sent} employee${sent === 1 ? "" : "s"}.\n\nIf they still do not arrive, ask IT to allow mail from ${loginUrl.includes("awareone") ? "support@awareone.net" : "the platform sender"} — delivery is being accepted, so the message is most likely being filtered.`
+        : `Re-sent ${sent}, failed ${failures.length}:\n\n${failures.slice(0, 10).join("\n")}${failures.length > 10 ? `\n…and ${failures.length - 10} more` : ""}`
+    );
   };
 
   const handleResetPassword = async (emp: UserType) => {
@@ -886,6 +979,43 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
       )
     : employees;
 
+  /**
+   * Three states worth distinguishing, because they need different actions:
+   *   never signed in     → the invitation never landed, or was never opened
+   *   setup incomplete    → they got in but stopped at the password or 2FA step
+   *   a date              → done; nothing to chase
+   * A fourth, "unknown", appears only when the status lookup itself failed —
+   * better than silently showing everyone as inactive.
+   */
+  const SignInCell = ({
+    known, lastSignIn, setupPending,
+  }: { known: boolean; lastSignIn: string | null; setupPending: boolean }) => {
+    if (!known) return <span style={{ color: T.textMuted, fontSize: 12 }}>—</span>;
+
+    if (!lastSignIn) {
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 700, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, color: T.orange }}>
+          Never signed in
+        </span>
+      );
+    }
+
+    const when = new Date(lastSignIn).toLocaleDateString("en-SA", {
+      year: "numeric", month: "short", day: "numeric",
+    });
+
+    if (setupPending) {
+      return (
+        <span title={`Signed in ${when}, but has not finished the password and two-factor setup`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 700, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue }}>
+          Setup incomplete
+        </span>
+      );
+    }
+
+    return <span style={{ fontSize: 12, color: T.textBody }}>{when}</span>;
+  };
+
   /* Avatar initial */
   const Avatar = ({ name }: { name: string }) => (
     <div
@@ -983,6 +1113,28 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
               uploadCSV(f);
             }}
           />
+
+          {/* Only shown when there is someone to chase — a button reading
+              "Re-send to 0" is noise on a fully onboarded roster. */}
+          {neverSignedIn.length > 0 && (
+            <button
+              className="aw-emp-btn-green"
+              style={{ background: "rgba(251,146,60,0.10)", borderColor: "rgba(251,146,60,0.30)", color: T.orange }}
+              onClick={handleResendInvites}
+              disabled={resending}
+              title="Issue new credentials and email them again to everyone who has never signed in"
+            >
+              {resending ? (
+                <>
+                  <Loader2 size={14} style={{ animation: "aw-spin 0.8s linear infinite" }} /> Re-sending…
+                </>
+              ) : (
+                <>
+                  <Send size={14} /> Re-send invite ({neverSignedIn.length})
+                </>
+              )}
+            </button>
+          )}
 
           <button
             className="aw-emp-btn-green"
@@ -1158,6 +1310,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
               <th>Position</th>
               <th>Employee ID</th>
               <th>Phone</th>
+              <th>Last sign-in</th>
               <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
@@ -1206,6 +1359,13 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({
                   {emp.employee_id || "—"}
                 </td>
                 <td style={{ color: T.textMuted }}>{emp.phone || "—"}</td>
+                <td>
+                  <SignInCell
+                    known={signInStatus.has(emp.id)}
+                    lastSignIn={signInStatus.get(emp.id) ?? null}
+                    setupPending={emp.requires_password_change === true}
+                  />
+                </td>
                 <td>
                   <div
                     style={{
