@@ -146,6 +146,18 @@ interface CourseViewerProps {
   courseId: string; courseTitle: string; onBack: () => void;
 }
 
+/** How much of a video must be watched before its section can be completed. */
+const REQUIRED_WATCH_FRACTION = 0.9;
+
+/**
+ * Minimum time on an article before it can be marked complete.
+ *
+ * A tenth of the stated reading time, floored and capped, so a 40-minute
+ * article does not hold someone hostage and a 1-minute one is not a free pass.
+ */
+const articleDwellMs = (durationMinutes: number) =>
+  Math.min(60_000, Math.max(15_000, Math.round((durationMinutes || 0) * 6_000)));
+
 /* ─────────────────────────────────────────
    TYPE ICON CONFIG
 ───────────────────────────────────────── */
@@ -176,6 +188,23 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore]         = useState(0);
   const [showRating, setShowRating]       = useState(false);
+  /*
+   * Furthest point watched per section, as a fraction of the video's duration.
+   *
+   * "Mark as Complete" used to be live from the moment the section opened, so
+   * finishing a course meant pressing a button once per section -- the platform
+   * recorded a completion, issued a certificate, and reported a training figure
+   * to the company for a video nobody had played. The locked player already
+   * measures this to refuse forward seeks; the number just never left it.
+   */
+  const [watchedFraction, setWatchedFraction] = useState<Record<string, number>>({});
+  /*
+   * An article has no playhead, so the only honest signal available in the
+   * browser is time on the page. Deliberately a small fraction of the stated
+   * reading time and capped: this is a speed bump against clicking straight
+   * through, not a claim that anybody read anything.
+   */
+  const [dwellSatisfied, setDwellSatisfied] = useState(false);
   const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
   const isRtl = i18n.dir() === "rtl";
   const isArabic = currentLanguage.toLowerCase().startsWith("ar");
@@ -208,11 +237,43 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const progressPercentage = totalSections > 0 ? Math.round((completedSections / totalSections) * 100) : 0;
 
   const isSectionCompleted  = (sectionId: string) => progress[sectionId]?.completed || false;
+
+  /*
+   * Whether the current section may be marked complete yet.
+   *
+   * This is a UI gate, not a security boundary -- anyone with the console can
+   * still call the upsert. It exists because the honest default was worse: the
+   * button was live on arrival, so a "completion" recorded nothing but a click,
+   * and the completion figures reported to the customer were measuring that.
+   */
+  const canCompleteSection = (section: CourseSection | undefined): boolean => {
+    if (!section) return false;
+    if (section.section_type === "VIDEO") {
+      return (watchedFraction[section.id] ?? 0) >= REQUIRED_WATCH_FRACTION;
+    }
+    if (section.section_type === "ARTICLE") return dwellSatisfied;
+    return true;
+  };
   const canAccessSection    = (index: number) => index === 0 || isSectionCompleted(sections[index - 1]?.id);
   const getSectionTitle      = (section: CourseSection) => isArabic ? section.title_ar || section.title : section.title;
   const getSectionContent    = (section: CourseSection) => isArabic ? section.content_ar || section.content : section.content;
   const getSectionData       = (section: CourseSection) => isArabic ? section.content_data_ar || section.content_data : section.content_data;
   const getSectionQuestions  = (section: CourseSection) => getSectionData(section).questions || [];
+
+  /*
+   * Restart the dwell timer whenever the learner lands on a different article.
+   * Keyed on the section id rather than the index so re-ordering, or a reload
+   * that lands mid-course, cannot carry a satisfied timer across.
+   */
+  useEffect(() => {
+    const section = sections[currentSectionIndex];
+    if (!section || section.section_type !== "ARTICLE") { setDwellSatisfied(true); return; }
+    if (progress[section.id]?.completed) { setDwellSatisfied(true); return; }
+    setDwellSatisfied(false);
+    const id = window.setTimeout(() => setDwellSatisfied(true), articleDwellMs(section.duration_minutes));
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections[currentSectionIndex]?.id, progress[sections[currentSectionIndex]?.id ?? ""]?.completed]);
 
   const markSectionComplete = async (sectionId: string) => {
     if (!user) return;
@@ -472,14 +533,38 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   mutedColor={T.textMuted}
                   linkColor={T.blue}
                   style={{ marginBottom: 20 }}
+                  onWatchedFraction={(fraction) =>
+                    setWatchedFraction((prev) =>
+                      // Monotonic: rewinding to re-watch a passage must not take
+                      // back credit the learner already earned.
+                      fraction > (prev[currentSection.id] ?? 0)
+                        ? { ...prev, [currentSection.id]: fraction }
+                        : prev
+                    )
+                  }
                 />
 
-                {!isSectionCompleted(currentSection.id) && (
-                  <button className="aw-btn-green" onClick={() => markSectionComplete(currentSection.id)}>
-                    <CheckCircle size={16} />
-                    {t("courseViewer.markComplete", { ns: "employee" })}
-                  </button>
-                )}
+                {!isSectionCompleted(currentSection.id) && (() => {
+                  const unlocked = canCompleteSection(currentSection);
+                  const pct = Math.round((watchedFraction[currentSection.id] ?? 0) * 100);
+                  return (
+                    <button
+                      className="aw-btn-green"
+                      disabled={!unlocked}
+                      onClick={() => markSectionComplete(currentSection.id)}
+                      style={unlocked ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}
+                    >
+                      {unlocked ? <CheckCircle size={16} /> : <Lock size={16} />}
+                      {unlocked
+                        ? t("courseViewer.markComplete", { ns: "employee" })
+                        : t("courseViewer.watchToUnlock", {
+                            ns: "employee",
+                            percent: formatLocalizedNumber(pct, currentLanguage),
+                            required: formatLocalizedNumber(Math.round(REQUIRED_WATCH_FRACTION * 100), currentLanguage),
+                          })}
+                    </button>
+                  );
+                })()}
               </div>
             )}
 
@@ -490,9 +575,16 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
                   <ArticlePreview html={currentSectionContent} />
                 </div>
                 {!isSectionCompleted(currentSection.id) && (
-                  <button className="aw-btn-green" onClick={() => markSectionComplete(currentSection.id)}>
-                    <CheckCircle size={16} />
-                    {t("courseViewer.markComplete", { ns: "employee" })}
+                  <button
+                    className="aw-btn-green"
+                    disabled={!canCompleteSection(currentSection)}
+                    onClick={() => markSectionComplete(currentSection.id)}
+                    style={canCompleteSection(currentSection) ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}
+                  >
+                    {canCompleteSection(currentSection) ? <CheckCircle size={16} /> : <Lock size={16} />}
+                    {canCompleteSection(currentSection)
+                      ? t("courseViewer.markComplete", { ns: "employee" })
+                      : t("courseViewer.readToUnlock", { ns: "employee" })}
                   </button>
                 )}
               </div>

@@ -222,7 +222,9 @@
     "quizSubmitError": "تعذّر إرسال الاختبار. حاول مرة أخرى.",
     "certificateReady": "تهانينا! اكتملت الدورة بنجاح. شهادتك جاهزة!",
     "certificateGenerated": "تهانينا! لقد أكملت الدورة بنجاح وتم إنشاء شهادتك.",
-    "fallbackCourseName": "دورة"
+    "fallbackCourseName": "دورة",
+    "watchToUnlock": "تابع المشاهدة لفتح الإكمال ({{percent}}٪ من {{required}}٪)",
+    "readToUnlock": "خذ وقتك في قراءة هذا القسم"
   },
   "examViewer": {
     "accessError": "حدث خطأ أثناء التحقق من إمكانية الوصول إلى التقييم. حاول مرة أخرى.",

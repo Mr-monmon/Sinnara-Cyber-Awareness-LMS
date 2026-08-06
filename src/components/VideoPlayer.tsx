@@ -61,6 +61,15 @@ export interface VideoPlayerProps {
   fallbackLabel?: string;
   /** Hide native controls and forbid seeking ahead. Defaults to true. */
   locked?: boolean;
+  /**
+   * Reports the furthest point actually watched, as a fraction of duration.
+   *
+   * The locked player already computes this to refuse forward seeks; without
+   * exposing it, a course could only ask "did you press a button", which is not
+   * the same question as "did you watch this". Fires at most once per whole
+   * percent, so a 4 Hz poll does not re-render the page 4 times a second.
+   */
+  onWatchedFraction?: (fraction: number) => void;
   style?: React.CSSProperties;
   borderColor?: string;
   mutedColor?: string;
@@ -135,6 +144,7 @@ function formatTime(seconds: number): string {
 export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
   const {
     provider, title, language, locked = true,
+    onWatchedFraction,
     poster = null, fallbackLabel = 'Open video',
     style, borderColor = 'rgba(255,255,255,0.09)',
     mutedColor = '#64748b', linkColor = '#60a5fa',
@@ -227,6 +237,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
       isAr={isAr}
       labels={L}
       frameStyle={frameStyle}
+      onWatchedFraction={onWatchedFraction}
     />
   );
 };
@@ -238,9 +249,10 @@ interface LockedPlayerProps {
   isAr: boolean;
   labels: typeof STRINGS.en;
   frameStyle: React.CSSProperties;
+  onWatchedFraction?: (fraction: number) => void;
 }
 
-const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, isAr, labels, frameStyle }) => {
+const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, isAr, labels, frameStyle, onWatchedFraction }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // The IFrame API's documented pattern targets an element with an id; give it
@@ -249,6 +261,20 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
   const engineRef = useRef<PlayerEngine | null>(null);
   /** Furthest point actually watched; the ceiling for any seek. */
   const maxWatchedRef = useRef(0);
+  /*
+   * Last whole percent reported upward. The poll runs at 4 Hz and the callback
+   * drives parent state, so reporting every tick would re-render the course page
+   * continuously for the length of the video.
+   */
+  const reportedPctRef = useRef(-1);
+  /*
+   * Held in a ref so the polling effect does not have to list it as a
+   * dependency. The callback is an inline arrow in the parent, so a new identity
+   * every render; depending on it would tear down and restart the poll -- and
+   * the interval owns the seek watchdog.
+   */
+  const reportRef = useRef(onWatchedFraction);
+  reportRef.current = onWatchedFraction;
 
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -449,6 +475,14 @@ const LockedPlayer: React.FC<LockedPlayerProps> = ({ embedUrl, provider, title, 
       if (t > maxWatchedRef.current) {
         maxWatchedRef.current = t;
         setMaxWatched(t);
+
+        if (hasDuration && reportRef.current) {
+          const pct = Math.floor((t / engine.getDuration()) * 100);
+          if (pct > reportedPctRef.current) {
+            reportedPctRef.current = pct;
+            reportRef.current(Math.min(1, pct / 100));
+          }
+        }
       }
       setCurrentTime(t);
     }, POLL_INTERVAL_MS);

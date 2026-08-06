@@ -222,7 +222,9 @@
     "quizSubmitError": "We couldn't submit your quiz. Please try again.",
     "certificateReady": "Congratulations! Course completed successfully. Your certificate is ready!",
     "certificateGenerated": "Congratulations! You have successfully completed the course! Your certificate has been generated.",
-    "fallbackCourseName": "Course"
+    "fallbackCourseName": "Course",
+    "watchToUnlock": "Keep watching to unlock ({{percent}}% of {{required}}%)",
+    "readToUnlock": "Take a moment to read this section"
   },
   "examViewer": {
     "accessError": "Error checking exam access. Please try again.",
