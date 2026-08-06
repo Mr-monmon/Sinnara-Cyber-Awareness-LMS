@@ -2,27 +2,37 @@
   UPDATE privilege on public.users
   ================================
 
-  Every RLS policy on `public.users` — `rls_users_self_update`, `rls_users_ca`,
-  and the rest — has been dead code. Postgres checks table privileges BEFORE it
-  consults any policy, and the `authenticated` role was never granted UPDATE on
-  this table by any migration in this repository. So the writes did not fail an
-  RLS check; they never reached one:
+  Postgres checks table privileges BEFORE it consults any policy, so an UPDATE
+  the `authenticated` role has no privilege for never reaches RLS at all:
 
       ERROR: 42501: permission denied for table users
 
-  That single missing grant is the shared root cause of three separate bugs we
-  chased independently:
+  A production snapshot of `information_schema.column_privileges` showed the
+  grant was not missing outright — it was column-scoped and stale. Before this
+  migration `authenticated` could UPDATE:
 
-    • "Failed to deactivate employee"     — the is_active write was refused.
+      company_id, department, department_id, employee_id, full_name, phone,
+      policy_accepted, policy_accepted_at, updated_at
+
+  and could not UPDATE `job_title`, `is_active`, `requires_password_change`,
+  `mfa_exempt`, `email` or `role`. Those are the columns added after whoever set
+  the original grants stopped maintaining them; a new column inherits nothing.
+
+  A single ungranted column rejects the WHOLE statement, which is what made the
+  symptoms so confusing — and explains three bugs chased independently:
+
+    • "Failed to save employee"           — the edit form writes `job_title`, so
+                                            the `phone` in the same statement was
+                                            never saved either. (The
+                                            `department_id = ""` cast error was
+                                            real and is fixed, but this was the
+                                            wall behind it.)
+    • "Failed to deactivate employee"     — `is_active` was not granted.
     • The password-change loop            — clearing `requires_password_change`
                                             from the browser was refused. Moving
                                             that write into a service-role edge
                                             function is what made it work, because
                                             the service role bypasses grants.
-    • "Failed to save employee"           — the phone/job-title edit was refused.
-                                            (The `department_id = ""` cast error
-                                            was real and is fixed, but this was
-                                            the wall behind it.)
 
   The grant is column-scoped, not blanket
   ---------------------------------------
@@ -68,6 +78,35 @@ GRANT UPDATE (
   policy_accepted,
   policy_accepted_at
 ) ON public.users TO authenticated;
+
+/*
+  The same snapshot turned up two privileges that were never needed and are
+  actively dangerous, both almost certainly Supabase's default blanket grant on
+  the public schema that was never narrowed for this table.
+
+  1. `anon` held INSERT, UPDATE and REFERENCES on EVERY column of users —
+     including `role`, `company_id` and `mfa_exempt`. `anon` is the publishable
+     key shipped in the browser bundle to every visitor BEFORE they sign in. RLS
+     was the only thing standing between an anonymous visitor and
+     `update users set role = 'PLATFORM_ADMIN'`. The application never writes to
+     users unauthenticated — there is no self-service signup, accounts are only
+     ever created by the `user-admin` edge function — so this grant bought
+     nothing and staked the whole tenant model on no one ever adding a `TO
+     public` policy by mistake. SELECT is left in place; RLS governs it and a
+     revoke there risks unauthenticated pages that read a name.
+
+  2. `authenticated` held UPDATE on `company_id`. Combined with
+     `rls_users_self_update` (which permits writing your own row) that is a
+     tenant escape: an employee could move themselves into another company and
+     inherit its scoping. Nothing in the front end writes `company_id`.
+
+  Both are revoked below. Reversal is `GRANT INSERT, UPDATE ON public.users TO
+  anon;` and `GRANT UPDATE (company_id), INSERT ON public.users TO
+  authenticated;`.
+*/
+REVOKE INSERT, UPDATE, REFERENCES ON public.users FROM anon;
+REVOKE UPDATE (company_id) ON public.users FROM authenticated;
+REVOKE INSERT ON public.users FROM authenticated;
 
 /*
   `is_active` is the one granted column that is also a security control, because
