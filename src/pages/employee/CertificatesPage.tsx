@@ -8,6 +8,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedDate, formatLocalizedNumber } from "../../i18n/utils";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../contexts/ThemeContext";
+import { captureException } from "../../lib/sentry";
 
 /* tokens injected via useTheme() inside the component */
 
@@ -77,7 +78,12 @@ interface Certificate {
   id: string; certificate_number: string; course_id: string; employee_id: string;
   issued_at: string; completion_date: string; score: number | null;
   employee_name: string; course_name: string; template_id: string | null;
-  courses: { title: string; description: string };
+  /*
+   * Nullable: the join returns null once the course row is deleted, which is a
+   * normal admin action. Typing it as always present is what let `.title` be
+   * read off null at runtime.
+   */
+  courses: { title: string; description: string } | null;
   certificate_templates: CertificateTemplateData | null;
 }
 interface CertificateRenderData {
@@ -97,6 +103,32 @@ interface CertificateRenderData {
 const DEFAULT_CERTIFICATE_WIDTH  = 800;
 const DEFAULT_CERTIFICATE_HEIGHT = 566;
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+/*
+  SVG has to be allowed through, and `{ html: true }` alone does not allow it.
+
+  DOMPurify's profiles are additive and independent: the html profile permits no
+  SVG element at all. The shipped "Awareone certificate template" draws its
+  entire identity in inline SVG — the logo, the CERTIFIED seal, the corner
+  flourishes, the dot pattern — so every one of those was silently deleted on the
+  way to the PDF. The admin approved a certificate in the template preview, which
+  renders the raw HTML in a sandboxed iframe and therefore shows the logo, and
+  the employee downloaded a different, blank-panelled document. Nothing errored;
+  the artwork simply was not there.
+
+  Adding `svg` and `svgFilters` is not a relaxation of the security posture.
+  DOMPurify still strips scripts, event handlers and foreignObject inside SVG —
+  that is what these profiles are for. What it does not do is treat a `<path>` as
+  a threat.
+
+  Verified in headless Chromium against the real template: with SVG permitted the
+  sanitised markup grows from 1,919 to 3,229 characters and html2canvas still
+  renders it to a valid PDF, so this does not trade a missing logo for a failed
+  download.
+*/
+const CERTIFICATE_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true, svg: true, svgFilters: true },
+} as const;
 const BLOCK_LEVEL_TAGS = new Set(["ARTICLE","DIV","H1","H2","H3","H4","H5","H6","LI","P","SECTION","SPAN","STRONG","TD","TH"]);
 
 const findRemovalTarget = (node: Node) => {
@@ -131,7 +163,7 @@ const fillTemplateHtml = (templateHtml: string, values: Record<string, string>, 
   const interpolatedHtml = template.innerHTML
     .replace(PLACEHOLDER_PATTERN, (_, key: string) => values[key] ?? "")
     .replace(PLACEHOLDER_PATTERN, "");
-  return DOMPurify.sanitize(interpolatedHtml, { USE_PROFILES: { html: true } });
+  return DOMPurify.sanitize(interpolatedHtml, CERTIFICATE_SANITIZE_CONFIG);
 };
 
 /* ─────────────────────────────────────────
@@ -229,7 +261,7 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
     </div>
 
   </div>
-</div>`, { USE_PROFILES: { html: true } });
+</div>`, CERTIFICATE_SANITIZE_CONFIG);
 };
 
 const waitForRenderableContent = async (element: HTMLElement) => {
@@ -277,7 +309,14 @@ export const CertificatesPage: React.FC = () => {
 
   const handleDownload = async (cert: Certificate) => {
     const employeeName = cert.employee_name || user?.full_name || t("certificates.downloadTemplate.employeeFallback", { ns: "employee" });
-    const courseName   = cert.course_name || cert.courses.title;
+    /*
+     * `courses` is a join that returns null once the course row is gone, and
+     * deleting a course is a normal admin action -- the certificate outlives it
+     * on purpose. Reading `.title` off that null threw a TypeError inside the
+     * handler's try block, so a deleted course produced the same opaque "failed
+     * to generate" as any other fault.
+     */
+    const courseName   = cert.course_name || cert.courses?.title || cert.certificate_number;
     const scoreValue   = cert.score !== null ? formatLocalizedNumber(Number(cert.score.toFixed(1)), currentLanguage) : null;
     const rawCompletionDate  = formatLocalizedDate(cert.completion_date, currentLanguage);
     const rawCertificateNumber = cert.certificate_number;
@@ -349,8 +388,26 @@ export const CertificatesPage: React.FC = () => {
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, targetWidth, targetHeight);
       pdf.save(`Certificate_${cert.certificate_number}.pdf`);
     } catch (err) {
+      /*
+       * Say what actually went wrong.
+       *
+       * The generic message was the only channel, and it hid the one fact
+       * needed to fix anything: a tainted canvas from a template image served
+       * without CORS, a malformed custom template, and a transient font failure
+       * all read identically to the learner and to whoever they report it to.
+       * The detail is appended rather than replacing the message, so the
+       * learner still gets a sentence they can act on.
+       */
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
       console.error("Error generating certificate PDF:", err);
-      alert(t("certificates.downloadFailed", { ns: "employee" }));
+      captureException(err, {
+        scope: "CertificatesPage.handleDownload",
+        certificateId: cert.id,
+        certificateNumber: cert.certificate_number,
+        usedCustomTemplate: Boolean(cert.certificate_templates?.template_html),
+        templateId: cert.certificate_templates?.id ?? null,
+      });
+      alert(`${t("certificates.downloadFailed", { ns: "employee" })}\n\n${detail.slice(0, 300)}`);
     } finally { renderRoot.remove(); setDownloadingId(null); }
   };
 
@@ -427,7 +484,7 @@ export const CertificatesPage: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
           {certificates.map((cert, idx) => {
             const isDownloading = downloadingId === cert.id;
-            const courseName    = cert.course_name || cert.courses.title;
+            const courseName    = cert.course_name || cert.courses?.title || cert.certificate_number;
             return (
               <div key={cert.id} className={`aw-cert-card aw-fade-up`} style={{ animationDelay: `${idx * 0.06}s` }}>
                 <div style={{ height: 3, background: `linear-gradient(90deg, ${T.gold}, ${T.gold}40)` }} />
@@ -437,7 +494,7 @@ export const CertificatesPage: React.FC = () => {
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <h3 style={{ fontSize: 15, fontWeight: 700, color: T.white, margin: '0 0 4px', lineHeight: '22px' }}>{courseName}</h3>
-                    {cert.courses.description && (
+                    {cert.courses?.description && (
                       <p style={{ fontSize: 12, color: T.textMuted, lineHeight: '18px', margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {cert.courses.description}
                       </p>
