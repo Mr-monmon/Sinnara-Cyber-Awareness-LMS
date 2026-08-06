@@ -328,6 +328,101 @@ const dropUnpaintableBackgrounds = async (surface: HTMLElement) => {
   );
 };
 
+/**
+ * Grow hairline gradient boxes until they measure at least one whole pixel.
+ *
+ * This is the confirmed cause of the reported failure:
+ *
+ *     InvalidStateError: Failed to execute 'createPattern' on
+ *     'CanvasRenderingContext2D': The image argument is a canvas element with a
+ *     width or height of 0.
+ *
+ * html2canvas paints a gradient by drawing it into an offscreen canvas sized
+ * from the element's box, and it does guard the call:
+ *
+ *     canvas.width  = width;
+ *     canvas.height = height;
+ *     ...
+ *     if (width > 0 && height > 0) { ctx.createPattern(canvas, 'repeat'); }
+ *
+ * The guard is the bug. A canvas stores its dimensions as an unsigned long, so
+ * assigning `0.8` yields `0` — while `0.8 > 0` is perfectly true. The check
+ * passes and `createPattern` is handed a zero-dimension surface.
+ *
+ * Sub-pixel boxes are not exotic here. Certificate templates draw rules and
+ * dividers as `height: 1px` or `width: 1px` elements with a linear-gradient,
+ * and a display or browser at anything other than 100% scaling measures those
+ * at a fraction of a pixel. Reproduced at 0.8 scale: boxes of 0.8×404.8 and
+ * 392×0.8, which is the same shape as the two failures observed in production
+ * (0×505 and 490×0 — the vertical divider and the horizontal rule).
+ *
+ * It also explains why falling back to the built-in template did not help: that
+ * template draws the same two hairlines the same way, so it failed identically.
+ *
+ * Growing the box rather than dropping the gradient keeps the line in the
+ * certificate. The bump is computed from the ratio between the used CSS size
+ * and the measured size, so it is a no-op at 100% scaling and only ever affects
+ * elements that are already too small to paint.
+ */
+const growSubPixelGradientBoxes = (surface: HTMLElement) => {
+  const elements = [surface, ...Array.from(surface.querySelectorAll<HTMLElement>("*"))];
+  for (const element of elements) {
+    const computed = window.getComputedStyle(element);
+    if (!computed.backgroundImage.includes("gradient")) continue;
+
+    const rect = element.getBoundingClientRect();
+    (["width", "height"] as const).forEach((axis) => {
+      const measured = rect[axis];
+      // `0` means the element genuinely has no extent — nothing to paint, and
+      // html2canvas's guard handles that case correctly. Only the fractional
+      // band between 0 and 1 is dangerous.
+      if (measured <= 0 || measured >= 1) return;
+
+      const used = parseFloat(computed[axis]) || measured;
+      const scale = used > 0 ? measured / used : 1;
+      const needed = Math.ceil(1 / (scale || 1));
+      if (axis === "width") element.style.minWidth = `${needed}px`;
+      else element.style.minHeight = `${needed}px`;
+    });
+  }
+};
+
+/**
+ * Run a render with a temporary net under `createPattern`.
+ *
+ * `growSubPixelGradientBoxes` fixes the known trigger, but the same library bug
+ * is reachable from any path that yields a fractional canvas dimension —
+ * `background-size` in percentages, a transform, a zoom level nobody tested. A
+ * decorative pattern that cannot be built is worth exactly nothing; it must not
+ * be worth a certificate.
+ *
+ * Deliberately narrow: only `InvalidStateError` is swallowed, the patch is
+ * restored in `finally` even if the render throws, and the incident is logged
+ * so a silently missing decoration is still visible to whoever looks.
+ */
+const withCreatePatternGuard = async <T,>(run: () => Promise<T>): Promise<T> => {
+  const original = CanvasRenderingContext2D.prototype.createPattern;
+  CanvasRenderingContext2D.prototype.createPattern = function (
+    this: CanvasRenderingContext2D,
+    ...args: Parameters<CanvasRenderingContext2D["createPattern"]>
+  ) {
+    try {
+      return original.apply(this, args);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "InvalidStateError") {
+        console.warn("[certificate] skipped an unpaintable background pattern:", err.message);
+        return null;
+      }
+      throw err;
+    }
+  };
+  try {
+    return await run();
+  } finally {
+    CanvasRenderingContext2D.prototype.createPattern = original;
+  }
+};
+
 const waitForRenderableContent = async (element: HTMLElement) => {
   const fontSet = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts;
   if (fontSet?.ready) await fontSet.ready;
@@ -447,13 +542,14 @@ export const CertificatesPage: React.FC = () => {
         document.body.appendChild(renderRoot);
         await waitForRenderableContent(renderSurface);
         await dropUnpaintableBackgrounds(renderSurface);
+        growSubPixelGradientBoxes(renderSurface);
         const targetWidth  = renderSurface.scrollWidth  || DEFAULT_CERTIFICATE_WIDTH;
         const targetHeight = renderSurface.scrollHeight || DEFAULT_CERTIFICATE_HEIGHT;
-        const canvas = await html2canvas(renderSurface, {
+        const canvas = await withCreatePatternGuard(() => html2canvas(renderSurface, {
           backgroundColor: "#12140a", height: targetHeight, logging: false,
           scale: 2, useCORS: true, width: targetWidth,
           windowHeight: targetHeight, windowWidth: targetWidth,
-        });
+        }));
         const pdf = new jsPDF({
           orientation: targetWidth > targetHeight ? "landscape" : "portrait",
           unit: "px", format: [targetWidth, targetHeight], hotfixes: ["px_scaling"],
