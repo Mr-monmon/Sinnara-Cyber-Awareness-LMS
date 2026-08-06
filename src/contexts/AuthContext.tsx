@@ -40,7 +40,19 @@ export function isMfaMandatory(
  * on the next sign-in.
  */
 async function resolveMfaEnrolmentGap(
-  profile: { role?: string | null; mfa_enforced?: boolean | null; id?: string } | null,
+  profile: {
+    role?: string | null;
+    mfa_enforced?: boolean | null;
+    /*
+     * Listed explicitly even though `isMfaMandatory` is the only reader.
+     * Omitting it made the parameter type narrower than what that function
+     * consults, so a caller passing a hand-built object — a mock, a projection
+     * from a `.select('id, role')` — would type-check while silently dropping
+     * the exemption and pushing an exempt user into an unskippable setup screen.
+     */
+    mfa_exempt?: boolean | null;
+    id?: string;
+  } | null,
 ): Promise<boolean> {
   if (!isMfaMandatory(profile)) return false;
   const { data, error } = await supabase.auth.mfa.listFactors();
