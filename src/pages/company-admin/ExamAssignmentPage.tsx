@@ -8,6 +8,11 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { sendNotificationEmail } from "../../lib/email";
 import { buildSameHostRedirectUrl } from "../../lib/browserTenant";
+import {
+  claimReminder, describeAvailability, loadReminderState, releaseReminder,
+  reminderKey, daysUntil, REMINDER_MAX_PER_RECIPIENT,
+  type ClaimVerdict, type ReminderState,
+} from "../../lib/examReminders";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -219,6 +224,16 @@ export const ExamAssignmentPage: React.FC = () => {
   const [error, setError]             = useState<string | null>(null);
   const [saving, setSaving]           = useState(false);
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+  const [sendingRowId, setSendingRowId] = useState<string | null>(null);
+  /*
+   * The reminder ledger, keyed `examId:recipientId`.
+   *
+   * Read only to draw the buttons. The decision to send belongs to
+   * `claim_exam_reminder` on the server — this map going stale can make a button
+   * look available a moment longer than it is, which the claim then refuses; it
+   * can never let an extra email out.
+   */
+  const [reminderState, setReminderState] = useState<Map<string, ReminderState>>(new Map());
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -244,6 +259,7 @@ export const ExamAssignmentPage: React.FC = () => {
     loadEmployees();
     loadDepartments();
     loadAssignments();
+    void refreshReminderState();
   }, [user]);
 
   // When the admin picks an exam, load its existing active assignments so we
@@ -408,53 +424,191 @@ export const ExamAssignmentPage: React.FC = () => {
       return next;
     });
 
+  const refreshReminderState = async () => setReminderState(await loadReminderState());
+
+  /*
+   * An assignment is a row; a reminder is addressed to a person. A department
+   * assignment is one row and many people, and the throttle counts people — so
+   * every path resolves to recipients with ids before it can claim anything.
+   */
+  type Recipient = { id: string; email: string; full_name: string };
+  const recipientsOf = (a: AssignedExam): Recipient[] => {
+    if (a.assigned_to_employee?.id && a.assigned_to_employee.email) {
+      return [{
+        id: a.assigned_to_employee.id,
+        email: a.assigned_to_employee.email,
+        full_name: a.assigned_to_employee.full_name,
+      }];
+    }
+    if (a.assigned_to_department?.id) {
+      return employees
+        .filter(e => e.department_id === a.assigned_to_department?.id && e.email)
+        .map(e => ({ id: e.id, email: e.email, full_name: e.full_name }));
+    }
+    return [];
+  };
+
+  /*
+   * What the Remind button on a row should say and whether it should be live.
+   *
+   * For a department row "can send" means at least one member is eligible, so a
+   * team where one person is at their limit is still remindable — the throttle
+   * is per employee, and treating the row as blocked would silently punish the
+   * rest of the department.
+   */
+  const rowAvailability = (a: AssignedExam): { canSend: boolean; tooltip: string } => {
+    const recipients = recipientsOf(a);
+    if (!recipients.length) return { canSend: false, tooltip: "No email recipients" };
+
+    if (recipients.length === 1) {
+      const { canSend, countLabel, reason } = describeAvailability(
+        reminderState.get(reminderKey(a.exam_id, recipients[0].id)),
+      );
+      return { canSend, tooltip: canSend ? `Remind · ${countLabel}` : reason };
+    }
+
+    const ready = recipients.filter(
+      r => describeAvailability(reminderState.get(reminderKey(a.exam_id, r.id))).canSend,
+    ).length;
+    return ready > 0
+      ? { canSend: true, tooltip: `Remind ${ready} of ${recipients.length}` }
+      : { canSend: false, tooltip: "All members reminded recently or at the limit" };
+  };
+
+  /** Why the server refused, phrased for the person who pressed the button. */
+  const explainRefusal = (v: Extract<ClaimVerdict, { allowed: false }>): string => {
+    switch (v.reason) {
+      case "max_reached":
+        return `already reminded ${v.max ?? REMINDER_MAX_PER_RECIPIENT} times for this exam`;
+      case "too_soon": {
+        const d = daysUntil(v.nextAllowedAt);
+        return `reminded within the last week — available in ${d} day${d === 1 ? "" : "s"}`;
+      }
+      case "not_permitted":  return "you do not have permission to send reminders";
+      case "other_tenant":   return "not in your company";
+      case "unknown_recipient": return "no matching employee account";
+      case "not_signed_in":  return "your session expired — please sign in again";
+      default:               return v.message ?? "could not be checked";
+    }
+  };
+
+  /*
+   * The one send path. Claim a slot per recipient, send only if the claim was
+   * granted, and hand the slot back if the mail itself fails.
+   *
+   * Sequential rather than `Promise.allSettled`: forty simultaneous invocations
+   * of the mail function is what makes a provider start deferring, and the
+   * claims must not race each other for the last slot of a shared department
+   * assignment either.
+   */
+  const sendReminders = async (
+    examId: string, examTitle: string, dueDate: string | null, recipients: Recipient[],
+  ): Promise<{ sent: number; skipped: string[]; failed: string[] }> => {
+    const dueTxt = dueDate ? ` Please complete it before ${new Date(dueDate).toLocaleDateString()}.` : "";
+    let sent = 0;
+    const skipped: string[] = [];
+    const failed: string[] = [];
+
+    for (const r of recipients) {
+      const verdict = await claimReminder(examId, r.id);
+      if (!verdict.allowed) {
+        skipped.push(`${r.full_name} — ${explainRefusal(verdict)}`);
+        continue;
+      }
+      try {
+        await sendNotificationEmail(
+          r.email, r.full_name, `Exam Reminder: ${examTitle}`, "Exam Reminder",
+          `This is a reminder that "${examTitle}" is still assigned to you.${dueTxt} Please log in to complete it.`,
+          { loginUrl },
+        );
+        sent++;
+      } catch {
+        // The slot was claimed for an email that never went out. Give it back so
+        // the employee is not charged a reminder they never received.
+        await releaseReminder(verdict.logId);
+        failed.push(r.full_name);
+      }
+    }
+
+    await refreshReminderState();
+    return { sent, skipped, failed };
+  };
+
+  const summarise = (
+    { sent, skipped, failed }: { sent: number; skipped: string[]; failed: string[] },
+  ): string => {
+    const lines = [`${sent} reminder${sent === 1 ? "" : "s"} sent.`];
+    if (failed.length) lines.push(`\nCould not be delivered (${failed.length}): ${failed.join(", ")}`);
+    if (skipped.length) {
+      lines.push(
+        `\nSkipped by the reminder limit (${skipped.length}) — at most one reminder per employee per week, ` +
+        `${REMINDER_MAX_PER_RECIPIENT} per exam:\n  • ${skipped.join("\n  • ")}`,
+      );
+    }
+    return lines.join("\n");
+  };
+
   /* ── Remind all ── */
   const handleRemindAll = async (group: ExamGroup) => {
-    const incompleteRows = group.rows.filter(a => a.status === "active");
-    if (!incompleteRows.length) { alert("No active assignments to remind."); return; }
-    if (!confirm(`Send reminders for "${group.exam_title}" to ${incompleteRows.length} employee(s)?`)) return;
+    const activeRows = group.rows.filter(a => a.status === "active");
+    if (!activeRows.length) { alert("No active assignments to remind."); return; }
+
+    // De-duplicate: an employee covered by both a personal and a department
+    // assignment is one person, and would otherwise burn two of their three.
+    const byId = new Map<string, Recipient>();
+    for (const row of activeRows) for (const r of recipientsOf(row)) byId.set(r.id, r);
+    const recipients = [...byId.values()];
+    if (!recipients.length) { alert("No email recipients found."); return; }
+
+    const eligible = recipients.filter(
+      r => describeAvailability(reminderState.get(reminderKey(group.exam_id, r.id))).canSend,
+    );
+    if (!eligible.length) {
+      alert(
+        `No one can be reminded for "${group.exam_title}" right now.\n\n` +
+        `Each employee may receive one reminder per week and at most ${REMINDER_MAX_PER_RECIPIENT} for an exam.`,
+      );
+      return;
+    }
+
+    const held = recipients.length - eligible.length;
+    if (!confirm(
+      `Send reminders for "${group.exam_title}" to ${eligible.length} employee(s)?` +
+      (held > 0 ? `\n\n${held} other(s) will be skipped — already reminded this week, or at the limit.` : ""),
+    )) return;
+
     setSendingReminderId(group.exam_id);
     try {
-      const recipients = incompleteRows
-        .filter(a => a.assigned_to_employee?.email)
-        .map(a => ({ email: a.assigned_to_employee!.email, full_name: a.assigned_to_employee!.full_name }));
-      const deptRows = incompleteRows.filter(a => a.assigned_to_department?.id);
-      for (const dr of deptRows) {
-        const emps = employees.filter(e => e.department_id === dr.assigned_to_department?.id && e.email);
-        emps.forEach(e => recipients.push({ email: e.email, full_name: e.full_name }));
-      }
-      if (!recipients.length) { alert("No email recipients found."); return; }
-      const dueTxt = incompleteRows[0]?.due_date
-        ? ` Please complete it before ${new Date(incompleteRows[0].due_date).toLocaleDateString()}.`
-        : "";
-      await Promise.allSettled(recipients.map(r =>
-        sendNotificationEmail(r.email, r.full_name, `Exam Reminder: ${group.exam_title}`, "Exam Reminder",
-          `This is a reminder that "${group.exam_title}" is still assigned to you.${dueTxt} Please log in to complete it.`, { loginUrl })
-      ));
-      alert(`Reminders sent to ${recipients.length} recipient(s).`);
+      const due = activeRows.find(a => a.due_date)?.due_date ?? null;
+      alert(summarise(await sendReminders(group.exam_id, group.exam_title, due, recipients)));
     } finally { setSendingReminderId(null); }
   };
 
   /* ── Remind single ── */
   const handleReminder = async (a: AssignedExam) => {
     setError(null);
-    const title  = a.exams?.title || "your assigned exam";
-    const dueTxt = a.due_date ? ` Complete it before ${new Date(a.due_date).toLocaleDateString()}.` : "";
-    let recipients: { email: string; full_name: string }[] = [];
-    if (a.assigned_to_employee?.email) {
-      recipients = [{ email: a.assigned_to_employee.email, full_name: a.assigned_to_employee.full_name }];
-    } else if (a.assigned_to_department?.id) {
-      recipients = employees
-        .filter(e => e.department_id === a.assigned_to_department?.id && e.email)
-        .map(e => ({ email: e.email, full_name: e.full_name }));
-    }
+    const title = a.exams?.title || "your assigned exam";
+    const recipients = recipientsOf(a);
     if (!recipients.length) { setError("No recipients found."); return; }
-    if (!confirm(`Send reminder for "${title}" to ${recipients.length > 1 ? recipients.length + " employees" : recipients[0].full_name}?`)) return;
-    await Promise.allSettled(recipients.map(r =>
-      sendNotificationEmail(r.email, r.full_name, `Exam Reminder: ${title}`, "Exam Reminder",
-        `This is a reminder that "${title}" is still assigned to you.${dueTxt} Please log in to complete it.`, { loginUrl })
-    ));
-    alert("Reminder(s) sent.");
+
+    const eligible = recipients.filter(
+      r => describeAvailability(reminderState.get(reminderKey(a.exam_id, r.id))).canSend,
+    );
+    if (!eligible.length) {
+      const only = recipients.length === 1
+        ? describeAvailability(reminderState.get(reminderKey(a.exam_id, recipients[0].id))).reason
+        : `Each employee may receive one reminder per week and at most ${REMINDER_MAX_PER_RECIPIENT} for an exam.`;
+      alert(`Cannot send this reminder yet.\n\n${only}`);
+      return;
+    }
+
+    const who = eligible.length > 1 ? `${eligible.length} employees` : eligible[0].full_name;
+    if (!confirm(`Send reminder for "${title}" to ${who}?`)) return;
+
+    setSendingRowId(a.id);
+    try {
+      alert(summarise(await sendReminders(a.exam_id, title, a.due_date, recipients)));
+    } finally { setSendingRowId(null); }
   };
 
   const handleWithdraw = async (id: string, title: string, name: string) => {
@@ -690,6 +844,21 @@ export const ExamAssignmentPage: React.FC = () => {
               const pc            = progColor(pct);
               const isSendingThis = sendingReminderId === group.exam_id;
 
+              /*
+               * The button counts people who can actually be reminded, not open
+               * assignments. "Remind All (12)" that sends 3 and skips 9 reads as a
+               * failure; the honest number up front is the whole point of the
+               * throttle being visible.
+               */
+              const remindTargets = new Map<string, string>();
+              for (const row of group.rows) {
+                if (row.status !== "active") continue;
+                for (const r of recipientsOf(row)) remindTargets.set(r.id, r.full_name);
+              }
+              const remindable = [...remindTargets.keys()].filter(
+                id => describeAvailability(reminderState.get(reminderKey(group.exam_id, id))).canSend,
+              ).length;
+
               return (
                 <div key={group.exam_id} style={{ borderBottom: gi < groups.length - 1 ? `1px solid ${T.borderFaint}` : "none" }}>
                   <div className={`aw-ea-group-row${isOpen ? " open" : ""}`} onClick={() => toggleGroup(group.exam_id)}>
@@ -728,9 +897,17 @@ export const ExamAssignmentPage: React.FC = () => {
                       ))}
                     </div>
                     {group.active > 0 && (
-                      <button className="aw-ea-remind-all" disabled={isSendingThis} onClick={e => { e.stopPropagation(); handleRemindAll(group); }}>
+                      <button
+                        className="aw-ea-remind-all"
+                        disabled={isSendingThis || remindable === 0}
+                        title={remindable === 0
+                          ? `Everyone with an open assignment was reminded within the last week, or has reached the ${REMINDER_MAX_PER_RECIPIENT}-reminder limit for this exam.`
+                          : `One reminder per employee per week, ${REMINDER_MAX_PER_RECIPIENT} per exam.`}
+                        style={remindable === 0 ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                        onClick={e => { e.stopPropagation(); handleRemindAll(group); }}
+                      >
                         {isSendingThis ? <Loader2 size={11} style={{ animation: "aw-spin 0.8s linear infinite" }} /> : <Mail size={11} />}
-                        Remind All ({group.active})
+                        {remindable === 0 ? "Reminders on hold" : `Remind All (${remindable})`}
                       </button>
                     )}
                   </div>
@@ -783,8 +960,22 @@ export const ExamAssignmentPage: React.FC = () => {
                             <div style={{ minWidth: 80, display: "flex", gap: 6, justifyContent: "center" }}>
                               {a.status === "active" ? (
                                 <>
-                                  <button className="aw-ea-icon-btn remind" onClick={() => handleReminder(a)}>
-                                    <Mail size={12} /><span className="tooltip">Remind</span>
+                                  {/*
+                                    Disabled with the reason in the tooltip, rather than
+                                    hidden or silently no-op: an admin who presses Remind
+                                    and sees nothing happen assumes the platform is broken,
+                                    and emails the employee themselves.
+                                  */}
+                                  <button
+                                    className="aw-ea-icon-btn remind"
+                                    disabled={!rowAvailability(a).canSend || sendingRowId === a.id}
+                                    style={!rowAvailability(a).canSend ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
+                                    onClick={() => handleReminder(a)}
+                                  >
+                                    {sendingRowId === a.id
+                                      ? <Loader2 size={12} style={{ animation: "aw-spin 0.8s linear infinite" }} />
+                                      : <Mail size={12} />}
+                                    <span className="tooltip">{rowAvailability(a).tooltip}</span>
                                   </button>
                                   <button className="aw-ea-icon-btn withdraw" onClick={() => {
                                     const n = a.assigned_to_employee?.full_name ?? `Dept: ${a.assigned_to_department?.name || "?"}`;
