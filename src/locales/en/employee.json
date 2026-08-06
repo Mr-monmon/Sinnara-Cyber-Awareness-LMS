@@ -268,5 +268,19 @@
     "availablePlural": "{{count}} alerts available",
     "acknowledged": "Acknowledged",
     "viewAll": "View All Alerts"
+  },
+  "courseRating": {
+    "title": "How was this course?",
+    "editTitle": "Your rating",
+    "privacyNote": "Your feedback goes only to the AwareOne content team. Your company and your manager cannot see it.",
+    "starsLabel": "Rate this course from 1 to 5 stars",
+    "commentLabel": "Anything you would like to add? (optional)",
+    "commentPlaceholder": "What worked well, and what would you change?",
+    "submit": "Submit rating",
+    "update": "Update rating",
+    "later": "Not now",
+    "rateCourse": "Rate this course",
+    "editRating": "Edit your rating",
+    "yourRating": "You rated this {{stars}} of 5"
   }
 }

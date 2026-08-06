@@ -12,6 +12,7 @@ import ArticlePreview from "./ArticlePreview";
 import { useTheme } from "../../contexts/ThemeContext";
 import { VideoPlayer } from "../../components/VideoPlayer";
 import { resolveVideo, VideoContentData } from "../../lib/video";
+import { CourseRatingModal } from "../../components/CourseRatingModal";
 
 /* tokens injected via useTheme() inside the component */
 
@@ -174,6 +175,7 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore]         = useState(0);
+  const [showRating, setShowRating]       = useState(false);
   const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
   const isRtl = i18n.dir() === "rtl";
   const isArabic = currentLanguage.toLowerCase().startsWith("ar");
@@ -259,7 +261,13 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
     } else {
       alert(t("courseViewer.certificateReady", { ns: "employee" }));
     }
-    onBack();
+    /*
+     * Ask for the rating here rather than on the courses list, because this is
+     * the one moment the employee has just seen the whole course and has an
+     * opinion. The modal owns the exit: whether they rate it or dismiss it, its
+     * close handler is what returns them to the list.
+     */
+    setShowRating(true);
   };
 
   const handleSubmitQuiz = async () => {
@@ -594,6 +602,14 @@ export const CourseViewerPage: React.FC<CourseViewerProps> = ({
           )}
         </main>
       </div>
+
+      {showRating && (
+        <CourseRatingModal
+          courseId={courseId}
+          courseTitle={courseTitle}
+          onClose={() => { setShowRating(false); onBack(); }}
+        />
+      )}
     </div>
   );
 };

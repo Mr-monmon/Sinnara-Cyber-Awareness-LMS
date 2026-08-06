@@ -268,5 +268,19 @@
     "availablePlural": "يوجد {{count}} تنبيهات متاحة",
     "acknowledged": "تم الإقرار",
     "viewAll": "عرض كل التنبيهات"
+  },
+  "courseRating": {
+    "title": "ما رأيك في هذه الدورة؟",
+    "editTitle": "تقييمك",
+    "privacyNote": "يصل تقييمك إلى فريق محتوى AwareOne فقط. لا تستطيع شركتك ولا مديرك الاطلاع عليه.",
+    "starsLabel": "قيّم هذه الدورة من ١ إلى ٥ نجوم",
+    "commentLabel": "هل تودّ إضافة شيء؟ (اختياري)",
+    "commentPlaceholder": "ما الذي أفادك، وما الذي تقترح تغييره؟",
+    "submit": "إرسال التقييم",
+    "update": "تحديث التقييم",
+    "later": "ليس الآن",
+    "rateCourse": "قيّم هذه الدورة",
+    "editRating": "تعديل تقييمك",
+    "yourRating": "تقييمك {{stars}} من ٥"
   }
 }
