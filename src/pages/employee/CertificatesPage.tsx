@@ -264,6 +264,70 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
 </div>`, CERTIFICATE_SANITIZE_CONFIG);
 };
 
+const BACKGROUND_URL_PATTERN = /url\((['"]?)(.*?)\1\)/g;
+
+/**
+ * Load one image and report whether it can actually be painted.
+ *
+ * Resolves rather than rejects: "this background did not load" is an outcome
+ * the caller acts on, not an error, and one broken decoration must not abort a
+ * certificate.
+ */
+const imageIsPaintable = (url: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    const probe = new Image();
+    probe.crossOrigin = "anonymous";
+    probe.onload = () => resolve(probe.naturalWidth > 0 && probe.naturalHeight > 0);
+    probe.onerror = () => resolve(false);
+    probe.src = url;
+  });
+
+/**
+ * Remove `background-image` layers that cannot paint, before rasterising.
+ *
+ * Reported from production:
+ *
+ *     InvalidStateError: Failed to execute 'createPattern' on
+ *     'CanvasRenderingContext2D': The image argument is a canvas element with a
+ *     width or height of 0.
+ *
+ * That comes from one unguarded line in html2canvas 1.4.1. Its gradient
+ * branches both check their dimensions before calling `createPattern`
+ * (`if (width > 0 && height > 0)`, and `rx > 0 && ry > 0` for radial); the
+ * `url()` branch does not. It calls `createPattern(resizeImage(image, w, h))`,
+ * and `resizeImage` returns the source untouched when the requested size already
+ * matches it — so a background image that resolved to nothing hands
+ * `createPattern` a zero-sized surface and the whole render throws. One
+ * decorative background nobody would miss takes the certificate with it.
+ *
+ * Dropping those layers here is output-neutral by definition: an image that
+ * cannot load, or has no pixels, paints nothing whether or not it is in the
+ * style. What changes is that it can no longer throw.
+ *
+ * A certificate template is authored by an admin with three image URLs, any of
+ * which can be blank, stale, or pointing at a bucket that has since been made
+ * private — so this is the ordinary case, not an exotic one.
+ */
+const dropUnpaintableBackgrounds = async (surface: HTMLElement) => {
+  const elements = [surface, ...Array.from(surface.querySelectorAll<HTMLElement>("*"))];
+  await Promise.all(
+    elements.map(async (element) => {
+      const declared = window.getComputedStyle(element).backgroundImage;
+      if (!declared || declared === "none" || !declared.includes("url(")) return;
+
+      const urls = Array.from(declared.matchAll(BACKGROUND_URL_PATTERN)).map((m) => m[2]);
+      // `url()` and `url("")` are what an unfilled {{background_image_url}}
+      // placeholder leaves behind. They can never resolve, so do not probe them.
+      if (urls.some((url) => !url.trim())) {
+        element.style.backgroundImage = "none";
+        return;
+      }
+      const paintable = await Promise.all(urls.map(imageIsPaintable));
+      if (paintable.some((ok) => !ok)) element.style.backgroundImage = "none";
+    }),
+  );
+};
+
 const waitForRenderableContent = async (element: HTMLElement) => {
   const fontSet = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts;
   if (fontSet?.ready) await fontSet.ready;
@@ -275,6 +339,8 @@ const waitForRenderableContent = async (element: HTMLElement) => {
     });
   });
   await Promise.all(imagePromises);
+  // `<img>` only. CSS background images are never in the document as elements,
+  // which is why they are handled separately above rather than waited on here.
   await new Promise<void>((resolve) => { requestAnimationFrame(() => { requestAnimationFrame(() => resolve()); }); });
 };
 
@@ -354,61 +420,91 @@ export const CertificatesPage: React.FC = () => {
       signature_image_url: renderData.signatureImageUrl,
     };
 
-    /* Use custom template if available, otherwise use new generic dark template */
-    const templateHtml = cert.certificate_templates?.template_html
-      ? fillTemplateHtml(cert.certificate_templates.template_html, templateValues, cert.score !== null)
+    const usedCustomTemplate = Boolean(cert.certificate_templates?.template_html);
+    const templateHtml = usedCustomTemplate
+      ? fillTemplateHtml(cert.certificate_templates!.template_html, templateValues, cert.score !== null)
       : buildGenericCertificateHtml(renderData);
 
-    const renderRoot = document.createElement("div");
-    renderRoot.setAttribute("aria-hidden", "true");
-    Object.assign(renderRoot.style, {
-      position: "fixed", left: "-10000px", top: "0",
-      opacity: "0", pointerEvents: "none", zIndex: "-1", background: "#12140a",
-    });
-    const renderSurface = document.createElement("div");
-    renderSurface.dir = isRtl ? "rtl" : "ltr";
-    Object.assign(renderSurface.style, { display: "inline-block", background: "#12140a" });
-    renderSurface.innerHTML = templateHtml;
-    renderRoot.appendChild(renderSurface);
+    /*
+     * Rasterise one piece of markup and hand the learner the file.
+     *
+     * Extracted so it can be called twice: once with the company's template and,
+     * if that fails, once with the built-in one.
+     */
+    const renderAndSave = async (html: string) => {
+      const renderRoot = document.createElement("div");
+      renderRoot.setAttribute("aria-hidden", "true");
+      Object.assign(renderRoot.style, {
+        position: "fixed", left: "-10000px", top: "0",
+        opacity: "0", pointerEvents: "none", zIndex: "-1", background: "#12140a",
+      });
+      const renderSurface = document.createElement("div");
+      renderSurface.dir = isRtl ? "rtl" : "ltr";
+      Object.assign(renderSurface.style, { display: "inline-block", background: "#12140a" });
+      renderSurface.innerHTML = html;
+      renderRoot.appendChild(renderSurface);
+      try {
+        document.body.appendChild(renderRoot);
+        await waitForRenderableContent(renderSurface);
+        await dropUnpaintableBackgrounds(renderSurface);
+        const targetWidth  = renderSurface.scrollWidth  || DEFAULT_CERTIFICATE_WIDTH;
+        const targetHeight = renderSurface.scrollHeight || DEFAULT_CERTIFICATE_HEIGHT;
+        const canvas = await html2canvas(renderSurface, {
+          backgroundColor: "#12140a", height: targetHeight, logging: false,
+          scale: 2, useCORS: true, width: targetWidth,
+          windowHeight: targetHeight, windowWidth: targetWidth,
+        });
+        const pdf = new jsPDF({
+          orientation: targetWidth > targetHeight ? "landscape" : "portrait",
+          unit: "px", format: [targetWidth, targetHeight], hotfixes: ["px_scaling"],
+        });
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, targetWidth, targetHeight);
+        pdf.save(`Certificate_${cert.certificate_number}.pdf`);
+      } finally {
+        renderRoot.remove();
+      }
+    };
+
     setDownloadingId(cert.id);
     try {
-      document.body.appendChild(renderRoot);
-      await waitForRenderableContent(renderSurface);
-      const targetWidth  = renderSurface.scrollWidth  || DEFAULT_CERTIFICATE_WIDTH;
-      const targetHeight = renderSurface.scrollHeight || DEFAULT_CERTIFICATE_HEIGHT;
-      const canvas = await html2canvas(renderSurface, {
-        backgroundColor: "#12140a", height: targetHeight, logging: false,
-        scale: 2, useCORS: true, width: targetWidth,
-        windowHeight: targetHeight, windowWidth: targetWidth,
-      });
-      const pdf = new jsPDF({
-        orientation: targetWidth > targetHeight ? "landscape" : "portrait",
-        unit: "px", format: [targetWidth, targetHeight], hotfixes: ["px_scaling"],
-      });
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, targetWidth, targetHeight);
-      pdf.save(`Certificate_${cert.certificate_number}.pdf`);
+      await renderAndSave(templateHtml);
     } catch (err) {
-      /*
-       * Say what actually went wrong.
-       *
-       * The generic message was the only channel, and it hid the one fact
-       * needed to fix anything: a tainted canvas from a template image served
-       * without CORS, a malformed custom template, and a transient font failure
-       * all read identically to the learner and to whoever they report it to.
-       * The detail is appended rather than replacing the message, so the
-       * learner still gets a sentence they can act on.
-       */
       const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
       console.error("Error generating certificate PDF:", err);
       captureException(err, {
         scope: "CertificatesPage.handleDownload",
         certificateId: cert.id,
         certificateNumber: cert.certificate_number,
-        usedCustomTemplate: Boolean(cert.certificate_templates?.template_html),
+        usedCustomTemplate,
         templateId: cert.certificate_templates?.id ?? null,
       });
+
+      /*
+       * A broken company template must not cost the learner their certificate.
+       *
+       * They completed the training; the document is the proof they were
+       * promised, and whether an admin's custom artwork rasterises is not their
+       * problem. The built-in template is self-contained -- no external images,
+       * no author-supplied markup -- so it is the one thing guaranteed to render.
+       * The failure is still reported to Sentry above, so the broken template
+       * gets fixed rather than quietly papered over forever.
+       */
+      if (usedCustomTemplate) {
+        try {
+          await renderAndSave(buildGenericCertificateHtml(renderData));
+          setDownloadingId(null);
+          return;
+        } catch (fallbackErr) {
+          console.error("Generic certificate template also failed:", fallbackErr);
+          captureException(fallbackErr, {
+            scope: "CertificatesPage.handleDownload.genericFallback",
+            certificateId: cert.id,
+          });
+        }
+      }
+
       alert(`${t("certificates.downloadFailed", { ns: "employee" })}\n\n${detail.slice(0, 300)}`);
-    } finally { renderRoot.remove(); setDownloadingId(null); }
+    } finally { setDownloadingId(null); }
   };
 
   /* ── Loading ── */
