@@ -48,44 +48,51 @@ export async function loadMyRating(courseId: string, employeeId: string): Promis
   return { id: data.id, stars: data.stars, comment: data.comment, updatedAt: data.updated_at };
 }
 
+const SAVE_FAILURE_MESSAGES: Record<string, string> = {
+  not_signed_in: "Your session has expired. Please sign in again.",
+  invalid_stars: "Please choose between 1 and 5 stars.",
+  not_completed: "You can only rate a course after you have completed it.",
+};
+
 /**
  * Save or replace this employee's rating.
  *
- * An upsert on the (course, employee) unique key rather than a read-then-branch:
- * two tabs, or a double-tapped Submit, would otherwise race into a duplicate-key
- * error the user cannot act on.
+ * Goes through `save_course_rating` rather than writing the table. A PostgREST
+ * upsert compiles to `ON CONFLICT DO UPDATE SET <every column in the payload>`,
+ * and Postgres checks column privileges while planning — so the deliberately
+ * narrow `UPDATE (stars, comment)` grant refused the statement outright, on the
+ * very first insert, before any conflict could occur. It reported that as
+ * 42501, which this function used to read as "the course is not finished": a
+ * privilege failure shown to a learner as a workflow failure, pointing at the
+ * one explanation they could not check.
+ *
+ * The RPC returns a named reason, so the two can no longer be confused.
  */
 export async function saveRating(args: {
   courseId: string;
-  employeeId: string;
-  companyId: string | null;
   stars: number;
   comment: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const comment = args.comment.trim();
-  const { error } = await supabase.from("course_ratings").upsert(
-    {
-      course_id: args.courseId,
-      employee_id: args.employeeId,
-      company_id: args.companyId,
-      stars: args.stars,
-      comment: comment.length ? comment : null,
-    },
-    { onConflict: "course_id,employee_id" },
-  );
+  const { data, error } = await supabase.rpc("save_course_rating", {
+    p_course_id: args.courseId,
+    p_stars: args.stars,
+    p_comment: args.comment,
+  });
+
   if (error) {
-    /*
-     * The most likely refusal by far is the WITH CHECK on "have you finished
-     * this course", and Postgres reports that as a bare policy violation. Saying
-     * so is the difference between a user retrying usefully and one concluding
-     * the feature is broken.
-     */
-    const message = error.code === "42501" || /row-level security/i.test(error.message)
-      ? "You can only rate a course after you have completed it."
-      : error.message;
-    return { ok: false, error: message };
+    console.error("[ratings] save failed:", error.code, error.message);
+    return { ok: false, error: error.message };
   }
-  return { ok: true };
+
+  const result = data as { ok?: boolean; reason?: string } | null;
+  if (result?.ok) return { ok: true };
+
+  const reason = result?.reason ?? "unknown";
+  console.error("[ratings] save refused:", reason);
+  return {
+    ok: false,
+    error: SAVE_FAILURE_MESSAGES[reason] ?? `Your rating could not be saved (${reason}).`,
+  };
 }
 
 export async function loadRatingSummary(): Promise<Map<string, CourseRatingSummary>> {

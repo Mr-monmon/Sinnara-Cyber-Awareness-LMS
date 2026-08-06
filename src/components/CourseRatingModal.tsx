@@ -64,13 +64,9 @@ export const CourseRatingModal: React.FC<Props> = ({ courseId, courseTitle, onCl
     if (!user?.id || stars < 1) return;
     setSaving(true);
     setError(null);
-    const result = await saveRating({
-      courseId,
-      employeeId: user.id,
-      companyId: user.company_id ?? null,
-      stars,
-      comment,
-    });
+    // The author and their company are taken from the caller's JWT inside the
+    // RPC, not sent from here — a rating cannot be filed against someone else.
+    const result = await saveRating({ courseId, stars, comment });
     setSaving(false);
     if (!result.ok) { setError(result.error); return; }
     onClose();
