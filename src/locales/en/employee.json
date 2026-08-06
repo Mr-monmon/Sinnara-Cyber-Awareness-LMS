@@ -259,7 +259,8 @@
     "passed": "Passed",
     "failed": "Failed",
     "correctAnswers": "correct answers",
-    "calculatingScore": "Calculating your score…"
+    "calculatingScore": "Calculating your score…",
+    "integrityNotice": "This is an assessment of your own knowledge, not a test you are expected to pass at any cost. Please answer from what you know — without AI tools, search engines, notes, or help from a colleague. A score that reflects the truth is what tells your organisation where to strengthen its training; a score that does not, protects no one."
   },
   "widget": {
     "title": "Fraud Alerts",

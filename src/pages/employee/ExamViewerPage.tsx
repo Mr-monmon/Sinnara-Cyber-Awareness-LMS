@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ClipboardCheck,
   ChevronRight,
+  ShieldAlert,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabase";
@@ -557,6 +558,30 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
                   {text}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/*
+            Said before they start, not buried in a policy nobody opens.
+            The point of this assessment is to find out what the employee
+            actually knows, so the one thing that makes it worthless is looking
+            the answers up. Asking plainly is the honest control here; the copy
+            blocking below it only removes the reflex.
+          */}
+          <div style={{ padding: "0 36px 20px" }}>
+            <div
+              dir={isRtl ? "rtl" : "ltr"}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 10,
+                padding: "14px 16px", borderRadius: 10,
+                background: "rgba(251,191,36,0.07)",
+                border: "1px solid rgba(251,191,36,0.22)",
+              }}
+            >
+              <ShieldAlert size={16} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.75, color: T.textBody }}>
+                {t("examViewer.integrityNotice", { ns: "employee" })}
+              </p>
             </div>
           </div>
 
