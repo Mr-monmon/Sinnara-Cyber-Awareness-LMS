@@ -837,7 +837,29 @@ export const ExamViewerPage: React.FC<ExamViewerProps> = ({
   const isLast = currentQuestionIndex === questions.length - 1;
 
   return (
-    <div style={{ fontFamily: "Inter, sans-serif" }}>
+    /*
+     * Copying exam text is blocked here.
+     *
+     * Be clear about what this is: a speed bump, not a control. It stops the
+     * reflex of select-all -> paste into a chatbot, which is the common case. It
+     * does not stop a phone camera, a screenshot, devtools, or the accessibility
+     * tree, and nothing running in the learner's own browser ever could. The
+     * defences that actually matter are elsewhere and already in place: correct
+     * answers are stripped server-side by get_exam_questions and never reach the
+     * browser, and scoring happens in an edge function, so a copied question
+     * still cannot be turned into a forged pass.
+     *
+     * Selection is disabled rather than only the copy event, because a learner
+     * who can highlight the text but gets nothing on Ctrl+C reads that as the
+     * page being broken.
+     */
+    <div
+      style={{ fontFamily: "Inter, sans-serif", userSelect: "none", WebkitUserSelect: "none" }}
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* ── Sticky top bar ── */}
       <div
         style={{
