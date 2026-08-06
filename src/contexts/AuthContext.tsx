@@ -89,7 +89,13 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   verifyMfa: (code: string) => Promise<{ ok: boolean; error?: string }>;
-  changePassword: (newPassword: string) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * `needsMfaChallenge` means the write was refused for assurance level, not
+   * for anything the user typed: GoTrue requires an aal2 session to change a
+   * password once the account has a verified factor. The caller must elevate
+   * the session with a TOTP code and call again.
+   */
+  changePassword: (newPassword: string) => Promise<{ ok: boolean; error?: string; needsMfaChallenge?: boolean }>;
   enrollTotp: () => Promise<{ qrCode: string; secret: string; factorId: string } | null>;
   verifyTotpEnrollment: (factorId: string, code: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -213,17 +219,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return "invalid_credentials";
     }
 
+    /*
+     * The profile is read before the assurance-level decision, not after.
+     *
+     * It has to be, because whether this session may skip the 2FA challenge
+     * depends on whether the account owes a password change — see below.
+     */
+    const profile = data.user ? await fetchProfile(data.user.id) : null;
+
     // Check MFA assurance level
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     const needsChallenge =
       aalData && aalData.nextLevel === "aal2" && aalData.currentLevel === "aal1";
 
     if (needsChallenge) {
-      // A browser that passed a challenge within the trust window (15 days) is
-      // let through without re-entering a code. The session stays at aal1 — no
-      // policy in this schema requires aal2, and the check is server-side and
-      // keyed on auth.uid(), so a forged device id cannot buy a skip.
-      const trusted = await isDeviceTrusted();
+      /*
+       * A browser that passed a challenge within the trust window (15 days) is
+       * normally let through without re-entering a code. The session stays at
+       * aal1 — no policy in this schema requires aal2, and the check is
+       * server-side and keyed on auth.uid(), so a forged device id cannot buy
+       * a skip.
+       *
+       * Except when a password change is due. GoTrue refuses
+       * `updateUser({ password })` from an aal1 session once the account has a
+       * verified factor:
+       *
+       *     AAL2 session is required to update email or password when MFA is
+       *     enabled
+       *
+       * So an employee whose password was reset by an admin, signing in on a
+       * browser they had already trusted, was handed a mandatory
+       * change-password screen that could not succeed and could not be
+       * dismissed — locked out of the platform by two features that are each
+       * correct on their own. Skipping the challenge is a convenience; it is
+       * not worth a dead end, so the convenience yields.
+       */
+      const trusted = (await isDeviceTrusted()) && !profile?.requires_password_change;
       if (!trusted) {
         // Get the factor ID
         const { data: factorsData } = await supabase.auth.mfa.listFactors();
@@ -233,8 +264,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         return "mfa_required";
       }
     }
-
-    const profile = data.user ? await fetchProfile(data.user.id) : null;
 
     const currentUrl = new URL(window.location.href);
     const hostMode = getHostAccessMode(currentUrl.hostname);
@@ -320,11 +349,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const changePassword = async (newPassword: string): Promise<{ ok: boolean; error?: string }> => {
+  const changePassword = async (newPassword: string): Promise<{ ok: boolean; error?: string; needsMfaChallenge?: boolean }> => {
     passwordChangeInFlight.current = true;
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
-      if (updateError) return { ok: false, error: updateError.message };
+      if (updateError) {
+        /*
+         * Distinguish "the session is not strong enough" from "the password is
+         * no good".
+         *
+         * GoTrue refuses a password change from an aal1 session once the
+         * account has a verified factor. Reaching this screen at aal1 is
+         * possible whenever the session was restored rather than freshly
+         * challenged — a reload, a second tab — and the raw message
+         * ("AAL2 session is required to update email or password when MFA is
+         * enabled") is meaningless to an employee staring at a screen they
+         * cannot dismiss. The caller elevates the session and retries.
+         */
+        const code = (updateError as { code?: string }).code;
+        const needsMfaChallenge =
+          code === "insufficient_aal" || /aal2/i.test(updateError.message ?? "");
+        return {
+          ok: false,
+          needsMfaChallenge,
+          error: needsMfaChallenge
+            ? "Please confirm your two-factor code to change your password."
+            : updateError.message,
+        };
+      }
 
       if (user?.id) {
         /*

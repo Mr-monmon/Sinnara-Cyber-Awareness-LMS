@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Lock, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { TwoFactorSetupModal } from "./TwoFactorSetupModal";
+import { TwoFactorChallengeModal } from "./TwoFactorChallengeModal";
 
 const T = {
   bg: "#12140a",
@@ -72,29 +73,68 @@ export const ForcePasswordChangeModal: React.FC<Props> = ({ onComplete, mfaEnfor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"change" | "mfa_setup" | "optional_2fa">("change");
+  /*
+   * Set when the password write was refused for assurance level rather than
+   * content. The challenge below elevates the session and the change is retried
+   * with the password already typed, so the employee enters a TOTP code once
+   * and never re-types anything.
+   */
+  const [challengeForPassword, setChallengeForPassword] = useState<string | null>(null);
 
   const hasMin8 = newPassword.length >= 8;
   const hasNumber = /\d/.test(newPassword);
   const hasUppercase = /[A-Z]/.test(newPassword);
   const isValid = hasMin8 && hasNumber && hasUppercase && newPassword === confirmPassword;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isValid) return;
+  const applyChange = async (password: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    const result = await changePassword(newPassword);
+    const result = await changePassword(password);
     setLoading(false);
+
     if (!result.ok) {
+      if (result.needsMfaChallenge) {
+        /*
+         * Not a failure the employee can fix by typing something different.
+         *
+         * GoTrue will not change a password from an aal1 session once the
+         * account has a verified factor, and this screen cannot be dismissed —
+         * so without this branch an employee whose password was reset by an
+         * admin was simply stuck, staring at "AAL2 session is required to
+         * update email or password when MFA is enabled". Ask for the code they
+         * already have, then finish the job they started.
+         */
+        setChallengeForPassword(password);
+        return;
+      }
       setError(result.error ?? "Failed to change password");
       return;
     }
+
+    setChallengeForPassword(null);
     if (mfaEnforced) {
       setPhase("mfa_setup");
     } else {
       setPhase("optional_2fa");
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isValid) return;
+    await applyChange(newPassword);
+  };
+
+  if (challengeForPassword !== null) {
+    return (
+      <TwoFactorChallengeModal
+        onSuccess={() => {
+          // The session is aal2 now; retry the write the user already asked for.
+          void applyChange(challengeForPassword);
+        }}
+      />
+    );
+  }
 
   if (phase === "mfa_setup") {
     return <TwoFactorSetupModal onComplete={onComplete} />;
