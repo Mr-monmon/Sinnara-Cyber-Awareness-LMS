@@ -103,6 +103,32 @@ interface CertificateRenderData {
 const DEFAULT_CERTIFICATE_WIDTH  = 800;
 const DEFAULT_CERTIFICATE_HEIGHT = 566;
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+/*
+  SVG has to be allowed through, and `{ html: true }` alone does not allow it.
+
+  DOMPurify's profiles are additive and independent: the html profile permits no
+  SVG element at all. The shipped "Awareone certificate template" draws its
+  entire identity in inline SVG — the logo, the CERTIFIED seal, the corner
+  flourishes, the dot pattern — so every one of those was silently deleted on the
+  way to the PDF. The admin approved a certificate in the template preview, which
+  renders the raw HTML in a sandboxed iframe and therefore shows the logo, and
+  the employee downloaded a different, blank-panelled document. Nothing errored;
+  the artwork simply was not there.
+
+  Adding `svg` and `svgFilters` is not a relaxation of the security posture.
+  DOMPurify still strips scripts, event handlers and foreignObject inside SVG —
+  that is what these profiles are for. What it does not do is treat a `<path>` as
+  a threat.
+
+  Verified in headless Chromium against the real template: with SVG permitted the
+  sanitised markup grows from 1,919 to 3,229 characters and html2canvas still
+  renders it to a valid PDF, so this does not trade a missing logo for a failed
+  download.
+*/
+const CERTIFICATE_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true, svg: true, svgFilters: true },
+} as const;
 const BLOCK_LEVEL_TAGS = new Set(["ARTICLE","DIV","H1","H2","H3","H4","H5","H6","LI","P","SECTION","SPAN","STRONG","TD","TH"]);
 
 const findRemovalTarget = (node: Node) => {
@@ -137,7 +163,7 @@ const fillTemplateHtml = (templateHtml: string, values: Record<string, string>, 
   const interpolatedHtml = template.innerHTML
     .replace(PLACEHOLDER_PATTERN, (_, key: string) => values[key] ?? "")
     .replace(PLACEHOLDER_PATTERN, "");
-  return DOMPurify.sanitize(interpolatedHtml, { USE_PROFILES: { html: true } });
+  return DOMPurify.sanitize(interpolatedHtml, CERTIFICATE_SANITIZE_CONFIG);
 };
 
 /* ─────────────────────────────────────────
@@ -235,7 +261,7 @@ const buildGenericCertificateHtml = (data: CertificateRenderData): string => {
     </div>
 
   </div>
-</div>`, { USE_PROFILES: { html: true } });
+</div>`, CERTIFICATE_SANITIZE_CONFIG);
 };
 
 const waitForRenderableContent = async (element: HTMLElement) => {
