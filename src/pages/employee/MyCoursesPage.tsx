@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, PlayCircle, CheckCircle, Clock, Award, ChevronRight } from "lucide-react";
+import { BookOpen, PlayCircle, CheckCircle, Clock, Award, ChevronRight, Star } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatLocalizedDate, formatLocalizedNumber } from "../../i18n/utils";
@@ -7,6 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { Course } from "../../lib/types";
 import { CourseViewerPage } from "./CourseViewerPage";
 import { useTheme } from "../../contexts/ThemeContext";
+import { CourseRatingModal } from "../../components/CourseRatingModal";
 
 type StatusKey = 'COMPLETED' | 'IN_PROGRESS' | 'ASSIGNED';
 
@@ -112,6 +113,7 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
   const [courseProgress, setCourseProgress] = useState<Record<string, CourseProgress>>({});
   const [loading, setLoading]               = useState(true);
   const [viewingCourse, setViewingCourse]   = useState<Course | null>(null);
+  const [ratingCourse, setRatingCourse]     = useState<Course | null>(null);
 
   const currentLanguage = i18n.resolvedLanguage;
   const isArabic = currentLanguage?.toLowerCase().startsWith("ar") ?? false;
@@ -462,11 +464,42 @@ export const MyCoursesPage: React.FC<Props> = ({ navigateToCertificates }) => {
                       : <><BookOpen size={14} />{t("courses.card.startCourse", { ns: "employee" })}<ChevronRight size={13} /></>
                     }
                   </button>
+
+                  {/*
+                    A second, quieter action rather than a replacement for the
+                    certificate button: the rating prompt on finishing is
+                    dismissible, so this is the only way back to it — and someone
+                    whose opinion changed after applying the material should be
+                    able to say so.
+                  */}
+                  {isCompleted && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setRatingCourse(course); }}
+                      style={{
+                        marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 9,
+                        background: 'transparent', border: `1px solid ${T.borderFaint}`,
+                        color: T.textMuted, fontSize: 12, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <Star size={12} />
+                      {t("courseRating.rateCourse", { ns: "employee" })}
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {ratingCourse && (
+        <CourseRatingModal
+          courseId={ratingCourse.id}
+          courseTitle={getCourseDisplayText(ratingCourse).title}
+          onClose={() => setRatingCourse(null)}
+        />
       )}
     </div>
   );

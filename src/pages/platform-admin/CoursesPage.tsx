@@ -2,11 +2,13 @@ import React, { useState, useEffect } from "react";
 import {
   Plus, Edit2, Trash2, BookOpen, Settings,
   Download, Clock, X, Save, Loader2, FileText,
-  Video, AlignLeft, Award,
+  Video, AlignLeft, Award, Star,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { CertificateTemplate, Course, EmployeeCourse } from "../../lib/types";
 import { CourseContentManager } from "./CourseContentManager";
+import { CourseRatingsModal } from "../../components/platform-admin/CourseRatingsModal";
+import { loadRatingSummary, type CourseRatingSummary } from "../../lib/courseRatings";
 
 /* ─────────────────────────────────────────
    TOKENS
@@ -181,8 +183,13 @@ export const CoursesPage: React.FC = () => {
   const [certTemplates, setCertTemplates]   = useState<CertificateTemplate[]>([]);
   const [form, setForm]                     = useState({ ...defaultForm });
   const [saving, setSaving]                 = useState(false);
+  const [ratingSummary, setRatingSummary]   = useState<Map<string, CourseRatingSummary>>(new Map());
+  const [ratingsFor, setRatingsFor]         = useState<Course | null>(null);
 
-  useEffect(() => { loadCourses(); loadEmployeeCourses(); loadCertTemplates(); }, []);
+  useEffect(() => {
+    loadCourses(); loadEmployeeCourses(); loadCertTemplates();
+    void loadRatingSummary().then(setRatingSummary);
+  }, []);
 
   const loadCourses = async () => {
     const { data } = await supabase.from("courses").select("*, certificate_templates(id,name)").order("order_index");
@@ -302,6 +309,7 @@ export const CoursesPage: React.FC = () => {
             const hasCert = !!course.certificate_templates;
             const empCount = employeeCourses.filter(ec => ec.course_id === course.id).length;
             const completedCount = employeeCourses.filter(ec => ec.course_id === course.id && ec.completed_at).length;
+            const rating = ratingSummary.get(course.id);
 
             return (
               <div key={course.id} className={`aw-csp-card aw-fade-up`} style={{ animationDelay: `${idx * 0.04}s` }}>
@@ -349,6 +357,26 @@ export const CoursesPage: React.FC = () => {
                         <Award size={9} /> Certificate
                       </span>
                     )}
+                    {/*
+                      Only ever rendered when someone has actually rated the
+                      course. A permanent "0.0 ★ (0)" chip on every new course
+                      reads as a bad score rather than as no data.
+                    */}
+                    {rating && rating.count > 0 && (
+                      <button
+                        onClick={() => setRatingsFor(course)}
+                        title="See employee ratings and comments"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px',
+                          borderRadius: 9999, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                          background: T.goldBg, border: '1px solid rgba(251,191,36,0.22)',
+                          color: T.gold, fontFamily: 'inherit',
+                        }}
+                      >
+                        <Star size={9} fill={T.gold} />
+                        {rating.average.toFixed(1)} ({rating.count})
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -370,6 +398,15 @@ export const CoursesPage: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {ratingsFor && (
+        <CourseRatingsModal
+          courseId={ratingsFor.id}
+          courseTitle={ratingsFor.title}
+          summary={ratingSummary.get(ratingsFor.id)}
+          onClose={() => setRatingsFor(null)}
+        />
       )}
 
       {/* ═══════════ MODAL ═══════════ */}
