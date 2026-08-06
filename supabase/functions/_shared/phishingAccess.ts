@@ -189,3 +189,87 @@ export async function checkLimitsFailClosed(
 
   return { ok: true };
 }
+
+/**
+ * Result of resolving a campaign's serving domain.
+ *
+ * `baseUrl` is what every tracking/landing link is built from — the domain's
+ * `tracking_base_url` when one is chosen and routed, otherwise the caller's
+ * SUPABASE_URL fallback. `verified` reports whether the chosen domain has passed
+ * DNS verification; the launcher refuses to send from an unverified one so a
+ * campaign is not discovered to be broken forty bounces later.
+ */
+export interface DomainResolution {
+  ok: boolean;
+  baseUrl: string;
+  verified: boolean;
+  /** Present when ok === false: a message safe to show the operator. */
+  error?: string;
+}
+
+/**
+ * May THIS company serve links from THIS phishing domain, and is it usable?
+ *
+ * Mirrors assertSmtpProfileAccessible / assertLandingPageAccessible exactly:
+ *   - null domain  → allowed, falls back to SUPABASE_URL (nothing changes).
+ *   - company-owned → allowed.
+ *   - platform GLOBAL → allowed for everyone.
+ *   - platform SHARED → allowed only with an explicit grant row.
+ * Fails CLOSED: any query error resolves to "not accessible".
+ *
+ * When accessible, returns the base URL to build links from and whether the
+ * domain is verified and active. An inactive or unverified domain is *accessible*
+ * but the launcher decides whether to allow the send — kept separate so the UI
+ * can explain "not verified yet" distinctly from "not yours".
+ */
+export async function resolvePhishingDomain(
+  db: SupabaseClient,
+  domainId: string | null,
+  companyId: string,
+  fallbackBaseUrl: string,
+): Promise<DomainResolution> {
+  const fallback = fallbackBaseUrl.replace(/\/+$/, "");
+  if (!domainId) return { ok: true, baseUrl: fallback, verified: true };
+
+  const { data, error } = await db
+    .from("phishing_domains")
+    .select("id, company_id, is_platform_domain, visibility, tracking_base_url, is_verified, is_active")
+    .eq("id", domainId)
+    .single();
+
+  if (error || !data) return { ok: false, baseUrl: fallback, verified: false, error: "Selected phishing domain was not found." };
+
+  // Ownership / visibility — identical logic to the other resource helpers.
+  let accessible = false;
+  if (data.company_id === companyId) {
+    accessible = true;
+  } else if (data.is_platform_domain === true) {
+    if (data.visibility === "GLOBAL") {
+      accessible = true;
+    } else if (data.visibility === "SHARED") {
+      const { data: grant, error: grantErr } = await db
+        .from("phishing_domain_company_access")
+        .select("id")
+        .eq("phishing_domain_id", domainId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      accessible = !grantErr && !!grant;
+    }
+  }
+
+  if (!accessible) {
+    return { ok: false, baseUrl: fallback, verified: false, error: "Selected phishing domain is not available to your company." };
+  }
+
+  if (data.is_active === false) {
+    return { ok: false, baseUrl: fallback, verified: false, error: "Selected phishing domain is disabled." };
+  }
+
+  // A routed base is required to actually serve from the custom domain; without
+  // one, the domain exists but has no Worker route, so fall back rather than
+  // build links to a host that answers nothing.
+  const base = typeof data.tracking_base_url === "string" ? data.tracking_base_url.trim().replace(/\/+$/, "") : "";
+  const baseUrl = base.length > 0 ? base : fallback;
+
+  return { ok: true, baseUrl, verified: data.is_verified === true };
+}

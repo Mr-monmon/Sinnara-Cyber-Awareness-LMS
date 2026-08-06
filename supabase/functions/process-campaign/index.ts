@@ -493,7 +493,9 @@ Deno.serve(async (req) => {
         *,
         phishing_campaigns(
           emails_per_minute, business_hours_only, business_hours_start,
-          business_hours_end, timezone, status, company_id
+          business_hours_end, timezone, status, company_id,
+          phishing_domain_id,
+          phishing_domains(tracking_base_url)
         ),
         phishing_campaign_targets(
           employee_id, first_name, last_name, position, department,
@@ -618,9 +620,25 @@ Deno.serve(async (req) => {
 
       if (!firstName) firstName = job.recipient_email.split("@")[0];
 
-      const trackingUrl    = `${SUPABASE_URL}/functions/v1/phishing-track?t=click&c=${job.campaign_id}&r=${job.recipient_id}`;
-      const unsubscribeUrl = `${SUPABASE_URL}/functions/v1/phishing-track?t=report&c=${job.campaign_id}&r=${job.recipient_id}`;
-      const pixelUrlEarly  = `${SUPABASE_URL}/functions/v1/phishing-track?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
+      /*
+       * Serve links from the campaign's chosen domain, not SUPABASE_URL.
+       *
+       * process-campaign re-resolves variables and re-injects the pixel and
+       * click links on every send, so if this used SUPABASE_URL it would undo
+       * the domain the launcher chose and put supabase.co back in the email. The
+       * base comes from the campaign's joined phishing_domains.tracking_base_url,
+       * falling back to SUPABASE_URL when no domain is set or it has no routed
+       * base.
+       */
+      const domainBase = (() => {
+        const raw = (campaign?.phishing_domains as { tracking_base_url?: string } | null)?.tracking_base_url;
+        const trimmed = typeof raw === "string" ? raw.trim().replace(/\/+$/, "") : "";
+        return trimmed.length > 0 ? trimmed : SUPABASE_URL;
+      })();
+
+      const trackingUrl    = `${domainBase}/functions/v1/phishing-track?t=click&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const unsubscribeUrl = `${domainBase}/functions/v1/phishing-track?t=report&c=${job.campaign_id}&r=${job.recipient_id}`;
+      const pixelUrlEarly  = `${domainBase}/functions/v1/phishing-track?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
       const fullName       = `${firstName} ${lastName}`.trim();
 
       // Variables support both snake_case ({{first_name}}) and GoPhish dotted
@@ -680,18 +698,23 @@ Deno.serve(async (req) => {
       // target with the click URL. Links that already point at our own tracking
       // endpoint (an existing click/report/landing link) and non-navigational
       // schemes (mailto:/tel:/sms:/#) are left untouched.
-      const ourOrigin = (() => { try { return new URL(SUPABASE_URL).origin; } catch { return ""; } })();
+      // "Our own" now means either the domain base or SUPABASE_URL — a link
+      // already pointing at the custom domain's phishing-track must not be
+      // rewritten (it is already a tracking link), just like a supabase.co one.
+      const ownOrigins = [domainBase, SUPABASE_URL]
+        .map((b) => { try { return new URL(b).origin; } catch { return ""; } })
+        .filter(Boolean);
       const rewriteAnchors = (html: string) =>
         html.replace(/(<a\b[^>]*?\bhref=)(["'])(.*?)\2/gi, (full, pre, q, url) => {
           const trimmed = String(url).trim();
           if (/^(mailto:|tel:|sms:|#|\{\{)/i.test(trimmed)) return full;       // non-navigational / unresolved
-          if (ourOrigin && trimmed.startsWith(ourOrigin)) return full;          // already a tracking link
+          if (ownOrigins.some((o) => trimmed.startsWith(o))) return full;       // already a tracking link
           return `${pre}${q}${trackingUrl}${q}`;
         });
       const linkedHtml = rewriteAnchors(resolvedHtml);
 
       // Inject open-tracking pixel (idempotent: only if not already present)
-      const trackBase   = `${SUPABASE_URL}/functions/v1/phishing-track`;
+      const trackBase   = `${domainBase}/functions/v1/phishing-track`;
       const pixelUrl    = `${trackBase}?t=open&c=${job.campaign_id}&r=${job.recipient_id}`;
       const trackPixel  = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`;
       const finalHtml   = linkedHtml.includes("phishing-track?t=open")

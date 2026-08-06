@@ -108,18 +108,28 @@ async function resolveRedirect(
 ): Promise<string> {
   let landingPageId: string | null = null;
   let storedRedirect: string | null = null;
+  let domainBase = SUPABASE_URL;
   if (campaignId) {
     const { data } = await supabase
       .from("phishing_campaigns")
-      .select("landing_page_id, redirect_url")
+      .select("landing_page_id, redirect_url, phishing_domains(tracking_base_url)")
       .eq("id", campaignId)
       .maybeSingle();
     landingPageId = (data?.landing_page_id as string) ?? null;
     storedRedirect = (data?.redirect_url as string) ?? null;
+    const raw = (data?.phishing_domains as { tracking_base_url?: string } | null)?.tracking_base_url;
+    const trimmed = typeof raw === "string" ? raw.trim().replace(/\/+$/, "") : "";
+    if (trimmed) domainBase = trimmed;
   }
 
-  const ourOrigin = (() => { try { return new URL(SUPABASE_URL).origin; } catch { return ""; } })();
-  const allow = [ourOrigin];
+  // Both the Supabase origin and the campaign's custom-domain origin are "ours":
+  // the click link's `url=` param points at serve-landing-page on the custom
+  // domain, and it must be honoured (step 1) rather than rejected and rebuilt on
+  // supabase.co (step 2), which would bounce the recipient off the disguise.
+  const ownOrigins = [SUPABASE_URL, domainBase]
+    .map((b) => { try { return new URL(b).origin; } catch { return ""; } })
+    .filter(Boolean);
+  const allow = [...ownOrigins];
   if (storedRedirect) {
     const su = parseHttpUrl(storedRedirect);
     if (su) allow.push(su.origin);
@@ -129,9 +139,10 @@ async function resolveRedirect(
   //    serve-landing-page link, or the campaign's configured redirect origin).
   if (queryUrl && isAllowedRedirect(queryUrl, allow)) return queryUrl;
 
-  // 2. Otherwise resolve from the record: landing page → serve-landing-page.
+  // 2. Otherwise resolve from the record: landing page → serve-landing-page on
+  //    the campaign's own domain, so a fallback keeps the recipient on it.
   if (landingPageId) {
-    return `${SUPABASE_URL}/functions/v1/serve-landing-page?lp=${landingPageId}&c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recipientId)}`;
+    return `${domainBase}/functions/v1/serve-landing-page?lp=${landingPageId}&c=${encodeURIComponent(campaignId)}&r=${encodeURIComponent(recipientId)}`;
   }
 
   // 3. Stored campaign redirect, if it is a safe public http(s) URL.

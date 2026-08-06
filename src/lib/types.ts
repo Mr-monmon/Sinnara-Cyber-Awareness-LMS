@@ -98,6 +98,15 @@ export interface PhishingDomain {
   domain_name: string;
   is_verified: boolean;
   is_platform_domain: boolean;
+  /** GLOBAL = every company; SHARED = granted companies only; COMPANY = owner only. */
+  visibility: "COMPANY" | "GLOBAL" | "SHARED";
+  is_active: boolean;
+  /**
+   * Origin a Cloudflare Worker route forwards to the Supabase functions
+   * (e.g. https://secure-verify.example). Campaign links are built from this;
+   * null falls back to the Supabase URL, i.e. the domain is not yet routed.
+   */
+  tracking_base_url: string | null;
   dns_record: string | null;
   verification_token: string | null;
   verified_at: string | null;

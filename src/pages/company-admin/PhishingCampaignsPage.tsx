@@ -77,6 +77,7 @@ interface Group { id: string; name: string; member_count?: number; }
 interface SmtpProfile { id: string; name: string; from_address: string; from_name: string; }
 interface EmailTemplate { id: string; name: string; subject: string; html_content: string; }
 interface LandingPage { id: string; name: string; html_content?: string; }
+interface PhishDomainOption { id: string; domain_name: string; is_verified: boolean; tracking_base_url: string | null; }
 interface Scenario { id: string; name: string; description?: string; category: string; difficulty: string; email_subject: string; email_html: string; landing_page_html?: string; tags?: string[]; }
 interface PhishingAlert { id: string; title: string; message: string; priority: string; alert_type: string; is_read: boolean; created_at: string; }
 interface PhishingEvent { id: string; event_type: string; email?: string; ip_address?: string; browser?: string; os?: string; created_at: string; metadata?: Record<string, unknown>; }
@@ -168,6 +169,7 @@ export const PhishingCampaignsPage: React.FC = () => {
   const [smtpProfiles, setSmtpProfiles] = useState<SmtpProfile[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [landingPages, setLandingPages] = useState<LandingPage[]>([]);
+  const [phishDomains, setPhishDomains] = useState<PhishDomainOption[]>([]);
   const [limits, setLimits] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
   const [testEmailModal, setTestEmailModal] = useState(false);
@@ -183,7 +185,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
     launchType: 'immediate' as 'immediate' | 'scheduled', scheduledAt: '',
     emailTemplateId: '', emailSubject: '', emailHtml: '',
-    landingPageId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
+    landingPageId: '', phishingDomainId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
   });
   const [showPreview, setShowPreview] = useState(false);
 
@@ -202,7 +204,7 @@ export const PhishingCampaignsPage: React.FC = () => {
 
   const loadWizardData = async () => {
     if (!companyId) return;
-    const [scRes, grRes, smRes, etRes, lpRes, limRes] = await Promise.all([
+    const [scRes, grRes, smRes, etRes, lpRes, limRes, pdRes] = await Promise.all([
       supabase.from('phishing_scenarios').select('*').eq('is_active', true).order('sort_order'),
       supabase.from('phishing_groups').select('id, name, member_count').eq('company_id', companyId),
       // Intentionally no company_id filter: company admins can use platform-level SMTP
@@ -214,6 +216,11 @@ export const PhishingCampaignsPage: React.FC = () => {
       // pages are visible (GLOBAL, or explicitly shared via landing_page_company_access).
       supabase.from('phishing_company_landing_pages').select('id, name, html_content, is_platform_page').or(`company_id.eq.${companyId},is_platform_page.eq.true`),
       supabase.from('company_phishing_limits').select('*').eq('company_id', companyId).maybeSingle(),
+      // Domains the campaign links can be served from: the company's own plus
+      // platform domains shared with it. RLS restricts which platform domains are
+      // visible (GLOBAL, or granted via phishing_domain_company_access). Only
+      // routed domains (tracking_base_url set) actually change the link host.
+      supabase.from('phishing_domains').select('id, domain_name, is_verified, tracking_base_url').or(`company_id.eq.${companyId},is_platform_domain.eq.true`).order('domain_name'),
     ]);
     setScenarios(scRes.data || []);
     setGroups(grRes.data || []);
@@ -221,6 +228,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     setEmailTemplates(etRes.data || []);
     setLandingPages(lpRes.data || []);
     setLimits(limRes.data);
+    setPhishDomains((pdRes.data as PhishDomainOption[] | null) || []);
   };
 
   const openWizard = () => {
@@ -231,7 +239,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
       launchType: 'immediate', scheduledAt: '',
       emailTemplateId: '', emailSubject: '', emailHtml: '',
-      landingPageId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
+      landingPageId: '', phishingDomainId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
     });
     loadWizardData();
     setView('wizard');
@@ -322,6 +330,7 @@ export const PhishingCampaignsPage: React.FC = () => {
           from_address:             form.fromAddress || '',
           from_name:                form.fromName    || '',
           landing_page_id:          form.landingPageId || null,
+          phishing_domain_id:       form.phishingDomainId || null,
           redirect_url:             form.redirectUrl || 'https://www.google.com',
           emails_per_minute:        form.emailsPerMinute,
           random_delay:             form.randomDelay,
@@ -712,12 +721,37 @@ export const PhishingCampaignsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
                 <div>
                   <Label>SMTP Profile</Label>
                   <select className="aw-pc-select" value={form.smtpProfileId} onChange={e => applySmtp(e.target.value)}>
                     <option value="">Platform Default</option>
                     {smtpProfiles.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  {/*
+                    The domain the click link, tracking pixel and landing page are
+                    served from. "Platform default" keeps the current behaviour
+                    (links on the Supabase URL). A verified, routed domain puts the
+                    links on a host the recipient recognises — the whole point of a
+                    convincing simulation. Unverified domains are shown disabled so
+                    the operator knows why they cannot be picked, rather than
+                    finding out at launch.
+                  */}
+                  <Label>Link Domain</Label>
+                  <select
+                    className="aw-pc-select"
+                    value={form.phishingDomainId}
+                    onChange={e => setForm(f => ({ ...f, phishingDomainId: e.target.value }))}
+                  >
+                    <option value="">Platform default</option>
+                    {phishDomains.map(d => (
+                      <option key={d.id} value={d.id} disabled={!d.is_verified || !d.tracking_base_url}>
+                        {d.domain_name}
+                        {!d.is_verified ? ' — not verified' : !d.tracking_base_url ? ' — not routed' : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>

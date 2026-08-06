@@ -434,7 +434,10 @@ const RequestPreview = ({
       if (!saved) return;
       const { data, error } = await supabase.functions.invoke(
         "create-campaign-from-request",
-        { body: { request_id: selectedRequest.id } }
+        // The picked domain (a verified one from the list above) is passed
+        // through so the campaign's links are served from it. The edge function
+        // prefers this over whatever the request was stored with.
+        { body: { request_id: selectedRequest.id, phishing_domain_id: setup.domain_id || null } }
       );
       if (error) throw error;
       if (data && !data.success) throw new Error(data.error ?? "Conversion failed");
