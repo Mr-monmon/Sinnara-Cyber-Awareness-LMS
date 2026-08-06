@@ -352,7 +352,23 @@ Deno.serve(async (req) => {
   // ── Build queue entries (variable resolution per recipient) ──
   const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(emails_per_minute ?? 10), 1);
-  const baseTime         = campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : Date.now();
+  /*
+   * Pace forward from now, never from a past instant.
+   *
+   * Send times are `baseTime + i * rateMs`. If baseTime is in the past — a
+   * schedule set to a time already gone, or a scheduled campaign whose
+   * SCHEDULED→RUNNING flip ran late — then every one of those instants is
+   * already due, the whole queue becomes eligible at once, and the per-minute
+   * cron drains it in a single 200-row batch. Forty messages leaving in
+   * seconds from a fresh sending domain is precisely the pattern that trips a
+   * provider's rate and reputation checks, which is the opposite of what
+   * emails_per_minute exists to prevent. Flooring to now keeps the spacing
+   * intact regardless of when the queue is actually built.
+   */
+  const baseTime         = Math.max(
+    campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : 0,
+    Date.now(),
+  );
   const finalRedirectUrl = safeRedirectUrl;
   // Leave these BLANK when the operator did not set them. process-campaign
   // resolves `params.from_address || profile.from_address`, so an empty value

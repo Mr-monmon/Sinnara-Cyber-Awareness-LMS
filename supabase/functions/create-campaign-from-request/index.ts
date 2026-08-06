@@ -311,7 +311,14 @@ Deno.serve(async (req) => {
   // ── Build queue ──
   const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(rq.emails_per_minute ?? 10), 1);
-  const baseTime         = campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : Date.now();
+  // Pace forward from now, never from a past instant — otherwise a past or
+  // late-converted schedule makes the whole queue due at once and the cron
+  // drains it in one batch, defeating emails_per_minute. See the same guard in
+  // launch-phishing-campaign for the full reasoning.
+  const baseTime         = Math.max(
+    campaignScheduledAt ? new Date(campaignScheduledAt).getTime() : 0,
+    Date.now(),
+  );
   const finalRedirectUrl = safeRedirectUrl;
   const smtpId           = rq.smtp_profile_id ? String(rq.smtp_profile_id) : null;
   const fromAddr         = String(rq.from_address || "noreply@awareone.io");

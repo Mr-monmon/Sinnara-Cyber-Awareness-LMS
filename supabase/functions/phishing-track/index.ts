@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders as buildCors } from "../_shared/cors.ts";
 import { rateLimit } from "../_shared/rateLimit.ts";
+import { isLikelyScanner, scannerReason } from "../_shared/botFilter.ts";
 
 // Abuse guard for this PUBLIC, unauthenticated endpoint. A caller who harvests
 // campaign/recipient tokens could otherwise spam tracking events or POST submit
@@ -353,6 +354,21 @@ Deno.serve(async (req) => {
   const recipient_id = url.searchParams.get("r") ?? "";
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "unknown";
   const ua = req.headers.get("user-agent") ?? "";
+  /*
+   * A security scanner fetched this pixel or link, not the recipient. Corporate
+   * mail protection (Microsoft Defender / Safe Links, Proofpoint, Mimecast …)
+   * pre-fetches images and visits every URL to inspect it before delivery, so
+   * counting those hits would report the whole company as having opened and
+   * clicked before anyone read the message. We still serve the pixel and still
+   * redirect — the recipient must always land — but skip recording the event.
+   */
+  const automated = isLikelyScanner(ua);
+  if (automated) {
+    // Logged, not stored: lets an operator confirm from the function logs that a
+    // suspiciously clean or suspiciously high result was scanner traffic being
+    // correctly dropped, without adding rows to the campaign's event timeline.
+    console.log(`[phishing-track] skipped automated ${t ?? "?"} hit (${scannerReason(ua)}) c=${campaign_id}`);
+  }
 
   // Public endpoint: wildcard CORS is required (recipients arrive from any
   // origin / mail client) and safe (no cookies, no tenant data returned).
@@ -377,7 +393,8 @@ Deno.serve(async (req) => {
   }
 
   if (t === "open") {
-    if (within) logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
+    // Scanners pre-fetch the pixel; only a real open counts.
+    if (within && !automated) logEvent({ campaign_id, recipient_id, event_type: "EMAIL_OPENED", ip, ua }).catch(() => {});
     return new Response(TRANSPARENT_GIF, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "image/gif", "Cache-Control": "no-cache, no-store, must-revalidate" },
@@ -413,7 +430,14 @@ Deno.serve(async (req) => {
     // recipient to a safe default rather than amplifying load.
     if (!within) return Response.redirect(SAFE_DEFAULT_REDIRECT, 302);
     const redirectUrl = await resolveRedirect(campaign_id, recipient_id, decodedUrl);
-    logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});
+    /*
+     * The recipient is always redirected — a real person must land on the
+     * training page — but a click is only *recorded* when a human made it.
+     * Safe Links and its peers visit this URL from the datacentre to inspect
+     * it; recording that would mark the recipient as having clicked a link they
+     * have not yet seen, and often before the message is even in their inbox.
+     */
+    if (!automated) logEvent({ campaign_id, recipient_id, event_type: "LINK_CLICKED", ip, ua }).catch(() => {});
     return Response.redirect(redirectUrl, 302);
   }
 
