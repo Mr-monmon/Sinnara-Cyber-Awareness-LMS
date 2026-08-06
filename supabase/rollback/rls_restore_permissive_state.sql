@@ -1,17 +1,32 @@
 /*
-  RLS BACKUP — RESTORE TO PERMISSIVE STATE
-  ==========================================
-  Run this script to UNDO the proper RLS policies and go back to
-  "any authenticated user can do anything" (the current state before
-  migration 20260515000004).
+  RLS ROLLBACK — RESTORE PERMISSIVE STATE
+  =======================================
 
-  USE CASE: Something broke after enabling proper RLS → run this to
-  instantly restore access while you investigate.
+  ⚠️  THIS IS NOT A MIGRATION. Do not add it back to supabase/migrations/.
 
-  HOW TO USE:
-    1. Go to Supabase → SQL Editor
-    2. Paste this entire file and run it
-    3. Everything goes back to working (but insecure) state
+  It undoes the tenant isolation from
+  migrations/20260515000004_rls_proper_policies.sql and leaves the database in
+  a state where ANY SIGNED-IN USER OF ANY CUSTOMER CAN READ AND WRITE EVERY
+  OTHER CUSTOMER'S DATA — including users, companies, subscriptions and
+  invoices. On a multi-tenant platform holding phishing results and employee
+  records, that is the worst outcome this schema can produce.
+
+  It also drops is_platform_admin(), get_my_company_id() and get_my_role(),
+  which most policies and several SECURITY DEFINER functions added since then
+  now call. Expect unrelated features to start erroring, not just to open up.
+
+  WHEN TO USE
+    Almost never. If a policy is blocking legitimate access, fix that policy.
+    Reach for this only if the platform is unusable, the cause is unknown, and
+    a short window of no isolation is genuinely preferable to an outage — a
+    judgement for a person, not for a deploy script.
+
+  IF YOU RUN IT
+    Treat it as an active incident. Re-apply
+    migrations/20260515000004_rls_proper_policies.sql and
+    migrations/20260606000001_production_readiness_phase1_2.sql the moment the
+    investigation is finished, then re-check the column grants on public.users
+    against migrations/20260805130000_users_update_grant.sql.
 */
 
 -- ──────────────────────────────────────────────────────────────
