@@ -84,6 +84,17 @@ $$;
   otherwise, and the check is the authorisation boundary. It verifies the caller
   is an admin AND that the recipient is inside the caller's own company, so this
   cannot be used to enumerate or nudge another tenant's employees.
+
+  The caller's role and company are read from `public.users` directly rather
+  than through the `is_company_admin_role()` / `current_company_id()` helpers.
+  Those helpers live in a migration that was never applied to this project's
+  database, and the first version of this file failed to install because of it:
+
+      ERROR: 42883: function public.is_company_admin_role() does not exist
+
+  Reading the table costs one extra lookup and removes the dependency entirely,
+  which matters for a file that has to run against a database that has drifted
+  from this directory.
 */
 CREATE OR REPLACE FUNCTION public.claim_exam_reminder(
   p_exam_id      uuid,
@@ -93,7 +104,9 @@ RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_caller      uuid := auth.uid();
+  v_role        text;
   v_company     uuid;
+  v_is_platform boolean;
   v_recipient_c uuid;
   v_max         integer;
   v_interval    interval;
@@ -105,9 +118,12 @@ BEGIN
     RETURN jsonb_build_object('allowed', false, 'reason', 'not_signed_in');
   END IF;
 
-  SELECT company_id INTO v_company FROM public.users WHERE id = v_caller;
+  SELECT role, company_id INTO v_role, v_company
+  FROM public.users WHERE id = v_caller;
 
-  IF NOT (public.is_platform_admin() OR public.is_company_admin_role()) THEN
+  v_is_platform := v_role = 'PLATFORM_ADMIN';
+
+  IF v_role IS NULL OR v_role NOT IN ('PLATFORM_ADMIN', 'COMPANY_SUPER_ADMIN', 'COMPANY_ADMIN') THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'not_permitted');
   END IF;
 
@@ -115,7 +131,7 @@ BEGIN
   IF v_recipient_c IS NULL THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'unknown_recipient');
   END IF;
-  IF NOT public.is_platform_admin() AND v_recipient_c IS DISTINCT FROM v_company THEN
+  IF NOT v_is_platform AND v_recipient_c IS DISTINCT FROM v_company THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'other_tenant');
   END IF;
 
@@ -191,6 +207,12 @@ $$;
   company in one round trip. Returning it per (exam, recipient) rather than
   per assignment keeps it correct for department-wide assignments, where one
   assignment row fans out to many recipients.
+
+  Same reasoning as `claim_exam_reminder`: the caller's role and company come
+  from `public.users`, not from helper functions that may not exist here. The
+  caller is joined to their own row, so a non-admin matches nothing and gets an
+  empty result rather than an error — this only draws buttons, and a signed-in
+  employee who somehow reaches it should see nothing, not a failure.
 */
 CREATE OR REPLACE FUNCTION public.get_exam_reminder_state()
 RETURNS TABLE (
@@ -208,8 +230,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     max(l.sent_at),
     max(l.sent_at) + (SELECT min_interval FROM public.exam_reminder_limits())
   FROM public.exam_reminder_log l
-  WHERE (public.is_platform_admin() OR public.is_company_admin_role())
-    AND (public.is_platform_admin() OR l.company_id = public.current_company_id())
+  CROSS JOIN LATERAL (
+    SELECT u.role, u.company_id FROM public.users u WHERE u.id = auth.uid()
+  ) caller
+  WHERE caller.role IN ('PLATFORM_ADMIN', 'COMPANY_SUPER_ADMIN', 'COMPANY_ADMIN')
+    AND (caller.role = 'PLATFORM_ADMIN' OR l.company_id = caller.company_id)
   GROUP BY l.exam_id, l.recipient_id;
 $$;
 
