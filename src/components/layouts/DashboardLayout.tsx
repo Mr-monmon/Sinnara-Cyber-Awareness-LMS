@@ -304,6 +304,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             { id: "phishing-domains",        label: "Phishing Domains",       icon: Globe   },
             { id: "phishing-smtp-admin",     label: "Platform SMTP Profiles", icon: Server  },
             { id: "phishing-landing-admin",  label: "Landing Pages",          icon: LayoutTemplate },
+            { id: "phishing-email-templates", label: "Email Templates",       icon: Mail    },
             { id: "phishing-scenarios",      label: "Phishing Scenarios",     icon: Zap     },
             { id: "phishing-company-limits", label: "Company Limits",         icon: Shield  },
           ],
