@@ -36,6 +36,20 @@
       -- platform template exists).
 */
 
+/*
+  Fail fast instead of deadlocking against the live app's reads.
+
+  Each ALTER below needs a brief AccessExclusive lock on the templates table,
+  which the running app is concurrently reading (AccessShare) -- the two can
+  deadlock (40P01). With a short lock_timeout a blocked statement errors cleanly
+  in a few seconds rather than deadlocking, and because every statement here is
+  idempotent (IF NOT EXISTS / guarded constraint adds / DROP POLICY IF EXISTS),
+  the fix on either outcome is simply to re-run the file. Running it during a
+  quiet moment (no active campaign, nobody on the templates page) avoids the
+  contention entirely.
+*/
+SET lock_timeout = '5s';
+
 ALTER TABLE public.phishing_company_email_templates
   ALTER COLUMN company_id DROP NOT NULL;
 
