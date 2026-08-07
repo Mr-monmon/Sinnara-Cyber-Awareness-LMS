@@ -471,10 +471,13 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   // Aggregate rates must be WEIGHTED: Σ(count) / Σ(targets), not the mean of each
   // campaign's individual rate. An unweighted mean lets a 2-target campaign at 100%
   // outweigh a 1000-target campaign at 1%, badly distorting the company-wide figure.
-  const targetsOf = (c: PhishingCampaign) => c.total_queue_size || c.total_targets || 0;
+  // Company-wide averages weight by emails SENT, matching the per-campaign
+  // cards — an open/click rate is against what was delivered, not what was
+  // queued. "—" when nothing has been sent yet across the set.
+  const sentOf = (c: PhishingCampaign) => c.emails_sent || 0;
   const weightedRate = (sel: (c: PhishingCampaign) => number) => {
-    const den = completedCampaigns.reduce((s, c) => s + targetsOf(c), 0);
-    if (den <= 0) return '0';
+    const den = completedCampaigns.reduce((s, c) => s + sentOf(c), 0);
+    if (den <= 0) return '—';
     const num = completedCampaigns.reduce((s, c) => s + (sel(c) || 0), 0);
     return ((num / den) * 100).toFixed(1);
   };
@@ -482,11 +485,22 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
   const avgReportRate       = weightedRate(c => c.emails_reported);
   const avgCredRate         = weightedRate(c => c.credentials_entered);
   const selectedData        = campaigns.find(c => c.id === selectedCampaign);
-  const selTotal            = selectedData ? (selectedData.total_queue_size || selectedData.total_targets || 0) : 0;
-  const selClickRate        = selTotal > 0 && selectedData ? Math.round((selectedData.links_clicked        / selTotal) * 100) : 0;
-  const selCredRate         = selTotal > 0 && selectedData ? Math.round((selectedData.credentials_entered  / selTotal) * 100) : 0;
-  const selReportRate       = selTotal > 0 && selectedData ? Math.round((selectedData.emails_reported      / selTotal) * 100) : 0;
-  const selOpenRate         = selTotal > 0 && selectedData ? Math.round((selectedData.emails_opened        / selTotal) * 100) : 0;
+  /*
+   * Engagement rates divide by emails SENT, not by targets/queue size.
+   *
+   * You cannot open or click a message that was never delivered, so "sent" is
+   * the honest denominator — and the cards are labelled "of N sent", which was
+   * a lie while they divided by the queued count. `pct` returns null (shown as
+   * "—") when nothing was sent, so a not-yet-sent campaign reads as "no data"
+   * rather than a measured 0%.
+   */
+  const selSent             = selectedData?.emails_sent || 0;
+  const pct = (num: number): number | null => selSent > 0 ? Math.round((num / selSent) * 100) : null;
+  const selClickRate        = selectedData ? pct(selectedData.links_clicked)       : null;
+  const selCredRate         = selectedData ? pct(selectedData.credentials_entered) : null;
+  const selReportRate       = selectedData ? pct(selectedData.emails_reported)     : null;
+  const selOpenRate         = selectedData ? pct(selectedData.emails_opened)       : null;
+  const rateText = (r: number | null) => r === null ? '—' : `${r}%`;
   const radarData           = deptStats.map(d => ({ label: d.department?.name || 'Dept', score: Number(d.vulnerability_score) || 0 }));
 
   return (
@@ -614,10 +628,10 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
           {/* Campaign metric mini cards */}
           <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
             {[
-              { icon: TrendingUp,        color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate (by Sent)',       sub: `${selectedData.emails_opened} opened of ${selTotal} sent`,              value: `${selOpenRate}%`   },
-              { icon: MousePointerClick, color: T.red,   bg: T.redBg,    border: T.redBorder,    label: 'Click Rate (by Sent)',      sub: `${selectedData.links_clicked} clicked of ${selTotal} sent`,             value: `${selClickRate}%`  },
-              { icon: KeyRound,          color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate (by Sent)', sub: `${selectedData.credentials_entered || 0} submitted of ${selTotal} sent`, value: `${selCredRate}%`   },
-              { icon: Flag,              color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Report Rate (by Sent)',     sub: `${selectedData.emails_reported} reported of ${selTotal} sent`,          value: `${selReportRate}%` },
+              { icon: TrendingUp,        color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: 'Open Rate (by Sent)',       sub: `${selectedData.emails_opened} opened of ${selSent} sent`,              value: rateText(selOpenRate)   },
+              { icon: MousePointerClick, color: T.red,   bg: T.redBg,    border: T.redBorder,    label: 'Click Rate (by Sent)',      sub: `${selectedData.links_clicked} clicked of ${selSent} sent`,             value: rateText(selClickRate)  },
+              { icon: KeyRound,          color: T.orange, bg: T.orangeBg, border: T.orangeBorder, label: 'Credential Rate (by Sent)', sub: `${selectedData.credentials_entered || 0} submitted of ${selSent} sent`, value: rateText(selCredRate)   },
+              { icon: Flag,              color: T.green,  bg: T.greenBg,  border: T.greenBorder,  label: 'Report Rate (by Sent)',     sub: `${selectedData.emails_reported} reported of ${selSent} sent`,          value: rateText(selReportRate) },
             ].map(({ icon: Icon, color, bg, border, label, sub, value }) => (
               <div key={label} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.borderFaint}`, borderRadius: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
@@ -641,15 +655,22 @@ export const PhishingDashboardPage: React.FC<{ onNavigate?: (page: string) => vo
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {deptStats.map((stat) => {
-                  // vulnerability_score is populated by a DB trigger and is NULL until
-                  // it first runs (e.g. a freshly created department), so coerce safely.
-                  const scoreNum = Number(stat.vulnerability_score) || 0;
-                  const vc     = vulnConfig(scoreNum);
-                  const score  = scoreNum.toFixed(0);
+                  /*
+                   * vulnerability_score is populated by a DB trigger and is NULL
+                   * until it first runs (a freshly created department, or one with
+                   * no completed campaign yet). "No data" is NOT a score of 0 —
+                   * coercing NULL to 0 painted an unmeasured department bright green
+                   * as "Low Risk", i.e. the safest possible, which is the opposite
+                   * of what an unknown posture should read as. Show it as pending.
+                   */
+                  const hasScore = stat.vulnerability_score !== null && stat.vulnerability_score !== undefined;
+                  const scoreNum = hasScore ? Number(stat.vulnerability_score) : 0;
+                  const vc     = hasScore ? vulnConfig(scoreNum) : { color: T.textMuted, bg: 'rgba(255,255,255,0.03)', border: T.borderFaint, label: 'Not measured' };
+                  const score  = hasScore ? scoreNum.toFixed(0) : '—';
                   const click  = stat.total_targets > 0 ? ((stat.links_clicked / stat.total_targets) * 100).toFixed(1) : '0';
                   const report = stat.total_targets > 0 ? ((stat.emails_reported / stat.total_targets) * 100).toFixed(1) : '0';
                   const cred   = stat.total_targets > 0 ? ((stat.credentials_entered / stat.total_targets) * 100).toFixed(1) : '0';
-                  const barPct = scoreNum;
+                  const barPct = hasScore ? scoreNum : 0;
 
                   return (
                     <div key={stat.id} style={{ padding: '14px 16px', background: vc.bg, border: `1px solid ${vc.border}`, borderRadius: 11 }}>
