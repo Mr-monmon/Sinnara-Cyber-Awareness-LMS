@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, Plus, Target, Play, Pause, Trash2,
+  Shield, Plus, Target, Play, Pause, Trash2, Loader2,
   ChevronRight, ChevronLeft, X, Check, Clock, AlertTriangle,
   BarChart3, MousePointerClick, Key, Eye, Send,
   RefreshCw, CheckCircle,
@@ -185,7 +185,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
     launchType: 'immediate' as 'immediate' | 'scheduled', scheduledAt: '',
     emailTemplateId: '', emailSubject: '', emailHtml: '',
-    landingPageId: '', phishingDomainId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
+    landingPageId: '', phishingDomainId: '', redirectUrl: 'https://www.google.com',
   });
   const [showPreview, setShowPreview] = useState(false);
 
@@ -239,7 +239,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
       launchType: 'immediate', scheduledAt: '',
       emailTemplateId: '', emailSubject: '', emailHtml: '',
-      landingPageId: '', phishingDomainId: '', captureCredentials: false, redirectUrl: 'https://www.google.com',
+      landingPageId: '', phishingDomainId: '', redirectUrl: 'https://www.google.com',
     });
     loadWizardData();
     setView('wizard');
@@ -266,17 +266,31 @@ export const PhishingCampaignsPage: React.FC = () => {
     setTargetEvents(data || []);
   };
 
+  // One in-flight guard for all three lifecycle actions: prevents a double-tap
+  // re-firing a destructive call, and surfaces the { error } supabase-js
+  // resolves with (it does not throw) instead of failing silently.
+  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
+
   const pauseCampaign = async (id: string) => {
-    await supabase.from('phishing_campaigns').update({ status: 'PAUSED', paused_at: new Date().toISOString() }).eq('id', id);
+    setLifecycleBusy(id);
+    const { error } = await supabase.from('phishing_campaigns').update({ status: 'PAUSED', paused_at: new Date().toISOString() }).eq('id', id);
+    setLifecycleBusy(null);
+    if (error) { alert('Could not pause the campaign: ' + await getEdgeFunctionError(error)); return; }
     loadCampaigns();
   };
   const resumeCampaign = async (id: string) => {
-    await supabase.from('phishing_campaigns').update({ status: 'RUNNING', paused_at: null }).eq('id', id);
+    setLifecycleBusy(id);
+    const { error } = await supabase.from('phishing_campaigns').update({ status: 'RUNNING', paused_at: null }).eq('id', id);
+    setLifecycleBusy(null);
+    if (error) { alert('Could not resume the campaign: ' + await getEdgeFunctionError(error)); return; }
     loadCampaigns();
   };
   const deleteCampaign = async (id: string) => {
     if (!confirm('Delete this campaign and all its data?')) return;
-    await supabase.from('phishing_campaigns').delete().eq('id', id);
+    setLifecycleBusy(id);
+    const { error } = await supabase.from('phishing_campaigns').delete().eq('id', id);
+    setLifecycleBusy(null);
+    if (error) { alert('Could not delete the campaign: ' + await getEdgeFunctionError(error)); return; }
     loadCampaigns();
   };
 
@@ -313,6 +327,16 @@ export const PhishingCampaignsPage: React.FC = () => {
       if (form.selectedGroups.length === 0) { alert('Select at least one target group.'); return; }
       if (totalTargets === 0) { alert('Selected groups have no members. Add members to the group first.'); return; }
       if (!form.emailSubject.trim() || !form.emailHtml.trim()) { alert('Email subject and HTML body are required.'); return; }
+      // "Scheduled" with no time silently launched immediately — a campaign fired
+      // now when the operator meant to schedule it. Make them pick a time.
+      if (form.launchType === 'scheduled' && !form.scheduledAt) {
+        alert('You chose "Scheduled" but did not set a date and time. Pick one, or switch to "Launch now".');
+        return;
+      }
+      if (form.launchType === 'scheduled' && form.scheduledAt && new Date(form.scheduledAt).getTime() <= Date.now()) {
+        alert('The scheduled time is in the past. Pick a future time, or switch to "Launch now".');
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -465,17 +489,17 @@ export const PhishingCampaignsPage: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     {c.status === 'RUNNING' && (
-                      <button className="aw-pc-btn" onClick={() => pauseCampaign(c.id)} style={{ padding: '6px 10px', background: T.orangeBg, color: T.orange, border: `1px solid ${T.orangeBorder}` }}>
-                        <Pause size={13} />
+                      <button className="aw-pc-btn" disabled={lifecycleBusy === c.id} onClick={() => pauseCampaign(c.id)} style={{ padding: '6px 10px', background: T.orangeBg, color: T.orange, border: `1px solid ${T.orangeBorder}`, opacity: lifecycleBusy === c.id ? 0.5 : 1 }}>
+                        {lifecycleBusy === c.id ? <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Pause size={13} />}
                       </button>
                     )}
                     {c.status === 'PAUSED' && (
-                      <button className="aw-pc-btn" onClick={() => resumeCampaign(c.id)} style={{ padding: '6px 10px', background: T.greenBg, color: T.green, border: `1px solid ${T.greenBorder}` }}>
-                        <Play size={13} />
+                      <button className="aw-pc-btn" disabled={lifecycleBusy === c.id} onClick={() => resumeCampaign(c.id)} style={{ padding: '6px 10px', background: T.greenBg, color: T.green, border: `1px solid ${T.greenBorder}`, opacity: lifecycleBusy === c.id ? 0.5 : 1 }}>
+                        {lifecycleBusy === c.id ? <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Play size={13} />}
                       </button>
                     )}
-                    <button className="aw-pc-btn" onClick={() => deleteCampaign(c.id)} style={{ padding: '6px 10px', background: T.redBg, color: T.red, border: `1px solid ${T.redBorder}` }}>
-                      <Trash2 size={13} />
+                    <button className="aw-pc-btn" disabled={lifecycleBusy === c.id} onClick={() => deleteCampaign(c.id)} style={{ padding: '6px 10px', background: T.redBg, color: T.red, border: `1px solid ${T.redBorder}`, opacity: lifecycleBusy === c.id ? 0.5 : 1 }}>
+                      {lifecycleBusy === c.id ? <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : <Trash2 size={13} />}
                     </button>
                   </div>
                 </div>
@@ -890,11 +914,18 @@ export const PhishingCampaignsPage: React.FC = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <Label>Capture Credentials</Label>
-                    <Toggle checked={form.captureCredentials} onChange={v => setForm(f => ({ ...f, captureCredentials: v }))} />
+                  {/*
+                    This replaced a "Capture Credentials" toggle that did nothing:
+                    it was never sent to the launcher, phishing_campaigns has no
+                    column to store it, and form submissions are recorded either
+                    way. Rather than a switch that lies, state the actual, safe
+                    behaviour — which is the honest thing to show a company admin.
+                  */}
+                  <Label>If the landing page has a form</Label>
+                  <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.6, marginTop: 4 }}>
+                    A submission is recorded as an event — the field <em>names</em> only.
+                    The values entered (passwords, codes) are never stored.
                   </div>
-                  <div style={{ fontSize: 11, color: T.textMuted }}>Log submitted form data in events</div>
                 </div>
                 <div>
                   <Label>Redirect URL After Submission</Label>

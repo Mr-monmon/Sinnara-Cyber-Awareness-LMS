@@ -226,10 +226,23 @@ const MonitoringTab: React.FC = () => {
   const togglePause = async (camp: LiveCampaign) => {
     setUpdating(camp.id);
     const newStatus = camp.status === 'RUNNING' ? 'PAUSED' : 'RUNNING';
-    await supabase.from('phishing_campaigns')
+    /*
+     * Check the result before flipping the UI.
+     *
+     * supabase-js resolves with { error } rather than throwing, so the previous
+     * code applied the optimistic status change unconditionally — a failed
+     * update (RLS, a constraint) left the campaign RUNNING in the database while
+     * the monitor showed it PAUSED. An admin who believes a live campaign is
+     * paused, while it keeps sending, is the worst possible version of this bug.
+     */
+    const { error } = await supabase.from('phishing_campaigns')
       .update({ status: newStatus, ...(newStatus === 'PAUSED' ? { paused_at: new Date().toISOString() } : { paused_at: null }) })
       .eq('id', camp.id);
-    setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, status: newStatus } : c));
+    if (error) {
+      alert(`Could not ${newStatus === 'PAUSED' ? 'pause' : 'resume'} the campaign: ${getErrorMessage(error)}`);
+    } else {
+      setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, status: newStatus } : c));
+    }
     setUpdating(null);
   };
 
@@ -542,11 +555,16 @@ export const PhishingManagementPage: React.FC = () => {
   const handleStatusUpdate = async (request: RequestWithCompany, nextStatus: string) => {
     const id = String(request.id);
     setStatusUpdating(p => ({ ...p, [id]: true }));
-    try {
-      await supabase.from('phishing_campaign_requests').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', request.id);
+    // Check the returned error, not just exceptions: supabase-js resolves with
+    // { error } on an RLS/constraint refusal, so a bare try/catch let a rejected
+    // status change repaint the row as if it had succeeded.
+    const { error } = await supabase.from('phishing_campaign_requests').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', request.id);
+    if (error) {
+      alert('Failed to update status: ' + getErrorMessage(error));
+    } else {
       setRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: nextStatus } : r));
-    } catch { alert('Failed to update status'); }
-    finally { setStatusUpdating(p => ({ ...p, [id]: false })); }
+    }
+    setStatusUpdating(p => ({ ...p, [id]: false }));
   };
 
   const handleStatusSelect = (request: RequestWithCompany, nextStatus: string) => {
