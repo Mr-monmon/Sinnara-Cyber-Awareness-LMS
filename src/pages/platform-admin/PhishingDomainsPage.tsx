@@ -102,6 +102,11 @@ interface VerifyResult {
   findings?: DnsFindings;
 }
 
+interface CompanyOption { id: string; name: string }
+
+/** Which companies a SHARED domain is granted to, keyed by domain id. */
+type AccessMap = Record<string, string[]>;
+
 export const PhishingDomainsPage: React.FC = () => {
   const [domains, setDomains]         = useState<PhishingDomain[]>([]);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
@@ -115,24 +120,118 @@ export const PhishingDomainsPage: React.FC = () => {
   // Per-card edit buffers for the serving base URL and who may use the domain.
   const [baseEdits, setBaseEdits]     = useState<Record<string, string>>({});
   const [savingBase, setSavingBase]   = useState<string | null>(null);
+  // Access management (mirrors the SMTP "Push to Companies" flow).
+  const [companies, setCompanies]     = useState<CompanyOption[]>([]);
+  const [access, setAccess]           = useState<AccessMap>({});
+  const [accessModal, setAccessModal] = useState<PhishingDomain | null>(null);
+  const [selectedCos, setSelectedCos] = useState<Set<string>>(new Set());
+  const [pushing, setPushing]         = useState(false);
+  const [togglingActive, setTogglingActive] = useState<string | null>(null);
 
   useEffect(() => { loadDomains(); }, []);
 
   const loadDomains = async () => {
     setLoading(true);
     try {
-      const { data, error: err } = await supabase
-        .from('phishing_domains')
-        .select('*')
-        .eq('is_platform_domain', true)
-        .order('created_at', { ascending: false });
-      if (err) throw err;
-      setDomains(data ?? []);
+      const [domRes, coRes] = await Promise.all([
+        supabase.from('phishing_domains').select('*').eq('is_platform_domain', true).order('created_at', { ascending: false }),
+        supabase.from('companies').select('id, name').order('name'),
+      ]);
+      if (domRes.error) throw domRes.error;
+      const doms = (domRes.data ?? []) as PhishingDomain[];
+      setDomains(doms);
+      setCompanies((coRes.data ?? []) as CompanyOption[]);
+
+      // Which companies each SHARED domain is granted to.
+      const ids = doms.map(d => d.id);
+      if (ids.length > 0) {
+        const { data: grants } = await supabase
+          .from('phishing_domain_company_access')
+          .select('phishing_domain_id, company_id')
+          .in('phishing_domain_id', ids);
+        const map: AccessMap = {};
+        (grants ?? []).forEach((g: { phishing_domain_id: string; company_id: string }) => {
+          (map[g.phishing_domain_id] ??= []).push(g.company_id);
+        });
+        setAccess(map);
+      } else {
+        setAccess({});
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  /*
+   * Grant a SHARED domain to specific companies.
+   *
+   * Mirrors the SMTP "Push to selected" flow exactly: write the access rows,
+   * then set visibility=SHARED so the company read-policy admits them. Without
+   * this, choosing "selected companies" left the domain visible to nobody — the
+   * gap the audit flagged.
+   */
+  const grantToSelected = async () => {
+    if (!accessModal || selectedCos.size === 0) return;
+    setPushing(true);
+    try {
+      const rows = Array.from(selectedCos).map(company_id => ({ phishing_domain_id: accessModal.id, company_id }));
+      const { error: err } = await supabase.from('phishing_domain_company_access').upsert(rows, { onConflict: 'phishing_domain_id,company_id' });
+      if (err) throw err;
+      await supabase.from('phishing_domains').update({ visibility: 'SHARED', updated_at: new Date().toISOString() }).eq('id', accessModal.id);
+      setSelectedCos(new Set());
+      await loadDomains();
+      setAccessModal(prev => prev ? { ...prev, visibility: 'SHARED' } : prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grant access.');
+    } finally { setPushing(false); }
+  };
+
+  const grantToAll = async () => {
+    if (!accessModal) return;
+    setPushing(true);
+    try {
+      // GLOBAL needs no per-company rows; clear any stale ones so a later switch
+      // back to SHARED starts clean.
+      await supabase.from('phishing_domain_company_access').delete().eq('phishing_domain_id', accessModal.id);
+      const { error: err } = await supabase.from('phishing_domains').update({ visibility: 'GLOBAL', updated_at: new Date().toISOString() }).eq('id', accessModal.id);
+      if (err) throw err;
+      await loadDomains();
+      setAccessModal(prev => prev ? { ...prev, visibility: 'GLOBAL' } : prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set global.');
+    } finally { setPushing(false); }
+  };
+
+  const makePrivate = async () => {
+    if (!accessModal) return;
+    if (!confirm('Make this domain platform-only? All companies will lose access to it.')) return;
+    setPushing(true);
+    try {
+      await supabase.from('phishing_domain_company_access').delete().eq('phishing_domain_id', accessModal.id);
+      // COMPANY visibility on a platform domain = granted to nobody (the RLS read
+      // policy only admits GLOBAL or SHARED-with-grant), i.e. platform-only.
+      const { error: err } = await supabase.from('phishing_domains').update({ visibility: 'COMPANY', updated_at: new Date().toISOString() }).eq('id', accessModal.id);
+      if (err) throw err;
+      setSelectedCos(new Set());
+      await loadDomains();
+      setAccessModal(prev => prev ? { ...prev, visibility: 'COMPANY' } : prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed.');
+    } finally { setPushing(false); }
+  };
+
+  const toggleActive = async (domain: PhishingDomain) => {
+    setTogglingActive(domain.id);
+    try {
+      const next = !(domain.is_active !== false);
+      const { error: err } = await supabase.from('phishing_domains').update({ is_active: next, updated_at: new Date().toISOString() }).eq('id', domain.id);
+      if (err) throw err;
+      setDomains(prev => prev.map(d => d.id === domain.id ? { ...d, is_active: next } : d));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change status.');
+    } finally { setTogglingActive(null); }
   };
 
   const handleAdd = async () => {
@@ -167,38 +266,31 @@ export const PhishingDomainsPage: React.FC = () => {
   };
 
   /*
-   * Save the serving base URL and visibility for a domain.
+   * Save the serving base URL for a domain.
    *
    * The base is what a campaign's links are built from; without it the domain is
    * verified but unusable (links still fall back to the Supabase URL). It is
    * normalised to an origin — scheme required, no trailing slash — so it matches
    * exactly what the edge functions concatenate `/functions/v1/...` onto.
+   * Visibility and is_active are handled by the access modal / toggle, not here.
    */
-  const handleSaveConfig = async (
-    domain: PhishingDomain,
-    patch: { tracking_base_url?: string | null; visibility?: PhishingDomain["visibility"]; is_active?: boolean },
-  ) => {
+  const handleSaveBase = async (domain: PhishingDomain, value: string) => {
     setSavingBase(domain.id);
     setError('');
     try {
-      const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if ("tracking_base_url" in patch) {
-        const raw = (patch.tracking_base_url ?? "").trim().replace(/\/+$/, "");
-        if (raw) {
-          let parsed: URL;
-          try { parsed = new URL(raw); } catch { setError('Base URL must be a full URL, e.g. https://secure-verify.example'); setSavingBase(null); return; }
-          if (parsed.protocol !== 'https:') { setError('Base URL must use https://'); setSavingBase(null); return; }
-          update.tracking_base_url = parsed.origin;
-        } else {
-          update.tracking_base_url = null;
-        }
+      const raw = value.trim().replace(/\/+$/, "");
+      let baseUrl: string | null = null;
+      if (raw) {
+        let parsed: URL;
+        try { parsed = new URL(raw); } catch { setError('Base URL must be a full URL, e.g. https://secure-verify.example'); setSavingBase(null); return; }
+        if (parsed.protocol !== 'https:') { setError('Base URL must use https://'); setSavingBase(null); return; }
+        baseUrl = parsed.origin;
       }
-      if (patch.visibility) update.visibility = patch.visibility;
-      if (typeof patch.is_active === 'boolean') update.is_active = patch.is_active;
-
-      const { error: err } = await supabase.from('phishing_domains').update(update).eq('id', domain.id);
+      const { error: err } = await supabase.from('phishing_domains')
+        .update({ tracking_base_url: baseUrl, updated_at: new Date().toISOString() })
+        .eq('id', domain.id);
       if (err) throw err;
-      setDomains(prev => prev.map(d => d.id === domain.id ? { ...d, ...update } as PhishingDomain : d));
+      setDomains(prev => prev.map(d => d.id === domain.id ? { ...d, tracking_base_url: baseUrl } : d));
       setBaseEdits(prev => { const n = { ...prev }; delete n[domain.id]; return n; });
     } catch (err) {
       console.error(err);
@@ -309,6 +401,10 @@ export const PhishingDomainsPage: React.FC = () => {
           { label: 'Total Domains',   value: domains.length, color: T.accent },
           { label: 'Verified',        value: verified.length, color: T.green  },
           { label: 'Pending Verify',  value: unverified.length, color: T.orange },
+          // "Verified" alone overstates usable senders: a domain can be verified
+          // but unrouted (no base URL), in which case links still fall back to the
+          // Supabase URL. Ready = verified AND routed = actually serving.
+          { label: 'Ready to send',   value: domains.filter(d => d.is_verified && d.tracking_base_url && d.is_active !== false).length, color: T.blue },
         ].map(s => (
           <div key={s.label} style={{ padding: '14px 16px', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 11 }}>
             <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value}</div>
@@ -437,7 +533,7 @@ export const PhishingDomainsPage: React.FC = () => {
                     <button
                       className="aw-pd-btn"
                       disabled={savingBase === domain.id || (baseEdits[domain.id] ?? domain.tracking_base_url ?? '') === (domain.tracking_base_url ?? '')}
-                      onClick={() => handleSaveConfig(domain, { tracking_base_url: baseEdits[domain.id] ?? '' })}
+                      onClick={() => handleSaveBase(domain, baseEdits[domain.id] ?? '')}
                       style={{ padding: '7px 12px', fontSize: 12, background: T.accent, color: T.accentDark, opacity: savingBase === domain.id ? 0.5 : 1 }}>
                       {savingBase === domain.id ? <Loader2 size={13} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} /> : 'Save'}
                     </button>
@@ -449,21 +545,30 @@ export const PhishingDomainsPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Who may use this platform domain. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Who may use this platform domain, and enable/disable. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Availability</span>
-                  <select
-                    className="aw-pd-input"
-                    style={{ fontSize: 12, padding: '6px 8px', flex: 1 }}
-                    value={domain.visibility === 'SHARED' ? 'SHARED' : 'GLOBAL'}
-                    onChange={e => handleSaveConfig(domain, { visibility: e.target.value as PhishingDomain['visibility'] })}
-                  >
-                    <option value="GLOBAL">All companies</option>
-                    <option value="SHARED">Selected companies only</option>
-                  </select>
-                  {domain.is_active === false && (
-                    <span style={{ fontSize: 10, color: T.orange, fontWeight: 700 }}>DISABLED</span>
-                  )}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: domain.visibility === 'GLOBAL' ? T.green : domain.visibility === 'SHARED' ? T.blue : T.textMuted }}>
+                    {domain.visibility === 'GLOBAL'
+                      ? 'All companies'
+                      : domain.visibility === 'SHARED'
+                        ? `${(access[domain.id] || []).length} compan${(access[domain.id] || []).length === 1 ? 'y' : 'ies'}`
+                        : 'Platform only'}
+                  </span>
+                  <button
+                    className="aw-pd-btn"
+                    onClick={() => { setAccessModal(domain); setSelectedCos(new Set(access[domain.id] || [])); }}
+                    style={{ padding: '5px 10px', fontSize: 11, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, marginLeft: 'auto' }}>
+                    Manage access
+                  </button>
+                  <button
+                    className="aw-pd-btn"
+                    disabled={togglingActive === domain.id}
+                    onClick={() => toggleActive(domain)}
+                    title={domain.is_active === false ? 'Enable this domain' : 'Disable this domain (campaigns cannot use it)'}
+                    style={{ padding: '5px 10px', fontSize: 11, background: domain.is_active === false ? T.greenBg : T.orangeBg, border: `1px solid ${domain.is_active === false ? T.greenBorder : T.orangeBorder}`, color: domain.is_active === false ? T.green : T.orange }}>
+                    {togglingActive === domain.id ? <Loader2 size={12} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} /> : domain.is_active === false ? 'Enable' : 'Disable'}
+                  </button>
                 </div>
 
                 {/* Result of the last DNS check for THIS domain. Deliverability is the
@@ -544,6 +649,81 @@ export const PhishingDomainsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ── Manage access modal (mirrors the SMTP "Push to Companies" flow) ── */}
+      {accessModal && (
+        <div
+          onClick={() => { setAccessModal(null); setSelectedCos(new Set()); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(10,12,6,0.82)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 480, maxHeight: '86vh', overflowY: 'auto', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: T.white, margin: 0 }}>Domain access</h3>
+                <p style={{ fontSize: 12, color: T.textMuted, margin: '3px 0 0', wordBreak: 'break-all' }}>{accessModal.domain_name}</p>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 9999, background: accessModal.visibility === 'GLOBAL' ? T.greenBg : accessModal.visibility === 'SHARED' ? T.blueBg : 'rgba(255,255,255,0.05)', color: accessModal.visibility === 'GLOBAL' ? T.green : accessModal.visibility === 'SHARED' ? T.blue : T.textMuted }}>
+                {accessModal.visibility === 'GLOBAL' ? 'ALL COMPANIES' : accessModal.visibility === 'SHARED' ? 'SELECTED' : 'PLATFORM ONLY'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, margin: '14px 0' }}>
+              <button className="aw-pd-btn" disabled={pushing} onClick={grantToAll}
+                style={{ flex: 1, justifyContent: 'center', padding: '8px', fontSize: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green }}>
+                All companies
+              </button>
+              <button className="aw-pd-btn" disabled={pushing} onClick={makePrivate}
+                style={{ flex: 1, justifyContent: 'center', padding: '8px', fontSize: 12, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.textBody }}>
+                Platform only
+              </button>
+            </div>
+
+            <div style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px', margin: '4px 0 8px' }}>
+              Or grant to selected companies
+            </div>
+            {companies.length === 0 ? (
+              <p style={{ fontSize: 12, color: T.textMuted }}>No companies found.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto', border: `1px solid ${T.borderFaint}`, borderRadius: 9, padding: 8 }}>
+                {companies.map(co => {
+                  const granted = (access[accessModal.id] || []).includes(co.id);
+                  const checked = selectedCos.has(co.id);
+                  return (
+                    <label key={co.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: checked ? T.blueBg : 'transparent' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => setSelectedCos(prev => { const n = new Set(prev); if (e.target.checked) n.add(co.id); else n.delete(co.id); return n; })}
+                      />
+                      <span style={{ fontSize: 13, color: T.white, flex: 1 }}>{co.name}</span>
+                      {granted && accessModal.visibility === 'SHARED' && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: T.green }}>GRANTED</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                className="aw-pd-btn"
+                disabled={pushing || selectedCos.size === 0}
+                onClick={grantToSelected}
+                style={{ flex: 1, justifyContent: 'center', padding: '9px', background: T.accent, color: T.accentDark, opacity: pushing || selectedCos.size === 0 ? 0.5 : 1 }}>
+                {pushing ? <Loader2 size={13} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} /> : `Grant to ${selectedCos.size || ''} selected`}
+              </button>
+              <button
+                className="aw-pd-btn"
+                onClick={() => { setAccessModal(null); setSelectedCos(new Set()); }}
+                style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.border}`, color: T.textBody }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
