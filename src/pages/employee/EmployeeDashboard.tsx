@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { lazyWithReload } from "../../lib/lazyWithReload";
 import {
   BookOpen, ClipboardCheck, Award, Shield,
   TrendingUp, ChevronRight, CheckCircle, BarChart2,
@@ -18,11 +19,11 @@ import LoadingScreen from "../../components/LoadingScreen";
 import InactivatedSubscription from "../../components/InactivatedSubscription";
 import { ThemeProvider, useTheme } from "../../contexts/ThemeContext";
 
-const MyCoursesPage = lazy(() => import("./MyCoursesPage").then(m => ({ default: m.MyCoursesPage })));
-const MyExamsPage = lazy(() => import("./MyExamsPage").then(m => ({ default: m.MyExamsPage })));
-const CertificatesPage = lazy(() => import("./CertificatesPage").then(m => ({ default: m.CertificatesPage })));
-const FraudAlertsPage = lazy(() => import("./FraudAlertsPage").then(m => ({ default: m.FraudAlertsPage })));
-const AccountSettings = lazy(() => import("../company-admin/AccountSettings"));
+const MyCoursesPage = lazyWithReload(() => import("./MyCoursesPage").then(m => ({ default: m.MyCoursesPage })));
+const MyExamsPage = lazyWithReload(() => import("./MyExamsPage").then(m => ({ default: m.MyExamsPage })));
+const CertificatesPage = lazyWithReload(() => import("./CertificatesPage").then(m => ({ default: m.CertificatesPage })));
+const FraudAlertsPage = lazyWithReload(() => import("./FraudAlertsPage").then(m => ({ default: m.FraudAlertsPage })));
+const AccountSettings = lazyWithReload(() => import("../company-admin/AccountSettings"));
 
 /* tokens are consumed via useTheme() inside each component */
 

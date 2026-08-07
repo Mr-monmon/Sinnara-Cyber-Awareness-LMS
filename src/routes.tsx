@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyWithReload } from "./lib/lazyWithReload";
 import { Navigate, RouteObject } from "react-router-dom";
 
 import { HomeRoute, LoginRoute } from "./components/HostAwarePublicRoutes";
@@ -7,23 +8,23 @@ import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import LoadingScreen from "./components/LoadingScreen";
 import ProtectedRoute from "./ProtectedRoute";
 
-const PublicFraudAlertsPage = lazy(() =>
+const PublicFraudAlertsPage = lazyWithReload(() =>
   import("./pages/PublicFraudAlertsPage").then((m) => ({
     default: m.PublicFraudAlertsPage,
   }))
 );
-const PublicAssessment = lazy(() =>
+const PublicAssessment = lazyWithReload(() =>
   import("./pages/PublicAssessment").then((m) => ({
     default: m.PublicAssessment,
   }))
 );
-const MainDashboard = lazy(() => import("./pages/MainDashboard"));
-const PublicResourcesPage = lazy(() =>
+const MainDashboard = lazyWithReload(() => import("./pages/MainDashboard"));
+const PublicResourcesPage = lazyWithReload(() =>
   import("./pages/PublicResourcesPage").then((m) => ({
     default: m.PublicResourcesPage,
   }))
 );
-const LegalPage = lazy(() =>
+const LegalPage = lazyWithReload(() =>
   import("./pages/LegalPage").then((m) => ({ default: m.LegalPage }))
 );
 
