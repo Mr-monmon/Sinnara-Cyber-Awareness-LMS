@@ -288,6 +288,8 @@ Deno.serve(async (req) => {
       smtp_profile_id:      rq.smtp_profile_id ?? null,
       landing_page_id:      rq.landing_page_id ?? null,
       phishing_domain_id:   reqDomainId,
+      // The request carries the operator's capture choice; default true.
+      capture_credentials:  rq.capture_credentials !== false,
       group_ids:            groupIds,
       // Stored so phishing-track can resolve the redirect server-side (open-redirect defence).
       redirect_url:         safeRedirectUrl,

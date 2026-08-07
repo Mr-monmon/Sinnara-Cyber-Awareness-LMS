@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
     launch_type, scheduled_at,
     scenario_id,
     phishing_domain_id,
+    capture_credentials,
   } = body;
 
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -253,6 +254,8 @@ Deno.serve(async (req) => {
         phishing_domain_id:       phishingDomainId,
         group_ids:                Array.isArray(group_ids) ? group_ids : [],
         scenario_id:              scenario_id ?? null,
+      capture_credentials:      capture_credentials !== false,
+        capture_credentials:      capture_credentials !== false,
         emails_per_minute:        Number(emails_per_minute ?? 10),
         random_delay_enabled:     Boolean(random_delay),
         random_delay_max_seconds: Number(random_delay_max_seconds ?? 60),
