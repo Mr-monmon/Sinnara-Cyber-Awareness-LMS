@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { lazyWithReload } from "../lib/lazyWithReload";
 import { isMfaMandatory, useAuth } from "../contexts/AuthContext";
 import { PolicyConsentModal } from "../components/PolicyConsentModal";
 import { TwoFactorSetupModal } from "../components/auth/TwoFactorSetupModal";
@@ -6,22 +7,22 @@ import LoadingScreen from "../components/LoadingScreen";
 import { supabase } from "../lib/supabase";
 import { captureException } from "../lib/sentry";
 
-const PlatformDashboard = lazy(() =>
+const PlatformDashboard = lazyWithReload(() =>
   import("./platform-admin/PlatformDashboard").then((m) => ({
     default: m.PlatformDashboard,
   }))
 );
-const CompanyDashboard = lazy(() =>
+const CompanyDashboard = lazyWithReload(() =>
   import("./company-admin/CompanyDashboard").then((m) => ({
     default: m.CompanyDashboard,
   }))
 );
-const EmployeeDashboard = lazy(() =>
+const EmployeeDashboard = lazyWithReload(() =>
   import("./employee/EmployeeDashboard").then((m) => ({
     default: m.EmployeeDashboard,
   }))
 );
-const LandingPage = lazy(() =>
+const LandingPage = lazyWithReload(() =>
   import("./LandingPage").then((m) => ({ default: m.LandingPage }))
 );
 

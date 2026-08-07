@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyWithReload } from "../lib/lazyWithReload";
 import { Navigate } from "react-router-dom";
 
 import LoadingScreen from "./LoadingScreen";
@@ -7,10 +8,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTenantAccess } from "../hooks/useTenantAccess";
 import { buildApexRedirectUrl } from "../lib/browserTenant";
 
-const LandingPage = lazy(() =>
+const LandingPage = lazyWithReload(() =>
   import("../pages/LandingPage").then((m) => ({ default: m.LandingPage }))
 );
-const LoginPage = lazy(() =>
+const LoginPage = lazyWithReload(() =>
   import("../pages/LoginPage").then((m) => ({ default: m.LoginPage }))
 );
 

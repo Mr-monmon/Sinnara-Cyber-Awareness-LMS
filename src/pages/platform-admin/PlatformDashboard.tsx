@@ -1,4 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { lazyWithReload } from "../../lib/lazyWithReload";
 import {
   Building2, Users, BookOpen, FileText, BarChart3,
   CreditCard, History, Shield, ChevronRight,
@@ -10,30 +11,30 @@ import { DashboardLayout } from "../../components/layouts/DashboardLayout";
 import LoadingScreen from "../../components/LoadingScreen";
 import { supabase }                   from "../../lib/supabase";
 
-const CompaniesPage              = lazy(() => import("./CompaniesPage").then(m => ({ default: m.CompaniesPage })));
-const CoursesPage                = lazy(() => import("./CoursesPage").then(m => ({ default: m.CoursesPage })));
-const ExamsPage                  = lazy(() => import("./ExamsPage").then(m => ({ default: m.ExamsPage })));
-const PublicSubmissionsPage      = lazy(() => import("./PublicSubmissionsPage").then(m => ({ default: m.PublicSubmissionsPage })));
-const UsersManagementPage        = lazy(() => import("./UsersManagementPage").then(m => ({ default: m.UsersManagementPage })));
-const SubscriptionsPage          = lazy(() => import("./SubscriptionsPage").then(m => ({ default: m.SubscriptionsPage })));
-const AnalyticsPage              = lazy(() => import("./AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
-const AuditLogsPage              = lazy(() => import("./AuditLogsPage").then(m => ({ default: m.AuditLogsPage })));
-const CertificateTemplatesPage   = lazy(() => import("./CertificateTemplatesPage").then(m => ({ default: m.CertificateTemplatesPage })));
-const PhishingCampaignResultsPage = lazy(() => import("./PhishingCampaignResultsPage").then(m => ({ default: m.PhishingCampaignResultsPage })));
-const PhishingDomainsPage        = lazy(() => import("./PhishingDomainsPage").then(m => ({ default: m.PhishingDomainsPage })));
-const PhishingSmtpAdminPage      = lazy(() => import("./PhishingSmtpAdminPage").then(m => ({ default: m.PhishingSmtpAdminPage })));
-const PhishingLandingPagesAdminPage = lazy(() => import("./PhishingLandingPagesAdminPage").then(m => ({ default: m.PhishingLandingPagesAdminPage })));
-const PhishingScenariosPage      = lazy(() => import("./PhishingScenariosPage").then(m => ({ default: m.PhishingScenariosPage })));
-const PhishingCompanyLimitsPage  = lazy(() => import("./PhishingCompanyLimitsPage").then(m => ({ default: m.PhishingCompanyLimitsPage })));
-const PhishingMonitoringPage     = lazy(() => import("./PhishingMonitoringPage").then(m => ({ default: m.PhishingMonitoringPage })));
-const PhishingManagementPage     = lazy(() => import("./PhishingManagementPage").then(m => ({ default: m.PhishingManagementPage })));
-const DemoRequestsPage           = lazy(() => import("./DemoRequestsPage").then(m => ({ default: m.DemoRequestsPage })));
-const PartnersManagementPage     = lazy(() => import("./PartnersManagementPage").then(m => ({ default: m.PartnersManagementPage })));
-const FraudAlertsManagementPage  = lazy(() => import("./FraudAlertsManagementPage").then(m => ({ default: m.FraudAlertsManagementPage })));
-const SupportRequestsPage        = lazy(() => import("./SupportRequestsPage"));
-const EmailPage                  = lazy(() => import("./EmailPage"));
-const EmailQueuePage             = lazy(() => import("./EmailQueuePage").then(m => ({ default: m.EmailQueuePage })));
-const ErrorLogsPage              = lazy(() => import("./ErrorLogsPage").then(m => ({ default: m.ErrorLogsPage })));
+const CompaniesPage              = lazyWithReload(() => import("./CompaniesPage").then(m => ({ default: m.CompaniesPage })));
+const CoursesPage                = lazyWithReload(() => import("./CoursesPage").then(m => ({ default: m.CoursesPage })));
+const ExamsPage                  = lazyWithReload(() => import("./ExamsPage").then(m => ({ default: m.ExamsPage })));
+const PublicSubmissionsPage      = lazyWithReload(() => import("./PublicSubmissionsPage").then(m => ({ default: m.PublicSubmissionsPage })));
+const UsersManagementPage        = lazyWithReload(() => import("./UsersManagementPage").then(m => ({ default: m.UsersManagementPage })));
+const SubscriptionsPage          = lazyWithReload(() => import("./SubscriptionsPage").then(m => ({ default: m.SubscriptionsPage })));
+const AnalyticsPage              = lazyWithReload(() => import("./AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
+const AuditLogsPage              = lazyWithReload(() => import("./AuditLogsPage").then(m => ({ default: m.AuditLogsPage })));
+const CertificateTemplatesPage   = lazyWithReload(() => import("./CertificateTemplatesPage").then(m => ({ default: m.CertificateTemplatesPage })));
+const PhishingCampaignResultsPage = lazyWithReload(() => import("./PhishingCampaignResultsPage").then(m => ({ default: m.PhishingCampaignResultsPage })));
+const PhishingDomainsPage        = lazyWithReload(() => import("./PhishingDomainsPage").then(m => ({ default: m.PhishingDomainsPage })));
+const PhishingSmtpAdminPage      = lazyWithReload(() => import("./PhishingSmtpAdminPage").then(m => ({ default: m.PhishingSmtpAdminPage })));
+const PhishingLandingPagesAdminPage = lazyWithReload(() => import("./PhishingLandingPagesAdminPage").then(m => ({ default: m.PhishingLandingPagesAdminPage })));
+const PhishingScenariosPage      = lazyWithReload(() => import("./PhishingScenariosPage").then(m => ({ default: m.PhishingScenariosPage })));
+const PhishingCompanyLimitsPage  = lazyWithReload(() => import("./PhishingCompanyLimitsPage").then(m => ({ default: m.PhishingCompanyLimitsPage })));
+const PhishingMonitoringPage     = lazyWithReload(() => import("./PhishingMonitoringPage").then(m => ({ default: m.PhishingMonitoringPage })));
+const PhishingManagementPage     = lazyWithReload(() => import("./PhishingManagementPage").then(m => ({ default: m.PhishingManagementPage })));
+const DemoRequestsPage           = lazyWithReload(() => import("./DemoRequestsPage").then(m => ({ default: m.DemoRequestsPage })));
+const PartnersManagementPage     = lazyWithReload(() => import("./PartnersManagementPage").then(m => ({ default: m.PartnersManagementPage })));
+const FraudAlertsManagementPage  = lazyWithReload(() => import("./FraudAlertsManagementPage").then(m => ({ default: m.FraudAlertsManagementPage })));
+const SupportRequestsPage        = lazyWithReload(() => import("./SupportRequestsPage"));
+const EmailPage                  = lazyWithReload(() => import("./EmailPage"));
+const EmailQueuePage             = lazyWithReload(() => import("./EmailQueuePage").then(m => ({ default: m.EmailQueuePage })));
+const ErrorLogsPage              = lazyWithReload(() => import("./ErrorLogsPage").then(m => ({ default: m.ErrorLogsPage })));
 
 /* ─────────────────────────────────────────
    TOKENS
