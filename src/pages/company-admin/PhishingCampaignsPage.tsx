@@ -185,7 +185,7 @@ export const PhishingCampaignsPage: React.FC = () => {
     businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
     launchType: 'immediate' as 'immediate' | 'scheduled', scheduledAt: '',
     emailTemplateId: '', emailSubject: '', emailHtml: '',
-    landingPageId: '', phishingDomainId: '', redirectUrl: 'https://www.google.com',
+    landingPageId: '', phishingDomainId: '', captureCredentials: true, redirectUrl: 'https://www.google.com',
   });
   const [showPreview, setShowPreview] = useState(false);
 
@@ -239,7 +239,7 @@ export const PhishingCampaignsPage: React.FC = () => {
       businessHoursOnly: false, businessHoursStart: 9, businessHoursEnd: 17, timezone: 'Asia/Riyadh',
       launchType: 'immediate', scheduledAt: '',
       emailTemplateId: '', emailSubject: '', emailHtml: '',
-      landingPageId: '', phishingDomainId: '', redirectUrl: 'https://www.google.com',
+      landingPageId: '', phishingDomainId: '', captureCredentials: true, redirectUrl: 'https://www.google.com',
     });
     loadWizardData();
     setView('wizard');
@@ -337,6 +337,29 @@ export const PhishingCampaignsPage: React.FC = () => {
         alert('The scheduled time is in the past. Pick a future time, or switch to "Launch now".');
         return;
       }
+      /*
+       * Pre-flight the link domain, so an unusable one is caught here with a
+       * clear message instead of surfacing as a raw DOMAIN_NOT_VERIFIED error
+       * from the edge function after the operator has committed to launching.
+       * The picker already disables such domains, but a stale selection (a
+       * domain unverified or a route removed after it was chosen) can still slip
+       * through — the server refuses it either way; this just explains why first.
+       */
+      if (form.phishingDomainId) {
+        const d = phishDomains.find(x => x.id === form.phishingDomainId);
+        if (!d) {
+          alert('The selected link domain is no longer available. Pick another, or use the platform default.');
+          return;
+        }
+        if (!d.is_verified) {
+          alert(`The link domain "${d.domain_name}" is not verified yet. Verify its DNS in Phishing Domains before launching, or use the platform default.`);
+          return;
+        }
+        if (!d.tracking_base_url) {
+          alert(`The link domain "${d.domain_name}" is verified but not routed yet (no serving URL / Cloudflare route). Finish its setup, or use the platform default.`);
+          return;
+        }
+      }
     }
     setSaving(true);
     try {
@@ -355,6 +378,7 @@ export const PhishingCampaignsPage: React.FC = () => {
           from_name:                form.fromName    || '',
           landing_page_id:          form.landingPageId || null,
           phishing_domain_id:       form.phishingDomainId || null,
+          capture_credentials:      form.captureCredentials,
           redirect_url:             form.redirectUrl || 'https://www.google.com',
           emails_per_minute:        form.emailsPerMinute,
           random_delay:             form.randomDelay,
@@ -914,17 +938,22 @@ export const PhishingCampaignsPage: React.FC = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <Label>Record Form Submissions</Label>
+                    <Toggle checked={form.captureCredentials} onChange={v => setForm(f => ({ ...f, captureCredentials: v }))} />
+                  </div>
                   {/*
-                    This replaced a "Capture Credentials" toggle that did nothing:
-                    it was never sent to the launcher, phishing_campaigns has no
-                    column to store it, and form submissions are recorded either
-                    way. Rather than a switch that lies, state the actual, safe
-                    behaviour — which is the honest thing to show a company admin.
+                    A real control now, backed by phishing_campaigns.capture_credentials
+                    and honoured by serve-landing-page. ON: a submit on the landing
+                    page is logged as an event (field NAMES only — values are never
+                    stored). OFF: the page still shows and still redirects, but the
+                    submission is not recorded, for awareness runs that only want
+                    click-through measured.
                   */}
-                  <Label>If the landing page has a form</Label>
-                  <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.6, marginTop: 4 }}>
-                    A submission is recorded as an event — the field <em>names</em> only.
-                    The values entered (passwords, codes) are never stored.
+                  <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.6 }}>
+                    {form.captureCredentials
+                      ? 'Landing-page submissions are logged (field names only — values are never stored).'
+                      : 'Submissions are not recorded; the page still shows and redirects.'}
                   </div>
                 </div>
                 <div>
