@@ -668,7 +668,7 @@ export const PhishingManagementPage: React.FC = () => {
                       <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.campaign_name}</td>
                       <td style={{ color: T.textMuted }}>{req.phishing_scenarios?.name || 'N/A'}</td>
                       <td style={{ textAlign: 'center' }}>
-                        <span style={{ fontWeight: 700, color: T.white }}>{req.target_employee_count}</span>
+                        <span style={{ fontWeight: 700, color: T.white }}>{req.target_employee_count ?? '—'}</span>
                       </td>
                       <td>
                         <span style={{ display: 'inline-flex', padding: '3px 9px', borderRadius: 9999, fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', textTransform: 'uppercase', background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>

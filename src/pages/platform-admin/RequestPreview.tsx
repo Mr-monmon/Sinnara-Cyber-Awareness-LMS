@@ -740,7 +740,15 @@ const RequestPreview = ({
             <SummaryField label="Requested By">{selectedRequest.users?.full_name}</SummaryField>
             <SummaryField label="Campaign Name">{selectedRequest.campaign_name || "—"}</SummaryField>
             <SummaryField label="Scenario">{selectedRequest.phishing_scenarios?.name || "N/A"}</SummaryField>
-            <SummaryField label="Target Count">{selectedRequest.target_employee_count} employees</SummaryField>
+            {/*
+              Show the ACTUAL resolved recipient count (users.length), not the
+              stored target_employee_count. The stored count was computed from
+              departments at request time, so for a GROUPS-sourced request it is
+              stale/zero while the real send goes to users.length — two different
+              recipient numbers on one approval screen. The resolved list is what
+              will actually be emailed, so it is the honest number to sign off on.
+            */}
+            <SummaryField label="Target Count">{users.length} employees</SummaryField>
             <SummaryField label="Targets">
               {targetSource === "GROUPS"
                 ? `${(selectedRequest.group_ids ?? []).length} phishing group(s) · ${users.length} recipients`

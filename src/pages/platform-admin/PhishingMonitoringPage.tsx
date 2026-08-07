@@ -656,7 +656,11 @@ export const PhishingMonitoringPage: React.FC = () => {
                           { label: 'Credentials',  value: selected.credentials_entered ?? selected.data_submitted ?? 0, color: T.red },
                           { label: 'Reported',     value: selected.emails_reported,      color: T.green  },
                         ].map(({ label, value, color }) => {
-                          const w = pct(value || 0, selected.total_targets || selected.total_queue_size || 1);
+                          // Same denominator as the stat cards above (emails SENT),
+                          // so "Opened %" reads identically in both places. The
+                          // funnel starts at Sent, so Sent = 100% by construction —
+                          // the drop-off from there is the whole point of a funnel.
+                          const w = pct(value || 0, selected.emails_sent || 0);
                           return (
                             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
                               <div style={{ width: 80, fontSize: 11, color: T.textBody, flexShrink: 0, textAlign: 'right' }}>{label}</div>
