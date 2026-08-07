@@ -112,6 +112,9 @@ export const PhishingDomainsPage: React.FC = () => {
   const [newDomain, setNewDomain]     = useState('');
   const [copied, setCopied]           = useState<string | null>(null);
   const [error, setError]             = useState('');
+  // Per-card edit buffers for the serving base URL and who may use the domain.
+  const [baseEdits, setBaseEdits]     = useState<Record<string, string>>({});
+  const [savingBase, setSavingBase]   = useState<string | null>(null);
 
   useEffect(() => { loadDomains(); }, []);
 
@@ -160,6 +163,48 @@ export const PhishingDomainsPage: React.FC = () => {
       setError(msg.includes('unique') ? 'Domain already exists.' : msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /*
+   * Save the serving base URL and visibility for a domain.
+   *
+   * The base is what a campaign's links are built from; without it the domain is
+   * verified but unusable (links still fall back to the Supabase URL). It is
+   * normalised to an origin — scheme required, no trailing slash — so it matches
+   * exactly what the edge functions concatenate `/functions/v1/...` onto.
+   */
+  const handleSaveConfig = async (
+    domain: PhishingDomain,
+    patch: { tracking_base_url?: string | null; visibility?: PhishingDomain["visibility"]; is_active?: boolean },
+  ) => {
+    setSavingBase(domain.id);
+    setError('');
+    try {
+      const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if ("tracking_base_url" in patch) {
+        const raw = (patch.tracking_base_url ?? "").trim().replace(/\/+$/, "");
+        if (raw) {
+          let parsed: URL;
+          try { parsed = new URL(raw); } catch { setError('Base URL must be a full URL, e.g. https://secure-verify.example'); setSavingBase(null); return; }
+          if (parsed.protocol !== 'https:') { setError('Base URL must use https://'); setSavingBase(null); return; }
+          update.tracking_base_url = parsed.origin;
+        } else {
+          update.tracking_base_url = null;
+        }
+      }
+      if (patch.visibility) update.visibility = patch.visibility;
+      if (typeof patch.is_active === 'boolean') update.is_active = patch.is_active;
+
+      const { error: err } = await supabase.from('phishing_domains').update(update).eq('id', domain.id);
+      if (err) throw err;
+      setDomains(prev => prev.map(d => d.id === domain.id ? { ...d, ...update } as PhishingDomain : d));
+      setBaseEdits(prev => { const n = { ...prev }; delete n[domain.id]; return n; });
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Failed to save domain settings.');
+    } finally {
+      setSavingBase(null);
     }
   };
 
@@ -372,6 +417,52 @@ export const PhishingDomainsPage: React.FC = () => {
                     </div>
                   ) : (
                     <span style={{ color: T.textMuted, fontSize: 12 }}>—</span>
+                  )}
+                </div>
+
+                {/* Serving base URL — what campaign links are built from. Until
+                    this is set and a Cloudflare route points it here, links fall
+                    back to the Supabase URL, so the domain is verified but not
+                    actually serving anything. */}
+                <div>
+                  <div style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>Serving Base URL</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      className="aw-pd-input"
+                      style={{ flex: 1, minWidth: 0, fontSize: 12 }}
+                      placeholder={`https://${domain.domain_name}`}
+                      value={baseEdits[domain.id] ?? domain.tracking_base_url ?? ''}
+                      onChange={e => setBaseEdits(prev => ({ ...prev, [domain.id]: e.target.value }))}
+                    />
+                    <button
+                      className="aw-pd-btn"
+                      disabled={savingBase === domain.id || (baseEdits[domain.id] ?? domain.tracking_base_url ?? '') === (domain.tracking_base_url ?? '')}
+                      onClick={() => handleSaveConfig(domain, { tracking_base_url: baseEdits[domain.id] ?? '' })}
+                      style={{ padding: '7px 12px', fontSize: 12, background: T.accent, color: T.accentDark, opacity: savingBase === domain.id ? 0.5 : 1 }}>
+                      {savingBase === domain.id ? <Loader2 size={13} style={{ animation: 'aw-pd-spin 0.8s linear infinite' }} /> : 'Save'}
+                    </button>
+                  </div>
+                  {!domain.tracking_base_url && (
+                    <p style={{ fontSize: 10, color: T.orange, margin: '6px 0 0', lineHeight: 1.5 }}>
+                      Not routed yet — links fall back to the Supabase URL until a base is set and a Cloudflare route points it at the phish-proxy Worker.
+                    </p>
+                  )}
+                </div>
+
+                {/* Who may use this platform domain. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Availability</span>
+                  <select
+                    className="aw-pd-input"
+                    style={{ fontSize: 12, padding: '6px 8px', flex: 1 }}
+                    value={domain.visibility === 'SHARED' ? 'SHARED' : 'GLOBAL'}
+                    onChange={e => handleSaveConfig(domain, { visibility: e.target.value as PhishingDomain['visibility'] })}
+                  >
+                    <option value="GLOBAL">All companies</option>
+                    <option value="SHARED">Selected companies only</option>
+                  </select>
+                  {domain.is_active === false && (
+                    <span style={{ fontSize: 10, color: T.orange, fontWeight: 700 }}>DISABLED</span>
                   )}
                 </div>
 

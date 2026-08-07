@@ -21,6 +21,7 @@ import {
   assertSmtpProfileAccessible,
   checkLimitsFailClosed,
   normalizeTargets,
+  resolvePhishingDomain,
 } from "../_shared/phishingAccess.ts";
 
 const corsHeaders = {
@@ -167,6 +168,7 @@ Deno.serve(async (req) => {
     business_hours_only, business_hours_start, business_hours_end, timezone,
     launch_type, scheduled_at,
     scenario_id,
+    phishing_domain_id,
   } = body;
 
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -208,6 +210,36 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: "Scenario is not accessible to your company" }), { status: 403, headers: corsHeaders });
   }
 
+  /*
+   * Resolve the domain the links will be served from.
+   *
+   * Accessibility is checked here for the same cross-tenant reason as the SMTP
+   * and landing-page checks above — a company must not serve from another
+   * company's private domain. The resolver also hands back the base URL to build
+   * links from (the domain's routed origin, or SUPABASE_URL as fallback) and
+   * whether the domain is verified.
+   */
+  const phishingDomainId = (phishing_domain_id && typeof phishing_domain_id === "string") ? phishing_domain_id : null;
+  const domain = await resolvePhishingDomain(db, phishingDomainId, companyId, SUPABASE_URL);
+  if (!domain.ok) {
+    return new Response(JSON.stringify({ success: false, error: domain.error ?? "Phishing domain is not usable" }), { status: 403, headers: corsHeaders });
+  }
+  /*
+   * Refuse to send from an unverified custom domain.
+   *
+   * Sending links on a domain whose DNS is not yet verified is how a campaign
+   * gets discovered broken after forty bounces. A draft may reference an
+   * unverified domain (the operator is still setting it up); an actual send may
+   * not. The SUPABASE_URL fallback (no domain chosen) is always "verified".
+   */
+  if (!isDraft && phishingDomainId && !domain.verified) {
+    return new Response(
+      JSON.stringify({ success: false, error: "The selected phishing domain is not verified yet. Verify its DNS before launching.", code: "DOMAIN_NOT_VERIFIED" }),
+      { status: 403, headers: corsHeaders },
+    );
+  }
+  const linkBase = domain.baseUrl;
+
   // ── Draft: create campaign record only ──
   if (isDraft) {
     const { data: camp, error: campErr } = await db
@@ -218,6 +250,7 @@ Deno.serve(async (req) => {
         status:                   "DRAFT",
         smtp_profile_id:          smtp_profile_id ?? null,
         landing_page_id:          landing_page_id ?? null,
+        phishing_domain_id:       phishingDomainId,
         group_ids:                Array.isArray(group_ids) ? group_ids : [],
         scenario_id:              scenario_id ?? null,
         emails_per_minute:        Number(emails_per_minute ?? 10),
@@ -298,6 +331,7 @@ Deno.serve(async (req) => {
       total_targets:            targetCount,
       smtp_profile_id:          smtp_profile_id ?? null,
       landing_page_id:          landing_page_id ?? null,
+      phishing_domain_id:       phishingDomainId,
       group_ids:                group_ids,
       scenario_id:              scenario_id ?? null,
       // Stored so phishing-track can resolve the post-click/submit redirect
@@ -350,7 +384,10 @@ Deno.serve(async (req) => {
   }
 
   // ── Build queue entries (variable resolution per recipient) ──
-  const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
+  // Links are served from the resolved domain's base, not SUPABASE_URL, so the
+  // recipient sees the operator's domain. A Cloudflare Worker route on that base
+  // forwards /functions/v1/* back to Supabase.
+  const trackBase        = `${linkBase}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(emails_per_minute ?? 10), 1);
   /*
    * Pace forward from now, never from a past instant.
@@ -390,7 +427,7 @@ Deno.serve(async (req) => {
 
     // If a landing page is selected, the click URL must route through serve-landing-page.
     const targetRedirectUrl = landing_page_id
-      ? `${SUPABASE_URL}/functions/v1/serve-landing-page?lp=${landing_page_id}&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`
+      ? `${linkBase}/functions/v1/serve-landing-page?lp=${landing_page_id}&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`
       : finalRedirectUrl;
 
     const targetMeta = {

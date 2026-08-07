@@ -21,6 +21,7 @@ import {
   assertSmtpProfileAccessible,
   checkLimitsFailClosed,
   normalizeTargets,
+  resolvePhishingDomain,
 } from "../_shared/phishingAccess.ts";
 
 const corsHeaders = {
@@ -186,6 +187,24 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: "The scenario is not accessible to the requesting company.", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
   }
 
+  // Resolve the serving domain, same as the self-service launcher. A ticket
+  // campaign is a real send, so an unverified custom domain is refused here too.
+  // The platform admin choosing the domain at conversion time (body) wins over
+  // whatever the request was stored with, since domains are the platform's to
+  // assign and the admin is looking at the verified list right now.
+  const reqDomainId =
+    (typeof body.phishing_domain_id === "string" && body.phishing_domain_id) ||
+    (rq.phishing_domain_id as string | null) ||
+    null;
+  const reqDomain = await resolvePhishingDomain(db, reqDomainId, companyId, SUPABASE_URL);
+  if (!reqDomain.ok) {
+    return new Response(JSON.stringify({ success: false, error: reqDomain.error ?? "Phishing domain is not usable", code: "OWNERSHIP_VIOLATION" }), { status: 403, headers: corsHeaders });
+  }
+  if (reqDomainId && !reqDomain.verified) {
+    return new Response(JSON.stringify({ success: false, error: "The selected phishing domain is not verified yet.", code: "DOMAIN_NOT_VERIFIED" }), { status: 403, headers: corsHeaders });
+  }
+  const reqLinkBase = reqDomain.baseUrl;
+
   // ── Resolve targets: phishing groups take precedence, else departments ──
   let targets: TargetInfo[] = [];
   if (groupIds.length > 0) {
@@ -268,6 +287,7 @@ Deno.serve(async (req) => {
       status,
       smtp_profile_id:      rq.smtp_profile_id ?? null,
       landing_page_id:      rq.landing_page_id ?? null,
+      phishing_domain_id:   reqDomainId,
       group_ids:            groupIds,
       // Stored so phishing-track can resolve the redirect server-side (open-redirect defence).
       redirect_url:         safeRedirectUrl,
@@ -309,7 +329,7 @@ Deno.serve(async (req) => {
   if (fetchErr || !insertedTargets) return rollback(db, camp.id, "Failed to retrieve inserted targets");
 
   // ── Build queue ──
-  const trackBase        = `${SUPABASE_URL}/functions/v1/phishing-track`;
+  const trackBase        = `${reqLinkBase}/functions/v1/phishing-track`;
   const rateMs           = 60000 / Math.max(Number(rq.emails_per_minute ?? 10), 1);
   // Pace forward from now, never from a past instant — otherwise a past or
   // late-converted schedule makes the whole queue due at once and the cron
@@ -329,7 +349,7 @@ Deno.serve(async (req) => {
   const queueEntries = insertedTargets.map((t, i) => {
     const sendAt = new Date(baseTime + i * rateMs);
     const targetRedirectUrl = rq.landing_page_id
-      ? `${SUPABASE_URL}/functions/v1/serve-landing-page?lp=${rq.landing_page_id}&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`
+      ? `${reqLinkBase}/functions/v1/serve-landing-page?lp=${rq.landing_page_id}&c=${camp.id}&r=${encodeURIComponent(t.recipient_id)}`
       : finalRedirectUrl;
     const meta = { campaign_id: camp.id, company_name: companyName, redirect_url: targetRedirectUrl, tracking_base: trackBase };
     const info: TargetInfo = {

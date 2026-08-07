@@ -1,0 +1,29 @@
+# Standalone reverse-proxy Worker for phishing domains.
+#
+# Deployed ONCE. Every phishing domain (shared or per-company) is attached to it
+# by adding that domain's zone to Cloudflare and creating a route that points at
+# this Worker — no per-domain code or redeploy.
+#
+# Deploy:  cd workers/phish-proxy && npx wrangler deploy
+#
+# Set the two variables in the Cloudflare dashboard (Workers → phish-proxy →
+# Settings → Variables), NOT here — SUPABASE_ANON_KEY is an env value, not source:
+#   SUPABASE_FUNCTIONS_ORIGIN = https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY         = <the project's anon/publishable key>
+
+name = "phish-proxy"
+main = "worker.js"
+compatibility_date = "2026-04-09"
+workers_dev = false
+
+# Routes are added per phishing domain, each on its own zone. Example — repeat
+# per domain, replacing the zone. Left commented so `wrangler deploy` does not
+# fail on a zone that is not in the account yet.
+#
+# [[routes]]
+# pattern = "secure-verify.example/*"
+# zone_name = "secure-verify.example"
+#
+# [[routes]]
+# pattern = "account-check.example/*"
+# zone_name = "account-check.example"
