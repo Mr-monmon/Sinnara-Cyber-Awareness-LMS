@@ -440,9 +440,14 @@ const RequestPreview = ({
         { body: { request_id: selectedRequest.id, phishing_domain_id: setup.domain_id || null } }
       );
       if (error) throw error;
-      if (data && !data.success) throw new Error(data.error ?? "Conversion failed");
+      // Require an explicit success, not merely "not an explicit failure". A
+      // null/empty body would pass `!data.success` and then throw on data.status
+      // below — surfacing "Failed to create campaign" for a campaign that may
+      // actually have been created. Treat a missing/!success body as a failure
+      // with its own message.
+      if (!data || !data.success) throw new Error(data?.error ?? "Conversion did not confirm success. Refresh and check the campaign list before retrying.");
       alert(
-        `Campaign created (${data.status}) with ${data.target_count} targets.`
+        `Campaign created (${data.status ?? "RUNNING"}) with ${data.target_count ?? "the requested"} targets.`
       );
       updateSelectedRequest(null);
       onConverted?.();
