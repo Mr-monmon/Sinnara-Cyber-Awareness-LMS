@@ -97,15 +97,19 @@ if (typeof document !== 'undefined' && !document.getElementById('aw-et-styles'))
 
 interface EmailTemplate {
   id: string;
-  company_id: string;
+  company_id: string | null;
   name: string;
   subject: string;
   html_content: string;
   text_content: string;
   envelope_sender: string;
+  is_platform_template?: boolean;
+  visibility?: 'COMPANY' | 'GLOBAL' | 'SHARED';
   created_at: string;
   updated_at: string;
 }
+
+interface CompanyOption { id: string; name: string }
 
 const VARIABLES = [
   '{{.FirstName}}', '{{.LastName}}', '{{.Email}}', '{{.Position}}',
@@ -142,9 +146,17 @@ const TEMPLATE_HTML = `<html>
 
 type EditorTab = 'visual' | 'html' | 'text';
 
-export const PhishingEmailTemplatesPage: React.FC = () => {
+/**
+ * @param platform When true, this manages PLATFORM templates (author + share to
+ *   companies), for the platform admin. When false (default), it is the company
+ *   admin's own templates, and additionally surfaces the platform's shared
+ *   library read-only with a Duplicate action.
+ */
+export const PhishingEmailTemplatesPage: React.FC<{ platform?: boolean }> = ({ platform = false }) => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  // Company mode only: platform templates shared with this company (read-only).
+  const [sharedTemplates, setSharedTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<EmailTemplate | null>(null);
@@ -164,7 +176,18 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
   const quillContainerRef = useRef<HTMLDivElement>(null);
   const quillInitialized = useRef(false);
 
-  useEffect(() => { if (user?.company_id) loadTemplates(); }, [user]);
+  // Sharing (platform mode) — mirrors the SMTP "Push to Companies" flow.
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [access, setAccess] = useState<Record<string, string[]>>({});
+  const [shareModal, setShareModal] = useState<EmailTemplate | null>(null);
+  const [selectedCos, setSelectedCos] = useState<Set<string>>(new Set());
+  const [sharing, setSharing] = useState(false);
+
+  useEffect(() => {
+    // Platform mode does not depend on a company_id; company mode does.
+    if (platform || user?.company_id) loadTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, platform]);
 
   // Initialize Quill when modal opens on visual tab
   useEffect(() => {
@@ -222,12 +245,39 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
   };
 
   const loadTemplates = async () => {
-    if (!user?.company_id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('phishing_company_email_templates').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false });
-      if (error) throw error;
-      setTemplates(data || []);
+      if (platform) {
+        // Platform admin: the shared library it owns, plus the companies +
+        // access grants needed to draw the share modal.
+        const [tplRes, coRes] = await Promise.all([
+          supabase.from('phishing_company_email_templates').select('*').eq('is_platform_template', true).order('created_at', { ascending: false }),
+          supabase.from('companies').select('id, name').order('name'),
+        ]);
+        if (tplRes.error) throw tplRes.error;
+        const rows = (tplRes.data ?? []) as EmailTemplate[];
+        setTemplates(rows);
+        setCompanies((coRes.data ?? []) as CompanyOption[]);
+        const ids = rows.map(r => r.id);
+        if (ids.length) {
+          const { data: grants } = await supabase.from('email_template_company_access').select('template_id, company_id').in('template_id', ids);
+          const map: Record<string, string[]> = {};
+          (grants ?? []).forEach((g: { template_id: string; company_id: string }) => { (map[g.template_id] ??= []).push(g.company_id); });
+          setAccess(map);
+        } else setAccess({});
+        return;
+      }
+
+      if (!user?.company_id) return;
+      // Company admin: own templates, and separately the platform's shared
+      // library (GLOBAL or shared with this company) — RLS restricts the latter.
+      const [ownRes, sharedRes] = await Promise.all([
+        supabase.from('phishing_company_email_templates').select('*').eq('company_id', user.company_id).order('created_at', { ascending: false }),
+        supabase.from('phishing_company_email_templates').select('*').eq('is_platform_template', true).order('created_at', { ascending: false }),
+      ]);
+      if (ownRes.error) throw ownRes.error;
+      setTemplates(ownRes.data || []);
+      setSharedTemplates((sharedRes.data as EmailTemplate[] | null) || []);
     } catch (err) { console.error('[EmailTemplates] load', err); }
     finally { setLoading(false); }
   };
@@ -265,7 +315,17 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
     }
     setSaving(true);
     try {
-      const payload = { ...form, html_content: htmlContent, company_id: user?.company_id, updated_at: new Date().toISOString() };
+      /*
+       * Ownership is set by mode, and matches the CHECK constraint: a platform
+       * template has company_id NULL + is_platform_template true; a company
+       * template has an owner. A brand-new platform template defaults to GLOBAL
+       * so it is immediately usable by every company — the share modal narrows
+       * it to specific companies. An edit keeps whatever visibility it had.
+       */
+      const base = { ...form, html_content: htmlContent, updated_at: new Date().toISOString() };
+      const payload = platform
+        ? { ...base, company_id: null, is_platform_template: true, ...(editTemplate ? {} : { visibility: 'GLOBAL' }) }
+        : { ...base, company_id: user?.company_id, is_platform_template: false };
       const { error } = editTemplate
         ? await supabase.from('phishing_company_email_templates').update(payload).eq('id', editTemplate.id)
         : await supabase.from('phishing_company_email_templates').insert(payload);
@@ -274,6 +334,64 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
       loadTemplates();
     } catch (err) { console.error('[EmailTemplates] save', err); alert('Failed to save template: ' + getErrorMessage(err)); }
     finally { setSaving(false); }
+  };
+
+  /* Company mode: copy a platform template into the company's own for editing. */
+  const duplicateToOwn = async (t: EmailTemplate) => {
+    if (!user?.company_id) return;
+    try {
+      const { error } = await supabase.from('phishing_company_email_templates').insert({
+        company_id: user.company_id, is_platform_template: false, visibility: 'COMPANY',
+        name: `${t.name} (Copy)`, subject: t.subject, html_content: t.html_content,
+        text_content: t.text_content || '', envelope_sender: t.envelope_sender || '',
+        updated_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      loadTemplates();
+    } catch (err) { alert('Failed to duplicate: ' + getErrorMessage(err)); }
+  };
+
+  /* Platform mode: share a template with all / selected companies, or make it
+     platform-only. Same three-way flow as SMTP profiles and domains. */
+  const shareToAll = async () => {
+    if (!shareModal) return;
+    setSharing(true);
+    try {
+      await supabase.from('email_template_company_access').delete().eq('template_id', shareModal.id);
+      const { error } = await supabase.from('phishing_company_email_templates').update({ visibility: 'GLOBAL', updated_at: new Date().toISOString() }).eq('id', shareModal.id);
+      if (error) throw error;
+      await loadTemplates();
+      setShareModal(prev => prev ? { ...prev, visibility: 'GLOBAL' } : prev);
+    } catch (err) { alert('Failed: ' + getErrorMessage(err)); }
+    finally { setSharing(false); }
+  };
+  const shareToSelected = async () => {
+    if (!shareModal || selectedCos.size === 0) return;
+    setSharing(true);
+    try {
+      const rows = Array.from(selectedCos).map(company_id => ({ template_id: shareModal.id, company_id }));
+      const { error } = await supabase.from('email_template_company_access').upsert(rows, { onConflict: 'template_id,company_id' });
+      if (error) throw error;
+      await supabase.from('phishing_company_email_templates').update({ visibility: 'SHARED', updated_at: new Date().toISOString() }).eq('id', shareModal.id);
+      setSelectedCos(new Set());
+      await loadTemplates();
+      setShareModal(prev => prev ? { ...prev, visibility: 'SHARED' } : prev);
+    } catch (err) { alert('Failed: ' + getErrorMessage(err)); }
+    finally { setSharing(false); }
+  };
+  const makePlatformOnly = async () => {
+    if (!shareModal) return;
+    if (!confirm('Make this template platform-only? All companies will lose access to it.')) return;
+    setSharing(true);
+    try {
+      await supabase.from('email_template_company_access').delete().eq('template_id', shareModal.id);
+      const { error } = await supabase.from('phishing_company_email_templates').update({ visibility: 'COMPANY', updated_at: new Date().toISOString() }).eq('id', shareModal.id);
+      if (error) throw error;
+      setSelectedCos(new Set());
+      await loadTemplates();
+      setShareModal(prev => prev ? { ...prev, visibility: 'COMPANY' } : prev);
+    } catch (err) { alert('Failed: ' + getErrorMessage(err)); }
+    finally { setSharing(false); }
   };
 
   const confirmDelete = async () => {
@@ -305,7 +423,9 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
           </div>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 900, color: T.white, letterSpacing: '-0.3px', margin: 0 }}>Email Templates</h1>
-            <p style={{ fontSize: 13, color: T.textBody, margin: 0 }}>Build phishing simulation email templates.</p>
+            <p style={{ fontSize: 13, color: T.textBody, margin: 0 }}>
+              {platform ? 'Author shared email templates and push them to companies.' : 'Build phishing simulation email templates.'}
+            </p>
           </div>
         </div>
         <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.accent, color: T.accentDark, fontWeight: 700, borderRadius: 10, padding: '10px 18px', border: 'none', cursor: 'pointer', fontSize: 13 }}>
@@ -342,6 +462,11 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {platform && (
+                      <button title="Share with companies" onClick={() => { setShareModal(t); setSelectedCos(new Set(access[t.id] || [])); }} style={{ width: 28, height: 28, borderRadius: 7, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Check size={12} />
+                      </button>
+                    )}
                     <button onClick={() => openEdit(t)} style={{ width: 28, height: 28, borderRadius: 7, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Edit2 size={12} />
                     </button>
@@ -350,10 +475,86 @@ export const PhishingEmailTemplatesPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: T.textMuted }}>{new Date(t.created_at).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: T.textMuted }}>{new Date(t.created_at).toLocaleDateString('en-SA', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                  {platform && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: t.visibility === 'GLOBAL' ? T.green : t.visibility === 'SHARED' ? T.blue : T.textMuted }}>
+                      {t.visibility === 'GLOBAL' ? 'All companies' : t.visibility === 'SHARED' ? `${(access[t.id] || []).length} compan${(access[t.id] || []).length === 1 ? 'y' : 'ies'}` : 'Platform only'}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Company mode: read-only library shared by the platform team. */}
+      {!platform && sharedTemplates.length > 0 && (
+        <div className="aw-fade-up">
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.white, margin: '4px 0 10px' }}>Shared by AwareOne</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {sharedTemplates.map(t => (
+              <div key={t.id} style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+                <div style={{ height: 3, background: `linear-gradient(90deg, ${T.green}, ${T.green}40)` }} />
+                <div style={{ padding: '16px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T.white, marginBottom: 4 }}>{t.name}</div>
+                      <div style={{ fontSize: 12, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Subject: {t.subject}</div>
+                    </div>
+                    {/* Read-only: a company cannot edit the platform's copy, but can
+                        duplicate it into its own templates to customise. */}
+                    <button title="Duplicate to my templates" onClick={() => duplicateToOwn(t)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7, background: T.blueBg, border: `1px solid ${T.blueBorder}`, color: T.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                      <Copy size={12} /> Duplicate
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.green }}>PLATFORM</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Share modal (platform mode). */}
+      {shareModal && (
+        <div onClick={() => { setShareModal(null); setSelectedCos(new Set()); }} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(10,12,6,0.82)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '86vh', overflowY: 'auto', background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 14, padding: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: T.white, margin: 0 }}>Share template</h3>
+                <p style={{ fontSize: 12, color: T.textMuted, margin: '3px 0 0' }}>{shareModal.name}</p>
+              </div>
+              <button onClick={() => { setShareModal(null); setSelectedCos(new Set()); }} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', lineHeight: 0 }}><X size={18} /></button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, margin: '14px 0' }}>
+              <button disabled={sharing} onClick={shareToAll} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${T.greenBorder}`, background: T.greenBg, color: T.green, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>All companies</button>
+              <button disabled={sharing} onClick={makePlatformOnly} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.04)', color: T.textBody, cursor: 'pointer', fontSize: 12 }}>Platform only</button>
+            </div>
+            <div style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px', margin: '4px 0 8px' }}>Or grant to selected companies</div>
+            {companies.length === 0 ? (
+              <p style={{ fontSize: 12, color: T.textMuted }}>No companies found.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto', border: `1px solid ${T.borderFaint}`, borderRadius: 9, padding: 8 }}>
+                {companies.map(co => {
+                  const checked = selectedCos.has(co.id);
+                  const granted = (access[shareModal.id] || []).includes(co.id);
+                  return (
+                    <label key={co.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: checked ? T.blueBg : 'transparent' }}>
+                      <input type="checkbox" checked={checked} onChange={e => setSelectedCos(prev => { const n = new Set(prev); if (e.target.checked) n.add(co.id); else n.delete(co.id); return n; })} />
+                      <span style={{ fontSize: 13, color: T.white, flex: 1 }}>{co.name}</span>
+                      {granted && shareModal.visibility === 'SHARED' && <span style={{ fontSize: 9, fontWeight: 700, color: T.green }}>GRANTED</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button disabled={sharing || selectedCos.size === 0} onClick={shareToSelected} style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: T.accent, color: T.accentDark, cursor: 'pointer', fontWeight: 700, opacity: sharing || selectedCos.size === 0 ? 0.5 : 1 }}>{sharing ? <Loader2 size={13} style={{ animation: 'aw-spin 0.8s linear infinite' }} /> : `Grant to ${selectedCos.size || ''} selected`}</button>
+              <button onClick={() => { setShareModal(null); setSelectedCos(new Set()); }} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.05)', color: T.textBody, cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -25,6 +25,7 @@ const PhishingDomainsPage        = lazyWithReload(() => import("./PhishingDomain
 const PhishingSmtpAdminPage      = lazyWithReload(() => import("./PhishingSmtpAdminPage").then(m => ({ default: m.PhishingSmtpAdminPage })));
 const PhishingLandingPagesAdminPage = lazyWithReload(() => import("./PhishingLandingPagesAdminPage").then(m => ({ default: m.PhishingLandingPagesAdminPage })));
 const PhishingScenariosPage      = lazyWithReload(() => import("./PhishingScenariosPage").then(m => ({ default: m.PhishingScenariosPage })));
+const PhishingEmailTemplatesPage = lazyWithReload(() => import("../company-admin/PhishingEmailTemplatesPage").then(m => ({ default: m.PhishingEmailTemplatesPage })));
 const PhishingCompanyLimitsPage  = lazyWithReload(() => import("./PhishingCompanyLimitsPage").then(m => ({ default: m.PhishingCompanyLimitsPage })));
 const PhishingMonitoringPage     = lazyWithReload(() => import("./PhishingMonitoringPage").then(m => ({ default: m.PhishingMonitoringPage })));
 const PhishingManagementPage     = lazyWithReload(() => import("./PhishingManagementPage").then(m => ({ default: m.PhishingManagementPage })));
@@ -325,6 +326,7 @@ export const PlatformDashboard = () => {
       case "phishing-smtp-admin":      return <PhishingSmtpAdminPage />;
       case "phishing-landing-admin":   return <PhishingLandingPagesAdminPage />;
       case "phishing-scenarios":       return <PhishingScenariosPage />;
+      case "phishing-email-templates": return <PhishingEmailTemplatesPage platform />;
       case "phishing-company-limits":  return <PhishingCompanyLimitsPage />;
       case "fraud-alerts-management":  return <FraudAlertsManagementPage />;
       case "partners-management":      return <PartnersManagementPage />;
